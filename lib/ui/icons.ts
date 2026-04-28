@@ -38,6 +38,8 @@ export {
   // misc
   DotsThree,
   CaretDown,
+  CaretDoubleLeft,
+  CaretDoubleRight,
   ArrowRight,
   SignOut,
 } from "@phosphor-icons/react";
