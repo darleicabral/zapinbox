@@ -17,7 +17,6 @@
 import type { VercelConfig } from "@vercel/config/v1";
 
 const config: VercelConfig = {
-  $schema: "https://openapi.vercel.sh/vercel.json",
   crons: [
     { path: "/api/v1/cron/recover-stuck-messages", schedule: "*/5 * * * *" },
     { path: "/api/v1/cron/sync-sessions", schedule: "*/15 * * * *" },

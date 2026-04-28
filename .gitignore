@@ -51,3 +51,4 @@ supabase/.branches/
 
 # Local docker volumes (WAHA)
 .waha-data/
+.epic-executor/
