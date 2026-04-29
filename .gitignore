@@ -57,3 +57,6 @@ supabase/.branches/
 # Sentry Config File
 .env.sentry-build-plugin
 inbox-with-real-msgs.png
+.e2e-creds.json
+test-results/
+playwright-report/
