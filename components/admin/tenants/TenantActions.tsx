@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { SuspendDialog } from "./SuspendDialog";
+import { ImpersonateButton } from "@/components/admin/ImpersonateButton";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -17,25 +18,23 @@ import { SuspendDialog } from "./SuspendDialog";
 interface TenantActionsProps {
   organizationId: string;
   status: "active" | "suspended" | "onboarding" | "redacted";
+  displayName: string;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function TenantActions({ organizationId, status }: TenantActionsProps) {
+export function TenantActions({
+  organizationId,
+  status,
+  displayName,
+}: TenantActionsProps) {
   const [suspendOpen, setSuspendOpen] = useState(false);
 
   const canSuspend = status === "active" || status === "onboarding";
   const isSuspended = status === "suspended";
   const isRedacted = status === "redacted";
-
-  function handleImpersonate() {
-    // STUB — Wave 7 (S-11.07) implementará impersonation real
-    toast.info("Impersonate disponível em S-11.07", {
-      description: "A funcionalidade de impersonation será implementada na Wave 7.",
-    });
-  }
 
   function handleReactivate() {
     // STUB — Wave 8 (S-11.08) implementará reactivation real
@@ -51,29 +50,15 @@ export function TenantActions({ organizationId, status }: TenantActionsProps) {
           Ações
         </h2>
 
-        {/* Impersonate — stub */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  onClick={handleImpersonate}
-                  disabled={isRedacted}
-                  aria-label="Impersonar tenant (disponível em S-11.07)"
-                >
-                  Impersonar tenant
-                </Button>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              {isRedacted
-                ? "Tenant redigido — ação não disponível"
-                : "Disponível em S-11.07 (Wave 7)"}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {/* Impersonate (S-11.07) */}
+        <ImpersonateButton
+          organizationId={organizationId}
+          displayName={displayName}
+          disabled={isRedacted}
+          disabledReason={
+            isRedacted ? "Tenant redigido — ação não disponível" : undefined
+          }
+        />
 
         {/* Suspend / Reactivate */}
         {canSuspend && (

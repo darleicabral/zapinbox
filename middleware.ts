@@ -2,6 +2,10 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import { isPublicPath } from "@/lib/auth/public-paths";
+import {
+  verifyImpersonateCookieEdge,
+  IMPERSONATE_COOKIE_NAME_EDGE,
+} from "@/lib/impersonate/cookie-edge";
 
 const COOKIE_NAME = "sb-deskcomm-auth";
 
@@ -62,6 +66,27 @@ export async function middleware(request: NextRequest) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname + search);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // EPIC-11 S-11.07: validate impersonate cookie on /app/* paths. Middleware
+  // runs in Edge — no DB access, only HMAC + expiry. On any failure we delete
+  // the cookie (defence-in-depth) and let the request continue (the layout
+  // re-checks server-side; downstream code that depends on the cookie will
+  // simply see no impersonation in effect).
+  if (pathname.startsWith("/app")) {
+    const impCookie = request.cookies.get(IMPERSONATE_COOKIE_NAME_EDGE)?.value;
+    if (impCookie) {
+      const result = await verifyImpersonateCookieEdge(
+        impCookie,
+        env.IMPERSONATE_COOKIE_SECRET ?? "",
+      );
+      if (!result.valid) {
+        console.warn(
+          `[middleware] impersonate cookie invalid (${result.reason ?? "unknown"}) — clearing`,
+        );
+        response.cookies.delete(IMPERSONATE_COOKIE_NAME_EDGE);
+      }
+    }
   }
 
   // /admin/* additionally requires platform_admin (early gate — authoritative

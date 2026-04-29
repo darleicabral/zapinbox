@@ -68,6 +68,11 @@ const schema = z.object({
   // Sentry
   SENTRY_DSN: z.string().optional().default(""),
 
+  // EPIC-11 Impersonate cookie HMAC secret. Optional at boot (route returns
+  // 503 at runtime if missing/short); required in prod for the feature to
+  // function. Min 32 chars when present is enforced at use site.
+  IMPERSONATE_COOKIE_SECRET: z.string().optional().default(""),
+
   // LGPD export (S-08.04)
   LGPD_SIGNING_KEY: z.string().optional().default(""),
   LGPD_EXPORT_EXPIRES_HOURS: z.string().optional().default("72"),
@@ -112,6 +117,11 @@ if (!env.AI_GATEWAY_API_KEY && !env.ANTHROPIC_API_KEY) {
 if (!env.OPENAI_API_KEY) {
   console.warn(
     "[env] No OPENAI_API_KEY set — RAG embedding will be unavailable; bot answers without retrieved context.",
+  );
+}
+if (!env.IMPERSONATE_COOKIE_SECRET || env.IMPERSONATE_COOKIE_SECRET.length < 32) {
+  console.warn(
+    "[env] IMPERSONATE_COOKIE_SECRET not set or shorter than 32 chars — impersonate flow will return 503 at runtime.",
   );
 }
 

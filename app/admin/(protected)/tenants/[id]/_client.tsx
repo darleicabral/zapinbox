@@ -51,6 +51,7 @@ export function TenantOverviewClient({ id }: TenantOverviewClientProps) {
         <TenantActions
           organizationId={organization.id}
           status={organization.status}
+          displayName={organization.display_name}
         />
       </div>
     </div>

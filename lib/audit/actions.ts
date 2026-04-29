@@ -80,4 +80,7 @@ export type AuditAction =
   | "platform_admin.tenants_listed"
   | "platform_admin.tenant_viewed"
   | "tenant.created_by_platform_admin"
-  | "platform_admin.tenant_health_viewed";
+  | "platform_admin.tenant_health_viewed"
+  | "platform_admin.impersonate_started"
+  | "platform_admin.impersonate_ended"
+  | "platform_admin.impersonate_misconfigured";
