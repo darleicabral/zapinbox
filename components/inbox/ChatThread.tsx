@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageBubble } from "./MessageBubble";
 import { useMessagesRealtime } from "@/hooks/inbox/useMessagesRealtime";
+import { useDebugToggle } from "@/hooks/ai/useDebugToggle";
+import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import type { Message } from "@/lib/types/messaging";
 
 interface Props {
@@ -21,6 +23,8 @@ function dayLabel(d: Date): string {
 export function ChatThread({ conversationId }: Props) {
   const q = useMessagesRealtime(conversationId);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const activeOrg = useActiveOrg();
+  const { enabled: debugCitations } = useDebugToggle(activeOrg?.role ?? null);
 
   const messages: Message[] = useMemo(
     () => q.data?.pages.flatMap((p) => p.data) ?? [],
@@ -104,7 +108,11 @@ export function ChatThread({ conversationId }: Props) {
               </span>
             </div>
             {g.items.map((m) => (
-              <MessageBubble key={m.id} message={m} />
+              <MessageBubble
+                key={m.id}
+                message={m}
+                debugCitations={debugCitations}
+              />
             ))}
           </div>
         ))}
