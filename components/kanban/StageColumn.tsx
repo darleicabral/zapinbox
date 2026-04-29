@@ -1,0 +1,97 @@
+"use client";
+import { Droppable } from "@hello-pangea/dnd";
+import type { CSSProperties } from "react";
+import { cn } from "@/lib/utils";
+import type { Lead } from "@/lib/types/leads";
+import type { Stage } from "@/lib/kanban/types";
+import { KanbanCard } from "./KanbanCard";
+
+interface StageColumnProps {
+  stage: Stage;
+  leads: Lead[];
+  pipelineId: string;
+  selectedLeadIds?: Set<string>;
+  onSelect?: (leadId: string, additive: boolean) => void;
+}
+
+function formatBRL(cents: number): string {
+  try {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      maximumFractionDigits: 0,
+    }).format(cents / 100);
+  } catch {
+    return `R$ ${(cents / 100).toFixed(0)}`;
+  }
+}
+
+export function StageColumn({
+  stage,
+  leads,
+  pipelineId,
+  selectedLeadIds,
+  onSelect,
+}: StageColumnProps) {
+  const totalCents = leads.reduce((sum, l) => sum + (l.value_cents ?? 0), 0);
+  const accentStyle: CSSProperties | undefined = stage.color
+    ? { backgroundColor: stage.color }
+    : undefined;
+
+  return (
+    <div className="flex w-80 shrink-0 flex-col rounded-lg border border-border bg-surface-muted/40">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+        <span
+          className={cn(
+            "h-2 w-2 rounded-full",
+            !stage.color && "bg-text-muted/40",
+          )}
+          style={accentStyle}
+          aria-hidden
+        />
+        <h2 className="flex-1 truncate text-sm font-semibold text-text">
+          {stage.name}
+        </h2>
+        <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium tabular-nums text-text-muted">
+          {leads.length}
+        </span>
+      </div>
+
+      {totalCents > 0 && (
+        <div className="border-b border-border px-3 py-1.5 text-[11px] tabular-nums text-text-muted">
+          {formatBRL(totalCents)}
+        </div>
+      )}
+
+      <Droppable droppableId={stage.id} type="LEAD">
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.droppableProps}
+            className={cn(
+              "flex flex-1 flex-col gap-2 p-2 transition-colors",
+              snapshot.isDraggingOver && "bg-accent/5",
+            )}
+          >
+            {leads.map((lead, idx) => (
+              <KanbanCard
+                key={lead.id}
+                lead={lead}
+                index={idx}
+                pipelineId={pipelineId}
+                isSelected={selectedLeadIds?.has(lead.id)}
+                onSelect={onSelect}
+              />
+            ))}
+            {provided.placeholder}
+            {leads.length === 0 && !snapshot.isDraggingOver && (
+              <div className="flex h-20 items-center justify-center text-[11px] text-text-muted/70">
+                vazio
+              </div>
+            )}
+          </div>
+        )}
+      </Droppable>
+    </div>
+  );
+}
