@@ -18,9 +18,39 @@ exposes_contracts:
   - "action.setActiveAgent"
   - "db.organizations.onboarding_state"
   - "db.organizations.onboarded_at"
-status: pending
+status: completed (partial: WhatsApp QR build-only — needs Docker up for E2E)
 created_at: 2026-04-28
 owner: Rafael Melgaço
+---
+
+## Wave Completion Log
+
+- **2026-04-28** — All 8 waves implemented in a single batch.
+  - Migration `0008_tenant_onboarding_state` already applied via Supabase MCP
+    (columns `onboarding_state jsonb`, `onboarded_at timestamptz`, partial index
+    `idx_organizations_pending_onboarding`).
+  - Routes: `/onboarding` (auto-router), `/onboarding/welcome`,
+    `/onboarding/connect-whatsapp` (build-only — graceful WAHA-down banner
+    + skip), `/onboarding/connect-nuvemshop` (wraps EPIC-07 OAuth Server
+    Action), `/onboarding/setup-ai`, `/onboarding/invite-team`,
+    `/onboarding/done`.
+  - Server Actions in `app/actions/onboarding/`:
+    `acceptWelcome`, `createDefaultAgent` (+ `skipAi`), `sendOnboardingInvites`,
+    `finishOnboarding`, plus `skipWhatsapp`/`markWhatsappConfigured`/
+    `skipNuvemshop`/`markNuvemshopConfigured` helpers.
+  - WAHA REST client at `lib/waha/client.ts` (returns null when env unset).
+  - Middleware now sets `x-pathname`; `app/app/layout.tsx` redirects to
+    `/onboarding` when `organizations.onboarded_at IS NULL`.
+  - Audit actions added: `onboarding.welcome_completed`,
+    `onboarding.whatsapp_configured`, `onboarding.whatsapp_skipped`,
+    `onboarding.nuvemshop_skipped`, `onboarding.ai_configured`,
+    `onboarding.team_invited`, `onboarding.completed`, `tenant.onboarded`.
+  - Verification: `pnpm typecheck` clean, `pnpm lint` only pre-existing
+    warnings, `pnpm test:unit` 68/68 pass, anon curl smokes on `/onboarding`,
+    `/onboarding/welcome`, `/app/inbox` all return 307 → `/login`.
+  - **Deferred**: real QR rendering + WAHA polling to E2E session with Docker
+    up; pure server-side build/lint/test loop intentionally skipped that
+    path because it requires a live WAHA service.
 ---
 
 # EPIC-02 — Tenant Onboarding
