@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
+import { BudgetCard } from "@/components/ai/BudgetCard";
+import { getBudgetStatus } from "@/lib/ai/budget/check";
 import { UsageDashboardClient } from "./_client";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +49,9 @@ export default async function AiUsagePage({ searchParams }: PageProps) {
     to: singleParam(sp.to),
   };
 
+  const budget = await getBudgetStatus(activeOrg.orgId);
+  const isAdmin = ROLE_RANK[activeOrg.role] >= ROLE_RANK.admin;
+
   return (
     <div className="flex h-full flex-col gap-6 p-6">
       <header>
@@ -55,6 +60,7 @@ export default async function AiUsagePage({ searchParams }: PageProps) {
           Custo, tokens, latência e taxa de handoff dos últimos 30 dias.
         </p>
       </header>
+      <BudgetCard initialData={budget} isAdmin={isAdmin} />
       <UsageDashboardClient agents={agents} initial={initial} />
     </div>
   );
