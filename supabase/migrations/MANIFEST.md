@@ -18,6 +18,7 @@ Migrations applied to Supabase project `rrydmwnporysaiysiztn` (sa-east-1, Postgr
 | `20260429032132` | `0010_ai_rag_handoff_columns_and_rpcs` | EPIC-06 wave 1: contacts.force_human + conversations.bot_silenced_until/last_handoff_at + RPC retrieve_top_k_chunks (security definer + programmatic org filter) + RPC activate_kb_version + ai_pricing seed corrections (haiku 100/500, embedding-3-small 20) |
 | `20260429040000` | `0011_handoff_reason_column` | EPIC-06 wave 3: conversations.last_handoff_reason (diagnostic) + crm_stages.requires_human (gate G4 — bypass bot when lead enters critical stage) |
 | `20260429060000` | `0012_kb_version_lifecycle_columns` | EPIC-06 wave 4: ai_knowledge_versions lifecycle columns — status (building/ready/failed), error_message, indexed_at |
+| *(wave 5)* | `0013_ai_faq_items` | EPIC-06 wave 5: ai_faq_items table (RLS via fn_user_org_ids) + name/status/ingested_at columns on ai_knowledge_sources + expanded source_type check |
 
 ## Reproducibility
 
@@ -25,12 +26,12 @@ Migrations were applied directly via the Supabase MCP `apply_migration` tool dur
 
 To re-apply on a fresh Supabase project, replay the migrations in version order via `supabase db push` (Supabase CLI) or via the MCP.
 
-## Tables created (31 total, all RLS enabled)
+## Tables created (32 total, all RLS enabled)
 
 - **Platform**: organizations, user_organizations, platform_admins, api_tokens, api_audit_log, user_recovery_codes, idempotency_keys
 - **Bus**: event_log
 - **Customer 360**: contacts, crm_pipelines, crm_stages, crm_leads, crm_lead_activities, crm_lead_links, merge_queue
 - **WhatsApp**: channel_sessions, channel_session_warmup, conversations, messages, webhook_events_log
-- **AI**: ai_agents, ai_knowledge_sources, ai_knowledge_versions, ai_chunks, ai_invocations, ai_pricing (global), ai_budgets
+- **AI**: ai_agents, ai_knowledge_sources, ai_knowledge_versions, ai_chunks, ai_invocations, ai_pricing (global), ai_budgets, ai_faq_items
 - **Integrations**: tenant_integrations, orders, nuvemshop_products
 - **Compliance**: lgpd_requests
