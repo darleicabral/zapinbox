@@ -19,6 +19,7 @@ Migrations applied to Supabase project `rrydmwnporysaiysiztn` (sa-east-1, Postgr
 | `20260429040000` | `0011_handoff_reason_column` | EPIC-06 wave 3: conversations.last_handoff_reason (diagnostic) + crm_stages.requires_human (gate G4 — bypass bot when lead enters critical stage) |
 | `20260429060000` | `0012_kb_version_lifecycle_columns` | EPIC-06 wave 4: ai_knowledge_versions lifecycle columns — status (building/ready/failed), error_message, indexed_at |
 | *(wave 5)* | `0013_ai_faq_items` | EPIC-06 wave 5: ai_faq_items table (RLS via fn_user_org_ids) + name/status/ingested_at columns on ai_knowledge_sources + expanded source_type check |
+| `20260429080000` | `0014_storage_policies_ai_policy` | EPIC-06 wave 6: private ai-policy bucket (20MB cap, pdf+md MIME) + per-tenant SELECT/INSERT/DELETE RLS on storage.objects (path-prefix org isolation via user_organizations EXISTS subquery) |
 
 ## Reproducibility
 

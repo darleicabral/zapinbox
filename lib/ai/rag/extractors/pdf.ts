@@ -6,6 +6,8 @@
  * Both fail → throws PdfExtractError.
  */
 
+import type * as PdfjsDist from "pdfjs-dist";
+
 export class PdfExtractError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
     super(message);
@@ -34,9 +36,8 @@ export async function extractPdfText(buffer: Buffer): Promise<string> {
   // --- Fallback: pdfjs-dist legacy build ---
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js") as typeof import("pdfjs-dist");
+    const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js") as typeof PdfjsDist;
 
-    // Disable the worker for server-side Node usage
     // Disable the worker for server-side Node usage (no DOM/worker thread)
     if (pdfjsLib.GlobalWorkerOptions) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = "";
