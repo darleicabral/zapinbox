@@ -3,8 +3,10 @@
  * `null` from `getWahaClient()` when env is not configured so callers can
  * gracefully render a "Docker is not up" banner instead of crashing.
  *
- * Spec 03 §5.1 / project CLAUDE.md WAHA section: api key is sent in
- * `X-Api-Key` header (plaintext from the client; WAHA itself stores SHA512).
+ * WAHA Plus auth: `X-Api-Key` header. The current devlikeapro/waha-plus
+ * image expects the SHA512 HEX HASH directly in the header (matches what's
+ * stored in container env). Plaintext-then-hash is NOT used in this version.
+ * So WAHA_API_KEY in .env.local IS the hex hash.
  */
 export class WahaClient {
   constructor(
@@ -12,17 +14,42 @@ export class WahaClient {
     private readonly apiKey: string,
   ) {}
 
+  /**
+   * Idempotent: ensures session exists, then starts it.
+   * WAHA Plus split the API:
+   *   POST /api/sessions               → create (422 if exists)
+   *   POST /api/sessions/{name}/start  → start (422 if already starting/working)
+   */
   async startSession(name: string): Promise<{ qr?: string; status: string }> {
-    const res = await fetch(`${this.baseUrl}/api/sessions/${encodeURIComponent(name)}/start`, {
+    // 1) Create session (ignore 422/409 = already exists)
+    const createRes = await fetch(`${this.baseUrl}/api/sessions`, {
       method: "POST",
-      headers: {
-        "X-Api-Key": this.apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ name }),
+      headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, config: {} }),
     });
-    if (!res.ok) throw new Error(`waha_${res.status}`);
-    return (await res.json()) as { qr?: string; status: string };
+    if (!createRes.ok && createRes.status !== 422 && createRes.status !== 409) {
+      const body = await createRes.text().catch(() => "");
+      throw new Error(`waha_create_${createRes.status}: ${body.slice(0, 200)}`);
+    }
+
+    // 2) Start session
+    const startRes = await fetch(
+      `${this.baseUrl}/api/sessions/${encodeURIComponent(name)}/start`,
+      {
+        method: "POST",
+        headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+    if (!startRes.ok && startRes.status !== 422 && startRes.status !== 409) {
+      const body = await startRes.text().catch(() => "");
+      throw new Error(`waha_start_${startRes.status}: ${body.slice(0, 200)}`);
+    }
+    if (startRes.status === 422 || startRes.status === 409) {
+      // Already started — fetch and return current state
+      return this.getSessionQr(name);
+    }
+    return (await startRes.json()) as { qr?: string; status: string };
   }
 
   async getSessionQr(name: string): Promise<{ qr?: string; status: string }> {

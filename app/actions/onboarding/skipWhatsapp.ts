@@ -17,18 +17,22 @@ export async function skipWhatsapp(): Promise<void> {
   redirect("/onboarding/connect-nuvemshop");
 }
 
-export async function markWhatsappConfigured(sessionId: string, status: string): Promise<void> {
+export async function markWhatsappConfigured(
+  sessionName: string,
+  status: string,
+): Promise<void> {
   const ctx = await requireOnboardingCtx();
   await patchOnboardingState(ctx.orgId, {
-    whatsapp: { session_id: sessionId, status },
+    whatsapp: { session_name: sessionName, status },
   });
+  // resource_id column in api_audit_log is uuid — sessionName is a text
+  // identifier (e.g. "org_988371bf"), not a uuid. Pass it via metadata.
   await audit({
     action: "onboarding.whatsapp_configured",
     actorUserId: ctx.userId,
     organizationId: ctx.orgId,
     resourceType: "channel_session",
-    resourceId: sessionId,
-    metadata: { status },
+    metadata: { session_name: sessionName, status },
   });
   redirect("/onboarding/connect-nuvemshop");
 }

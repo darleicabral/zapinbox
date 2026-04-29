@@ -45,6 +45,7 @@ export const onboardingStateSchema = z.object({
   whatsapp: z
     .object({
       session_id: z.string().optional(),
+      session_name: z.string().optional(),
       status: z.string(),
       skipped: z.boolean().optional(),
     })
