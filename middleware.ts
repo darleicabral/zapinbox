@@ -63,6 +63,25 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
+    // API routes must respond with JSON envelope (contract: {error:{code,message}})
+    // — never redirect HTML to JSON consumers. UI routes redirect to /login as before.
+    if (pathname.startsWith("/api/")) {
+      return new NextResponse(
+        JSON.stringify({
+          error: {
+            code: "unauthenticated",
+            message: "Authentication required",
+          },
+        }),
+        {
+          status: 401,
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": requestId,
+          },
+        },
+      );
+    }
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname + search);
     return NextResponse.redirect(loginUrl);

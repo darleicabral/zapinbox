@@ -12,6 +12,7 @@ export const PUBLIC_PATHS: RegExp[] = [
   /^\/503$/,
   /^\/api\/v1\/health$/,
   /^\/api\/v1\/webhooks\//,
+  /^\/api\/mcp(\/.*)?$/,
   /^\/_next\//,
   /^\/favicon\.ico$/,
   /^\/team\/accept-invite\/.+$/,
