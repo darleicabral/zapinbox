@@ -332,3 +332,137 @@ export async function updateLeadHandler(
 
   return updated as Record<string, unknown>;
 }
+
+// ---------------------------------------------------------------------------
+// move (within same pipeline) — extraido para reuso pelo MCP (S-13.04)
+// ---------------------------------------------------------------------------
+
+export interface MoveLeadAdminInput {
+  to_stage_id: string;
+  /** Optional fractional position. If omitted, append at end (max + 1000). */
+  position_in_stage?: number;
+  reason?: string;
+}
+
+export async function moveLeadHandler(
+  supabase: SB,
+  ctx: HandlerCtx,
+  leadId: string,
+  input: MoveLeadAdminInput,
+): Promise<Record<string, unknown>> {
+  const { data: lead, error: selErr } = await supabase
+    .from("crm_leads")
+    .select("*")
+    .eq("id", leadId)
+    .maybeSingle();
+
+  if (selErr) {
+    throw new ApiError(500, "internal_error", undefined, ctx.requestId, selErr.message);
+  }
+  if (!lead || lead.organization_id !== ctx.organization_id) {
+    throw new ApiError(404, "not_found", undefined, ctx.requestId, "Lead não encontrado.");
+  }
+
+  const { data: stage, error: stageErr } = await supabase
+    .from("crm_stages")
+    .select("id, pipeline_id, organization_id")
+    .eq("id", input.to_stage_id)
+    .maybeSingle();
+  if (stageErr) {
+    throw new ApiError(500, "internal_error", undefined, ctx.requestId, stageErr.message);
+  }
+  if (!stage || stage.organization_id !== ctx.organization_id) {
+    throw new ApiError(404, "not_found", undefined, ctx.requestId, "Stage não encontrado.");
+  }
+  if (stage.pipeline_id !== lead.pipeline_id) {
+    throw new ApiError(
+      422,
+      "pipeline_immutable_use_clone",
+      undefined,
+      ctx.requestId,
+      "Move cross-pipeline não é permitido.",
+    );
+  }
+
+  let position = input.position_in_stage;
+  if (position === undefined) {
+    const { data: maxRow } = await supabase
+      .from("crm_leads")
+      .select("position_in_stage")
+      .eq("stage_id", input.to_stage_id)
+      .order("position_in_stage", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    position = maxRow?.position_in_stage ? Number(maxRow.position_in_stage) + 1000 : 1000;
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data: updated, error: updErr } = await supabase
+    .from("crm_leads")
+    .update({
+      stage_id: input.to_stage_id,
+      position_in_stage: position,
+      updated_at: nowIso,
+    })
+    .eq("id", leadId)
+    .eq("updated_at", lead.updated_at)
+    .select("*")
+    .maybeSingle();
+
+  if (updErr) {
+    throw new ApiError(500, "internal_error", undefined, ctx.requestId, updErr.message);
+  }
+  if (!updated) {
+    throw new ApiError(
+      409,
+      "lead_stage_changed_concurrent",
+      undefined,
+      ctx.requestId,
+      "Lead foi modificado concorrentemente.",
+    );
+  }
+
+  const { data: fresh } = await supabase
+    .from("crm_leads")
+    .select("*")
+    .eq("id", leadId)
+    .maybeSingle();
+  const finalLead = (fresh ?? updated) as Record<string, unknown>;
+
+  const a = actorAuditPayload(ctx.actor);
+  await supabase
+    .rpc("emit_event", {
+      p_event_type: "lead.stage_changed",
+      p_entity_kind: "crm_lead",
+      p_entity_id: leadId,
+      p_payload: {
+        from_stage_id: lead.stage_id,
+        to_stage_id: input.to_stage_id,
+        position_in_stage: position,
+        status: (finalLead as { status: string }).status,
+      },
+      p_metadata: { request_id: ctx.requestId, ...a.metadataActor },
+      p_organization_id: lead.organization_id,
+    })
+    .then(({ error }) => {
+      if (error) console.error("[lead.move] emit_event failed", error.message);
+    });
+
+  await audit({
+    action: "lead.moved",
+    actorUserId: a.actorUserId,
+    organizationId: lead.organization_id,
+    resourceType: "crm_lead",
+    resourceId: leadId,
+    requestId: ctx.requestId,
+    metadata: {
+      ...a.metadataActor,
+      from_stage_id: lead.stage_id,
+      to_stage_id: input.to_stage_id,
+      position_in_stage: position,
+      ...(input.reason ? { reason: input.reason } : {}),
+    },
+  });
+
+  return finalLead;
+}
