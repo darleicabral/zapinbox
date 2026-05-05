@@ -4,6 +4,52 @@
 -- Idempotent — safe to re-apply.
 
 -- =============================================================================
+-- 3.0 — fn_audit_log_row (canonical, inlined for fresh-build idempotency)
+-- =============================================================================
+-- This helper was originally created on remote alongside the 0005 stub via
+-- Supabase MCP but was never materialized in any local migration file. A fresh
+-- `supabase db push` against an empty database fails because the audit triggers
+-- below bind to an undefined function. Inlining with `create or replace` is
+-- idempotent and matches the canonical body extracted from the linked project.
+
+create or replace function public.fn_audit_log_row()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+declare
+  v_action text;
+  v_org    uuid;
+begin
+  if tg_op = 'INSERT' then
+    v_action := tg_table_name || '.created';
+    v_org    := new.organization_id;
+  elsif tg_op = 'UPDATE' then
+    v_action := tg_table_name || '.updated';
+    v_org    := new.organization_id;
+  elsif tg_op = 'DELETE' then
+    v_action := tg_table_name || '.deleted';
+    v_org    := old.organization_id;
+  end if;
+
+  insert into public.api_audit_log (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+  values (
+    v_org,
+    auth.uid(),
+    v_action,
+    tg_table_name,
+    coalesce(new.id, old.id),
+    case when tg_op = 'UPDATE'
+      then jsonb_build_object('changed_fields', '[diff suppressed in v0.1]')
+      else '{}'::jsonb
+    end
+  );
+
+  return coalesce(new, old);
+end$$;
+
+-- =============================================================================
 -- 3.1 — Estende public.ai_agents (existing, criada em 0005)
 -- =============================================================================
 
