@@ -7,6 +7,7 @@
  *                    +1 handoff (request_human_handoff). Total 13 tools.
  */
 import type { McpToolDefinition } from "../types";
+import { TOOL_CATALOG, VALID_TOOL_IDS } from "./catalog";
 import { crmSearchContacts, crmGetContact } from "./contacts";
 import {
   crmListConversations,
@@ -48,7 +49,24 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmRequestHumanHandoff,
 ] as unknown as ReadonlyArray<McpToolDefinition>;
 
-export const VALID_TOOL_IDS: ReadonlyArray<string> = allTools.map((t) => t.name);
+// Sanity: catalogo estatico (importavel por client) deve cobrir 1:1 os handlers.
+// Erro em dev se alguem adicionar handler sem atualizar catalog.ts.
+if (process.env.NODE_ENV !== "production") {
+  const handlerNames = new Set(allTools.map((t) => t.name));
+  const catalogNames = new Set(TOOL_CATALOG.map((t) => t.name));
+  for (const n of handlerNames) {
+    if (!catalogNames.has(n)) {
+      throw new Error(`mcp/tools: handler "${n}" ausente em lib/mcp/tools/catalog.ts`);
+    }
+  }
+  for (const n of catalogNames) {
+    if (!handlerNames.has(n)) {
+      throw new Error(`mcp/tools: catalog "${n}" sem handler correspondente`);
+    }
+  }
+}
+
+export { VALID_TOOL_IDS };
 
 export function getToolByName(name: string): McpToolDefinition | undefined {
   return allTools.find((t) => t.name === name);

@@ -8,7 +8,7 @@
  * Postgres function (defense in depth).
  */
 import { z } from "zod";
-import { VALID_TOOL_IDS } from "@/lib/mcp/tools";
+import { VALID_TOOL_IDS } from "@/lib/mcp/tools/catalog";
 
 export const PROVIDERS = ["anthropic", "openai", "google"] as const;
 export type Provider = (typeof PROVIDERS)[number];
