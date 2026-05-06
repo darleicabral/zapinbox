@@ -318,24 +318,28 @@ async function handleInbound(
   }
 
   const now = new Date().toISOString();
-  const { error: insertErr } = await admin.from("messages").insert({
-    organization_id: session.organization_id,
-    conversation_id: conversationId,
-    channel_session_id: session.id,
-    contact_id: contactId,
-    external_id: p.id,
-    type: p.type ?? "text",
-    direction: "inbound",
-    status: "delivered",
-    ack: p.ack ?? null,
-    body: p.body ?? null,
-    media_url: p.mediaUrl ?? null,
-    media_mime: p.mimetype ?? null,
-    sent_via: "external_device",
-    sent_at: p.timestamp ? new Date(p.timestamp * 1000).toISOString() : now,
-    delivered_at: now,
-    metadata: { raw_type: p.type, ack_name: p.ackName },
-  });
+  const { data: insertedMessage, error: insertErr } = await admin
+    .from("messages")
+    .insert({
+      organization_id: session.organization_id,
+      conversation_id: conversationId,
+      channel_session_id: session.id,
+      contact_id: contactId,
+      external_id: p.id,
+      type: p.type ?? "text",
+      direction: "inbound",
+      status: "delivered",
+      ack: p.ack ?? null,
+      body: p.body ?? null,
+      media_url: p.mediaUrl ?? null,
+      media_mime: p.mimetype ?? null,
+      sent_via: "external_device",
+      sent_at: p.timestamp ? new Date(p.timestamp * 1000).toISOString() : now,
+      delivered_at: now,
+      metadata: { raw_type: p.type, ack_name: p.ackName },
+    })
+    .select("id")
+    .maybeSingle();
 
   if (insertErr && insertErr.code !== "23505") {
     console.error("[waha.webhook] message insert failed", insertErr.message);
@@ -378,6 +382,32 @@ async function handleInbound(
     requestId,
     metadata: { conversation_id: conversationId, type: p.type, external_id: p.id },
   });
+
+  // Emit ai_agent.dispatch_requested for the agent-dispatcher worker (wave 7).
+  // Fire-and-forget: failure does NOT break the webhook (return 200).
+  // Filters: non-group (early-return above), non-fromMe (separate handler),
+  // kind=inbound (this function).
+  if (insertedMessage?.id) {
+    const inboundMessageId = insertedMessage.id;
+    admin
+      .rpc("emit_event" as never, {
+        p_event_type: "ai_agent.dispatch_requested",
+        p_entity_kind: "message",
+        p_entity_id: inboundMessageId,
+        p_payload: {
+          organization_id: session.organization_id,
+          conversation_id: conversationId,
+          contact_id: contactId,
+          channel_session_id: session.id,
+          inbound_message_id: inboundMessageId,
+        },
+        p_metadata: { source: "waha_webhook", request_id: requestId },
+        p_organization_id: session.organization_id,
+      } as never)
+      .then(({ error }) => {
+        if (error) console.error("[waha.webhook] emit dispatch_requested failed", error.message);
+      });
+  }
 }
 
 /**
