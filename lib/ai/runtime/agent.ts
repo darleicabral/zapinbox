@@ -1,0 +1,581 @@
+/**
+ * `runAgent({ runId, override? })` — heart of EPIC-13 (S-13.08).
+ *
+ * Sequence (Spec 10 §6):
+ *   1. Load run + version + decrypt credential
+ *   2. Sentinel keyword check on inbound → finalizeHandoff('keyword_match')
+ *   3. Mint ephemeral api_token + setup MCP context
+ *   4. Build tool set (in-process bridge to lib/mcp/tools)
+ *   5. Load history sliding window
+ *   6. generateText with stopWhen=[stepCountIs(maxSteps), budgetGuard]
+ *   7. Detect handoff signal → finalizeHandoff('agent_invoked_tool')
+ *   8. !dry_run → outbound message via sendMessageHandler (WAHA)
+ *   9. finalizeRun
+ *  10. revoke ephemeral token (always)
+ *
+ * Robustness:
+ *   - Try/catch global: any throw → finalizeRun('failed', error_message=...).
+ *   - Dry-run path bypasses concurrency unique guard, WAHA dispatch, outbound row.
+ *   - Plaintext API keys are never logged.
+ */
+import { createGateway, generateText, stepCountIs, type StopCondition, type ToolSet } from "ai";
+
+import { CredentialUnavailableError, loadCredential } from "@/lib/ai/credentials";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { audit } from "@/lib/audit";
+import type { McpAuthResult } from "@/lib/mcp/auth";
+import type { McpContext } from "@/lib/mcp/types";
+import { computeCostCents } from "./cost";
+import { finalizeRun } from "./finalize";
+import { sendFinalResponse } from "./finalize";
+import { finalizeHandoff } from "./handoff";
+import { loadHistoryWithBudget } from "./history";
+import { mintEphemeralToken, revokeEphemeralToken } from "./mcp_token";
+import { pickToolsFromMcp, type RuntimeHandoffSignal } from "./tools";
+import { serializeSteps } from "./serialize";
+
+export interface RunAgentInput {
+  runId: string;
+  /** Optional override for test mode invocations from /ai/agents/:id/versions/:vid/test. */
+  override?: {
+    sampleMessage?: string;
+    sampleContact?: { name?: string; phone?: string };
+  };
+}
+
+export interface RunAgentResult {
+  run_id: string;
+  status: "completed" | "failed" | "aborted" | "handoff" | "skipped";
+  final_text?: string;
+  tool_calls?: ReturnType<typeof serializeSteps>;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost_cents?: number;
+  latency_ms?: number;
+  steps_count?: number;
+  abort_reason?: string;
+  error_code?: string;
+  error_message?: string;
+  would_send_to?: { session: string | null; chat_id: string | null };
+}
+
+interface RunRow {
+  id: string;
+  organization_id: string;
+  agent_id: string;
+  agent_version_id: string;
+  conversation_id: string | null;
+  contact_id: string | null;
+  channel_session_id: string | null;
+  inbound_message_id: string | null;
+  status: string;
+  is_dry_run: boolean;
+}
+
+interface VersionRow {
+  id: string;
+  organization_id: string;
+  agent_id: string;
+  system_prompt: string;
+  provider: string;
+  model: string;
+  credential_id: string | null;
+  tool_ids: string[];
+  channel_session_id: string;
+  max_steps: number;
+  token_budget: number;
+  cost_budget_cents: number;
+  history_message_window: number;
+  history_token_window: number;
+  handoff_keywords: string[];
+  handoff_tool_enabled: boolean;
+  created_by: string | null;
+}
+
+interface AgentRow {
+  id: string;
+  organization_id: string;
+  created_by: string | null;
+}
+
+function buildSentinelRegex(keywords: string[]): RegExp | null {
+  const cleaned = keywords.filter((k) => typeof k === "string" && k.trim().length > 0);
+  if (cleaned.length === 0) return null;
+  const escaped = cleaned.map((k) => k.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`(${escaped.join("|")})`, "i");
+}
+
+function totalUsage(steps: ReadonlyArray<{ usage?: { inputTokens?: number; outputTokens?: number } }>) {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  for (const s of steps) {
+    inputTokens += s.usage?.inputTokens ?? 0;
+    outputTokens += s.usage?.outputTokens ?? 0;
+  }
+  return { inputTokens, outputTokens };
+}
+
+export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
+  const admin = createAdminClient();
+  const startedAt = Date.now();
+
+  // 1) Load run row.
+  const { data: runRaw } = await admin
+    .from("ai_agent_runs")
+    .select(
+      "id, organization_id, agent_id, agent_version_id, conversation_id, contact_id, channel_session_id, inbound_message_id, status, is_dry_run",
+    )
+    .eq("id", input.runId)
+    .maybeSingle();
+
+  const run = runRaw as RunRow | null;
+  if (!run) {
+    return { run_id: input.runId, status: "failed", error_code: "run_not_found" };
+  }
+
+  // Idempotency: terminal states early-return; running is treated as in-flight elsewhere.
+  if (
+    run.status === "completed" ||
+    run.status === "failed" ||
+    run.status === "aborted" ||
+    run.status === "handoff"
+  ) {
+    return { run_id: run.id, status: "skipped" };
+  }
+
+  // 2) Promote to running. For non-dry-run rows, the partial unique index
+  // (status='running' AND is_dry_run=false) protects from double-execution.
+  const { error: promoteErr } = await admin
+    .from("ai_agent_runs")
+    .update({ status: "running" })
+    .eq("id", run.id)
+    .eq("organization_id", run.organization_id);
+  if (promoteErr) {
+    if (promoteErr.code === "23505") {
+      // Conversation already has a running run.
+      return { run_id: run.id, status: "skipped", abort_reason: "conv_busy" };
+    }
+    return failFast(run, "internal_error", `promote_failed: ${promoteErr.message}`, startedAt);
+  }
+
+  void audit({
+    action: "ai_agent.run_started",
+    organizationId: run.organization_id,
+    resourceType: "ai_agent_run",
+    resourceId: run.id,
+    metadata: { agent_id: run.agent_id, agent_version_id: run.agent_version_id, is_dry_run: run.is_dry_run },
+  });
+  await admin.rpc("emit_event" as never, {
+    p_event_type: "ai_agent.run_started",
+    p_entity_kind: "ai_agent_run",
+    p_entity_id: run.id,
+    p_payload: { run_id: run.id, agent_id: run.agent_id, is_dry_run: run.is_dry_run },
+    p_metadata: { source: "agent-runtime" },
+    p_organization_id: run.organization_id,
+  } as never);
+
+  let ephemeralTokenId: string | null = null;
+
+  try {
+    // 3) Load version.
+    const { data: versionRaw } = await admin
+      .from("ai_agent_versions")
+      .select(
+        "id, organization_id, agent_id, system_prompt, provider, model, credential_id, tool_ids, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, created_by",
+      )
+      .eq("id", run.agent_version_id)
+      .eq("organization_id", run.organization_id)
+      .maybeSingle();
+    const version = versionRaw as VersionRow | null;
+    if (!version) {
+      return await failRun(run, "version_not_found", "agent version missing", startedAt);
+    }
+
+    const { data: agentRaw } = await admin
+      .from("ai_agents")
+      .select("id, organization_id, created_by")
+      .eq("id", run.agent_id)
+      .eq("organization_id", run.organization_id)
+      .maybeSingle();
+    const agent = agentRaw as AgentRow | null;
+
+    // 4) Load credential. Plaintext lives only in this scope.
+    if (!version.credential_id) {
+      return await failRun(run, "credential_invalid", "version has no credential", startedAt);
+    }
+    let credentialApiKey: string;
+    try {
+      const credential = await loadCredential(version.credential_id, run.organization_id);
+      credentialApiKey = credential.apiKey;
+    } catch (err) {
+      const reason = err instanceof CredentialUnavailableError ? err.reason : "decrypt_failed";
+      return await failRun(run, `credential_${reason}`, "credential unavailable", startedAt);
+    }
+
+    // 5) Resolve inbound text + dispatch context.
+    let inboundBody: string | null = null;
+    let chatId: string | null = null;
+    let waSessionName: string | null = null;
+    const conversationIdForHandoff: string | null = run.conversation_id;
+
+    if (run.is_dry_run) {
+      inboundBody = input.override?.sampleMessage?.trim() ?? null;
+      chatId = input.override?.sampleContact?.phone ?? null;
+    } else if (run.inbound_message_id) {
+      const { data: msg } = await admin
+        .from("messages")
+        .select("body")
+        .eq("id", run.inbound_message_id)
+        .eq("organization_id", run.organization_id)
+        .maybeSingle();
+      inboundBody = (msg?.body as string | null) ?? null;
+    }
+
+    // For non-dry-run, prefetch session_name + contact phone (chatId).
+    if (!run.is_dry_run && run.conversation_id) {
+      const { data: convRaw } = await admin
+        .from("conversations")
+        .select(
+          "id, group_chat_id, is_group, contacts:contact_id(phone_number), channel_sessions:channel_session_id(waha_session_name)",
+        )
+        .eq("id", run.conversation_id)
+        .eq("organization_id", run.organization_id)
+        .maybeSingle();
+      const conv = convRaw as unknown as {
+        id: string;
+        group_chat_id: string | null;
+        is_group: boolean;
+        contacts: { phone_number: string | null } | null;
+        channel_sessions: { waha_session_name: string } | null;
+      } | null;
+      if (conv) {
+        waSessionName = conv.channel_sessions?.waha_session_name ?? null;
+        const phone = conv.contacts?.phone_number ?? null;
+        chatId = conv.is_group && conv.group_chat_id
+          ? conv.group_chat_id
+          : phone
+            ? `${phone.replace(/\D/g, "")}@c.us`
+            : null;
+      }
+    }
+
+    if (!inboundBody) {
+      return await failRun(run, "inbound_missing", "no inbound body to process", startedAt);
+    }
+
+    // 6) Sentinel keyword check (BEFORE LLM cost).
+    const sentinel = buildSentinelRegex(version.handoff_keywords ?? []);
+    if (sentinel && sentinel.test(inboundBody)) {
+      await finalizeHandoff({
+        runId: run.id,
+        organizationId: run.organization_id,
+        conversationId: conversationIdForHandoff,
+        reason: "requested_human",
+        source: "sentinel",
+        latencyMs: Date.now() - startedAt,
+        isDryRun: run.is_dry_run,
+      });
+      return {
+        run_id: run.id,
+        status: "handoff",
+        abort_reason: "sentinel:requested_human",
+        latency_ms: Date.now() - startedAt,
+        tokens_in: 0,
+        tokens_out: 0,
+        cost_cents: 0,
+        steps_count: 0,
+        would_send_to: { session: waSessionName, chat_id: chatId },
+      };
+    }
+
+    // 7) Mint ephemeral token + build MCP context.
+    const ephemeral = await mintEphemeralToken({
+      organizationId: run.organization_id,
+      runId: run.id,
+      versionCreatedBy: version.created_by,
+      agentCreatedBy: agent?.created_by,
+    });
+    ephemeralTokenId = ephemeral.id;
+
+    const auth: McpAuthResult = {
+      organizationId: run.organization_id,
+      role: "agent",
+      actor: {
+        type: "ai_agent",
+        id: run.id,
+        role: "agent",
+        api_token_id: ephemeral.id,
+      },
+      apiTokenId: ephemeral.id,
+      scopes: [
+        "mcp:read",
+        "mcp:write",
+        "actor:ai_agent",
+        `agent_run:${run.id}`,
+        "role:agent",
+      ],
+    };
+    const ctx: McpContext = {
+      organizationId: run.organization_id,
+      role: "agent",
+      actor: auth.actor,
+      apiTokenId: ephemeral.id,
+      requestId: run.id,
+      supabase: admin,
+    };
+    const handoffSignal: RuntimeHandoffSignal = { triggered: false };
+    const tools = pickToolsFromMcp({
+      supabase: admin,
+      ctx,
+      auth,
+      toolIds: version.tool_ids ?? [],
+      handoffToolEnabled: version.handoff_tool_enabled,
+      handoffSignal,
+    });
+
+    // 8) Load history with budget.
+    const history = run.conversation_id
+      ? await loadHistoryWithBudget(admin, {
+          conversationId: run.conversation_id,
+          organizationId: run.organization_id,
+          messageWindow: version.history_message_window,
+          tokenWindow: version.history_token_window,
+          excludeMessageId: run.inbound_message_id ?? undefined,
+        })
+      : [];
+
+    // 9) Build LM via gateway.
+    const gatewayProvider = createGateway({ apiKey: credentialApiKey });
+    const model = gatewayProvider(`${version.provider}/${version.model}`);
+
+    // 10) Cost/token guard. Fires BEFORE the next step is taken.
+    let abortReason: string | null = null;
+    const budgetGuard: StopCondition<ToolSet> = async ({ steps }) => {
+      if (handoffSignal.triggered) {
+        abortReason = "handoff_tool";
+        return true;
+      }
+      const usage = totalUsage(steps as Array<{ usage?: { inputTokens?: number; outputTokens?: number } }>);
+      const totalTokens = usage.inputTokens + usage.outputTokens;
+      if (totalTokens > version.token_budget) {
+        abortReason = "token_budget_exceeded";
+        return true;
+      }
+      const cost = await computeCostCents({
+        provider: version.provider,
+        model: version.model,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+      });
+      if (cost > version.cost_budget_cents) {
+        abortReason = "cost_budget_exceeded";
+        return true;
+      }
+      return false;
+    };
+
+    // 11) Run the loop.
+    const messages = [
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: "user" as const, content: inboundBody },
+    ];
+
+    const result = await generateText({
+      model,
+      system: version.system_prompt,
+      messages,
+      tools,
+      stopWhen: [stepCountIs(version.max_steps), budgetGuard],
+    });
+
+    // 12) Aggregate metrics.
+    const usage = totalUsage(result.steps as Array<{ usage?: { inputTokens?: number; outputTokens?: number } }>);
+    const cost = await computeCostCents({
+      provider: version.provider,
+      model: version.model,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+    });
+    const latencyMs = Date.now() - startedAt;
+    const trace = serializeSteps(result.steps as never);
+
+    // 13) Handoff via tool call?
+    if (handoffSignal.triggered) {
+      await finalizeHandoff({
+        runId: run.id,
+        organizationId: run.organization_id,
+        conversationId: conversationIdForHandoff,
+        reason: (handoffSignal.reason as never) ?? "requested_human",
+        source: "tool",
+        latencyMs,
+        tokensIn: usage.inputTokens,
+        tokensOut: usage.outputTokens,
+        costCents: cost,
+        stepsCount: result.steps.length,
+        toolCalls: trace,
+        isDryRun: run.is_dry_run,
+      });
+      return {
+        run_id: run.id,
+        status: "handoff",
+        abort_reason: `tool:${handoffSignal.reason ?? "requested_human"}`,
+        tokens_in: usage.inputTokens,
+        tokens_out: usage.outputTokens,
+        cost_cents: cost,
+        latency_ms: latencyMs,
+        steps_count: result.steps.length,
+        tool_calls: trace,
+        would_send_to: { session: waSessionName, chat_id: chatId },
+      };
+    }
+
+    // 14) Budget abort detected via stopWhen?
+    if (abortReason) {
+      await finalizeRun({
+        runId: run.id,
+        organizationId: run.organization_id,
+        status: "aborted",
+        tokensIn: usage.inputTokens,
+        tokensOut: usage.outputTokens,
+        costCents: cost,
+        latencyMs,
+        stepsCount: result.steps.length,
+        toolCalls: trace,
+        abortReason,
+        isDryRun: run.is_dry_run,
+      });
+      return {
+        run_id: run.id,
+        status: "aborted",
+        abort_reason: abortReason,
+        tokens_in: usage.inputTokens,
+        tokens_out: usage.outputTokens,
+        cost_cents: cost,
+        latency_ms: latencyMs,
+        steps_count: result.steps.length,
+        tool_calls: trace,
+        would_send_to: { session: waSessionName, chat_id: chatId },
+      };
+    }
+
+    // 15) Hit max steps without natural finish?
+    if (result.steps.length >= version.max_steps && result.finishReason !== "stop") {
+      await finalizeRun({
+        runId: run.id,
+        organizationId: run.organization_id,
+        status: "aborted",
+        tokensIn: usage.inputTokens,
+        tokensOut: usage.outputTokens,
+        costCents: cost,
+        latencyMs,
+        stepsCount: result.steps.length,
+        toolCalls: trace,
+        abortReason: "max_steps_reached",
+        isDryRun: run.is_dry_run,
+      });
+      return {
+        run_id: run.id,
+        status: "aborted",
+        abort_reason: "max_steps_reached",
+        tokens_in: usage.inputTokens,
+        tokens_out: usage.outputTokens,
+        cost_cents: cost,
+        latency_ms: latencyMs,
+        steps_count: result.steps.length,
+        tool_calls: trace,
+        would_send_to: { session: waSessionName, chat_id: chatId },
+      };
+    }
+
+    // 16) Happy path. Send WAHA reply when not dry-run.
+    let outboundMessageId: string | null = null;
+    const finalText = (result.text ?? "").trim();
+    if (!run.is_dry_run && finalText && run.conversation_id) {
+      outboundMessageId = await sendFinalResponse({
+        supabase: admin,
+        organizationId: run.organization_id,
+        runId: run.id,
+        conversationId: run.conversation_id,
+        text: finalText,
+        requestId: run.id,
+      });
+    }
+
+    await finalizeRun({
+      runId: run.id,
+      organizationId: run.organization_id,
+      status: "completed",
+      tokensIn: usage.inputTokens,
+      tokensOut: usage.outputTokens,
+      costCents: cost,
+      latencyMs,
+      stepsCount: result.steps.length,
+      toolCalls: trace,
+      outboundMessageId,
+      isDryRun: run.is_dry_run,
+    });
+
+    return {
+      run_id: run.id,
+      status: "completed",
+      final_text: finalText,
+      tokens_in: usage.inputTokens,
+      tokens_out: usage.outputTokens,
+      cost_cents: cost,
+      latency_ms: latencyMs,
+      steps_count: result.steps.length,
+      tool_calls: trace,
+      would_send_to: { session: waSessionName, chat_id: chatId },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return await failRun(run, "runtime_error", message, startedAt);
+  } finally {
+    if (ephemeralTokenId) {
+      await revokeEphemeralToken(ephemeralTokenId).catch(() => {
+        // Token TTL=300s; lingering revoke failure is non-critical.
+      });
+    }
+  }
+}
+
+async function failRun(
+  run: RunRow,
+  code: string,
+  message: string,
+  startedAt: number,
+): Promise<RunAgentResult> {
+  const latencyMs = Date.now() - startedAt;
+  await finalizeRun({
+    runId: run.id,
+    organizationId: run.organization_id,
+    status: "failed",
+    errorCode: code,
+    errorMessage: message,
+    latencyMs,
+    isDryRun: run.is_dry_run,
+  });
+  return {
+    run_id: run.id,
+    status: "failed",
+    error_code: code,
+    error_message: message,
+    latency_ms: latencyMs,
+  };
+}
+
+function failFast(
+  run: RunRow,
+  code: string,
+  message: string,
+  startedAt: number,
+): RunAgentResult {
+  // Used when we couldn't even promote to running — no row mutation here.
+  return {
+    run_id: run.id,
+    status: "failed",
+    error_code: code,
+    error_message: message,
+    latency_ms: Date.now() - startedAt,
+  };
+}

@@ -209,27 +209,17 @@ async function callInternalRuntime(args: {
   sampleMessage: string;
   sampleContact?: { name?: string; phone?: string };
 }): Promise<Record<string, unknown>> {
-  // S-13.08 wires this up. Until then, this branch is unreachable
-  // (INTERNAL_AGENT_RUN_STUB defaults true).
-  const url = new URL(
-    "/api/internal/agents/run",
-    env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-  );
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${env.INTERNAL_SECRET}`,
+  // S-13.08 wires the real runtime. We invoke `runAgent` in-process to avoid
+  // a fetch loopback (no cold-start, no INTERNAL_SECRET required in dev).
+  // The run row is already in is_dry_run=true mode so the runtime bypasses
+  // WAHA dispatch + outbound message insert.
+  const { runAgent } = await import("@/lib/ai/runtime/agent");
+  const result = await runAgent({
+    runId: args.runId,
+    override: {
+      sampleMessage: args.sampleMessage,
+      sampleContact: args.sampleContact,
     },
-    body: JSON.stringify({
-      run_id: args.runId,
-      organization_id: args.orgId,
-      version_id: args.versionId,
-      sample_message: args.sampleMessage,
-      sample_contact: args.sampleContact,
-      dry_run: true,
-    }),
   });
-  const json = (await res.json()) as { data?: Record<string, unknown> };
-  return json.data ?? { run_id: args.runId, status: "failed" };
+  return { ...result, stub: false };
 }

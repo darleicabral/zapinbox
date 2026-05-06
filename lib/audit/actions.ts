@@ -110,4 +110,7 @@ export type AuditAction =
   | "ai_agent.version_created"
   | "ai_agent.version_updated"
   | "ai_agent.tested"
-  | "ai.dispatcher_run";
+  | "ai.dispatcher_run"
+  | "ai_agent.run_started"
+  | "ai_agent.run_completed"
+  | "ai_agent.run_failed";
