@@ -12,6 +12,18 @@ import { z } from "zod";
 const isProd = process.env.NODE_ENV === "production";
 
 /**
+ * Durante `next build` (NEXT_PHASE=phase-production-build) os segredos de runtime
+ * ainda não existem — só as NEXT_PUBLIC_* são embutidas no bundle. Nessa fase
+ * afrouxamos a validação (via seed de placeholders no parse abaixo) pra gerar a
+ * imagem Docker (self-host) sem passar segredos como ARG, que vazariam nas
+ * camadas. O boot real (sem essa fase) cobra os valores verdadeiros.
+ *
+ * A leniência é feita SÓ no parse — os validadores continuam com tipos Zod
+ * estáveis, senão `z.infer` degrada `env.*` pra `{}` (uniões quebram `.url()`).
+ */
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+
+/**
  * Em produção exigimos todas as vars críticas. Em dev, algumas são opcionais
  * pra permitir setup parcial (ex: dev sem WAHA quando trabalhando só na UI).
  */
@@ -38,7 +50,8 @@ const schema = z.object({
 
   // Encryption keys (pgcrypto)
   CPF_ENCRYPTION_KEY: required("CPF_ENCRYPTION_KEY"),
-  NUVEMSHOP_OAUTH_ENCRYPTION_KEY: required("NUVEMSHOP_OAUTH_ENCRYPTION_KEY"),
+  // Opcional (template genérico) — só necessária ao ligar NUVEMSHOP_ENABLED.
+  NUVEMSHOP_OAUTH_ENCRYPTION_KEY: z.string().optional().default(""),
   WAHA_BYO_ENCRYPTION_KEY: required("WAHA_BYO_ENCRYPTION_KEY"),
   /**
    * AES-256-GCM key (32 bytes em base64) usada pra cifrar API keys em
@@ -93,10 +106,16 @@ const schema = z.object({
   LGPD_EXPORT_EXPIRES_HOURS: z.string().optional().default("72"),
   LGPD_DPO_EMAIL: z.string().optional().default(""),
 
-  // Nuvemshop
-  NUVEMSHOP_APP_ID: required("NUVEMSHOP_APP_ID"),
-  NUVEMSHOP_CLIENT_ID: required("NUVEMSHOP_CLIENT_ID"),
-  NUVEMSHOP_CLIENT_SECRET: required("NUVEMSHOP_CLIENT_SECRET"),
+  // Nuvemshop — opcional (template genérico open-source). Só exigidas quando
+  // NUVEMSHOP_ENABLED=true; o runtime já degrada via getConfig()==null.
+  NUVEMSHOP_APP_ID: z.string().optional().default(""),
+  NUVEMSHOP_CLIENT_ID: z.string().optional().default(""),
+  NUVEMSHOP_CLIENT_SECRET: z.string().optional().default(""),
+  NUVEMSHOP_ENABLED: z
+    .enum(["true", "false"])
+    .optional()
+    .default("false")
+    .transform((v) => v === "true"),
 
   // App URLs
   NEXT_PUBLIC_APP_URL: z
@@ -109,7 +128,19 @@ const schema = z.object({
     .default("http://localhost:3000"),
 });
 
-const parsed = schema.safeParse(process.env);
+let parsed = schema.safeParse(process.env);
+
+// Na fase de build da imagem Docker, semeia placeholders pras vars que faltam
+// (URL válida, passa .url()/.min(1)) e revalida — permite `next build` sem os
+// segredos de runtime. NUNCA acontece em runtime: lá process.env está completo
+// e este bloco não roda, então o boot real continua cobrando tudo.
+if (!parsed.success && isBuildPhase) {
+  const seeded: Record<string, string | undefined> = { ...process.env };
+  for (const key of Object.keys(parsed.error.flatten().fieldErrors)) {
+    if (!seeded[key]) seeded[key] = "https://build-placeholder.invalid";
+  }
+  parsed = schema.safeParse(seeded);
+}
 
 if (!parsed.success) {
   // Log estruturado pra debug. Sentry capturaria via uncaught.

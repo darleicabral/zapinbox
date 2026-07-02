@@ -61,7 +61,7 @@ Todas preservam o deploy Vercel atual (aditivas, atrás de config/flag):
 2. **`lib/env.ts`** — guarda de fase de build: o Zod hoje faz `throw` no import quando `NODE_ENV=production`, o que roda **durante `next build`** e exigiria todos os segredos de runtime na hora de buildar a imagem (vazariam se passados como ARG). Fix: só lançar quando `process.env.NEXT_PHASE !== 'phase-production-build'`; na fase de build, degradar para `console.warn`. Assim o build só precisa dos `NEXT_PUBLIC_*`.
 3. **`lib/env.ts`** — Nuvemshop opcional: trocar as 4 vars `NUVEMSHOP_*` de `required()` para `.optional().default("")` e adicionar `NUVEMSHOP_ENABLED` (enum true/false, default false).
 4. **`app/onboarding/page.tsx:17`** — auto-skip: só redirecionar para `connect-nuvemshop` quando `env.NUVEMSHOP_ENABLED`.
-5. **Build com webpack, não turbopack**: no Dockerfile usar `pnpm build:webpack`. O plugin do Sentry vive no bloco `webpack:` do `next.config.ts` (tree-shake + sourcemaps) e o build Turbopack o ignora.
+5. **Build com turbopack** (`pnpm build`): medido na execução — webpack levava **34min** contra **~4min** do turbopack, inviável num VPS de leigo. O plugin Sentry (sourcemap em build-time) é pulado, mas o Sentry runtime segue ativo (DSN hardcoded). Requer `NODE_OPTIONS=--max-old-space-size=4096` (o build estoura o heap default de 2GB) → **VPS ≥4GB RAM ou swap**.
 
 Nenhuma outra mudança de código é necessária para o self-host: middleware, instrumentation, Sentry configs, crons (Bearer `INTERNAL_SECRET`), WAHA client e Redis client **já são portáveis** (zero uso de SDK/APIs Vercel; comandos Redis triviais 100% compatíveis com SRH).
 

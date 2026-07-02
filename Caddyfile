@@ -1,0 +1,23 @@
+# Caddy — reverse proxy + HTTPS automático (Let's Encrypt) para o DeskcommCRM.
+# HTTP→HTTPS e emissão/renovação de certificado são automáticos.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode gzip
+
+	# O runner de agente de IA (ToolLoop) pode levar até ~5min por requisição.
+	# Timeout estendido só nessa rota pra o proxy não cortar a resposta longa.
+	@agentrun path /api/internal/agents/run*
+	reverse_proxy @agentrun app:3000 {
+		transport http {
+			read_timeout 320s
+			write_timeout 320s
+		}
+	}
+
+	# Todo o resto do app.
+	reverse_proxy app:3000
+}
