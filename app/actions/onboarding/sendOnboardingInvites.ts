@@ -12,6 +12,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { audit } from "@/lib/audit";
+import { env } from "@/lib/env";
 import { signInviteToken, INVITE_TTL_SECONDS } from "@/lib/auth/invite-token";
 import { buildInviteEmail } from "@/lib/email/templates/invite";
 import { sendEmail } from "@/lib/email/resend";
@@ -57,10 +58,8 @@ export async function sendOnboardingInvites(payload: InvitePayload): Promise<Sen
     throw err;
   }
 
-  const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.NEXT_PUBLIC_BASE_URL ??
-    "http://localhost:3000";
+  // env.* é runtime → correto na imagem genérica self-host (ver browser.ts).
+  const baseUrl = env.NEXT_PUBLIC_APP_URL;
   const inviterName = ctx.fullName ?? ctx.email ?? "Um colega";
 
   let sent = 0;

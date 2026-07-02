@@ -142,13 +142,22 @@ Supabase free **não tem backup automático**. Container/cron de `pg_dump "$SUPA
 1. Forka o repo template no GitHub.
 2. Contrata VPS (link afiliado) → acessa por SSH.
 3. Cria projeto Supabase grátis; aponta o A-record do domínio → IP do VPS; **espera propagar** (`install.sh` valida com `dig` antes de subir o Caddy, senão o Let's Encrypt falha).
-4. Joga o `.zip` no Claude Code **ou** roda `install.sh` → clona o fork, gera segredos, valida `.env` completo, aplica o baseline, faz bootstrap do dono, sobe `docker compose up -d`.
+4. Joga o `.zip` no Claude Code **ou** roda `install.sh` → clona o fork, gera segredos, valida `.env` completo, aplica o baseline, faz bootstrap do dono, **puxa a imagem genérica** e sobe `docker compose up -d`.
 5. Escaneia o QR do WhatsApp; cola as chaves (Supabase, Anthropic).
 6. Login → enrola TOTP → operando.
 
+## 13-bis. Imagem GENÉRICA + env em runtime (Opção B — decidida pós-medição)
+
+O build do Next leva ~6min numa máquina forte e **estoura 2GB de RAM** — o VPS baratinho (2GB) não buildaria. Solução: **uma imagem genérica pré-buildada** (CI → GHCR) que serve qualquer projeto Supabase; o leigo **puxa** (sobe em ~2min, roda em 2GB), não builda. As `NEXT_PUBLIC_*` deixam de ser baked:
+- **Browser:** `app/public-env-script.tsx` (server, `await headers()` → runtime) injeta `window.__PUBLIC_ENV__`; `lib/supabase/browser.ts` lê dali (fallback `process.env` no Vercel/dev).
+- **Servidor:** `lib/env.ts` parseia `process.env` inteiro em runtime → `env.*` já reflete o container. Convites usam `env.NEXT_PUBLIC_APP_URL` (não mais acesso baked).
+- **Build:** `NEXT_PUBLIC_*` viram placeholders; nenhum dado de usuário na imagem.
+- **CI:** `.github/workflows/publish-image.yml` builda nos runners do GitHub → `ghcr.io/<repo>:latest`.
+- Build local segue possível (avançado): `docker-compose.build.yml` + VPS ≥4GB.
+
 ## 14. Atualização
 
-`update.sh`: `git pull` → migrator (schema **antes** do app) → `docker compose up -d --build app` (volumes persistem, sessão WhatsApp sobrevive). Trocar domínio/projeto Supabase = **rebuild** (vars `NEXT_PUBLIC_*` são baked).
+`update.sh`: `git pull` → migrator (schema **antes** do app) → **`docker compose pull app && up -d`** (puxa a nova imagem genérica; volumes persistem, sessão WhatsApp sobrevive). Como a imagem é genérica, **trocar domínio/projeto Supabase não exige rebuild** — só editar o `.env` e reiniciar (os valores são runtime).
 
 ## 15. Os 3 entregáveis
 

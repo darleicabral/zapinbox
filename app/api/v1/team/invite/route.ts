@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 
+import { env } from "@/lib/env";
 import { ok, fail } from "@/lib/api/wrappers";
 import { ApiError } from "@/lib/api/types";
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
@@ -65,10 +66,9 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // Resolve existing-member check via admin client (auth.users lookup by email).
   const admin = isServiceRoleConfigured() ? createAdminClient() : null;
-  const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.NEXT_PUBLIC_BASE_URL ??
-    "http://localhost:3000";
+  // env.* parseia process.env em runtime → funciona na imagem genérica self-host
+  // (não fica queimado no bundle como process.env.NEXT_PUBLIC_APP_URL direto).
+  const baseUrl = env.NEXT_PUBLIC_APP_URL;
   const inviterName = authUser.full_name ?? authUser.email ?? "Um colega";
 
   for (const inv of input.invitations) {

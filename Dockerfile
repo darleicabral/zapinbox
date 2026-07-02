@@ -16,13 +16,15 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Vars públicas (NEXT_PUBLIC_*) são embutidas no bundle CLIENT em build-time.
-# Trocar qualquer uma exige REBUILD da imagem. Segredos de runtime NUNCA entram
-# aqui (a guarda de fase em lib/env.ts permite o build sem eles).
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-ARG NEXT_PUBLIC_APP_URL
-ARG NEXT_PUBLIC_ADMIN_URL
+# IMAGEM GENÉRICA: os NEXT_PUBLIC_* recebem placeholders no build. Os valores
+# REAIS do usuário são injetados em RUNTIME — no browser via <PublicEnvScript/>
+# (window.__PUBLIC_ENV__) e no servidor via lib/env.ts (parseia process.env em
+# runtime). Assim UMA imagem serve qualquer projeto Supabase, sem rebuild.
+# (Segredos de runtime NUNCA entram no build — guarda de fase em lib/env.ts.)
+ARG NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder-anon-key
+ARG NEXT_PUBLIC_APP_URL=https://placeholder.invalid
+ARG NEXT_PUBLIC_ADMIN_URL=https://placeholder.invalid
 # O build do Next (webpack + Sentry) é faminto: o heap default do Node (~2GB)
 # estoura. NODE_OPTIONS eleva pra 4GB → requer VPS com >=4GB RAM (ou swap).
 # O install.sh checa RAM/swap antes de buildar.

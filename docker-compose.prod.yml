@@ -12,16 +12,12 @@ x-logging: &default-logging
 
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        # NEXT_PUBLIC_* são baked no build — trocar exige `up --build`.
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-        NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL}
-    image: deskcomm-app:local
+    # Imagem GENÉRICA pré-buildada: o leigo só puxa (sobe em ~2min, roda em 2GB).
+    # Os NEXT_PUBLIC_* reais vêm em RUNTIME (env_file abaixo) — o browser lê via
+    # <PublicEnvScript/> e o servidor via lib/env.ts. Não precisa buildar no VPS.
+    # Build local (avançado): docker compose -f docker-compose.prod.yml -f docker-compose.build.yml build
+    image: ${APP_IMAGE:-ghcr.io/deskcommcrm/deskcommcrm:latest}
+    pull_policy: ${APP_PULL_POLICY:-always}
     restart: unless-stopped
     env_file: .env
     depends_on:

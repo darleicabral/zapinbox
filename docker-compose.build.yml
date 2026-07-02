@@ -1,0 +1,16 @@
+# Override OPCIONAL para buildar a imagem localmente em vez de puxar do registry.
+# Uso (avançado — requer VPS >=4GB RAM ou swap; build leva ~15-25min num VPS):
+#   docker compose -f docker-compose.prod.yml -f docker-compose.build.yml build
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# O caminho normal (leigo) NÃO usa este arquivo — puxa a imagem pronta do GHCR.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Sem args: a imagem é genérica (NEXT_PUBLIC_* viram placeholder no build
+      # e os valores reais entram em runtime via env_file).
+    image: ${APP_IMAGE:-deskcomm-app:local}
+    pull_policy: never

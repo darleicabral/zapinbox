@@ -15,8 +15,15 @@ export function createClient() {
   // Singleton no browser pra reaproveitar canais Realtime e auth state.
   if (_client) return _client;
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Self-host (imagem genérica): valores injetados em runtime pelo
+  // <PublicEnvScript/>. Vercel/dev: fallback pro process.env.NEXT_PUBLIC_*
+  // (baked em build). Ler a URL do Supabase daqui é o que permite uma única
+  // imagem servir qualquer projeto Supabase sem rebuild.
+  const runtime =
+    typeof window !== "undefined" ? window.__PUBLIC_ENV__ : undefined;
+  const url = runtime?.NEXT_PUBLIC_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key =
+    runtime?.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!url || !key) {
     throw new Error(

@@ -3,6 +3,7 @@ import { Atkinson_Hyperlegible, IBM_Plex_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/lib/theme";
 import { Providers } from "./providers";
+import { PublicEnvScript } from "./public-env-script";
 import "./globals.css";
 
 const atkinson = Atkinson_Hyperlegible({
@@ -62,6 +63,8 @@ export default function RootLayout({
       className={`${atkinson.variable} ${plexMono.variable}`}
     >
       <head>
+        {/* Config pública do Supabase em runtime (imagem genérica self-host). */}
+        <PublicEnvScript />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-screen bg-bg font-sans text-text antialiased">
