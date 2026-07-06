@@ -35,9 +35,17 @@ Cheque: `uname -a` e `docker --version`. Se não houver Docker, instale
 
 ### 2. Ajude a criar o projeto no Supabase
 Guie a pessoa (passo a passo, com links) a:
-- criar um projeto grátis em supabase.com (região São Paulo);
+- criar um projeto grátis em supabase.com;
 - em **Settings → API**, copiar: a *Project URL*, a *anon key* e a *service_role key*;
-- em **Settings → Database**, copiar a *Connection string* (modo "URI").
+- em **Settings → Database → Connection string**, escolher **Session pooler** (NÃO a
+  "Direct connection") e copiar a URL no modo *URI*.
+
+⚠️ **Connection string: use SEMPRE o Session pooler.** A "Direct connection" do Supabase é
+**IPv6-only** e o VPS da HostGator é IPv4 → não conecta e o schema não aplica. O Session
+pooler é IPv4 e grátis (host tipo `aws-1-<região>.pooler.supabase.com`, usuário
+`postgres.<ref>`). Se a pessoa colar a direct por engano, você reconhece pelo host
+`db.<ref>.supabase.co` — peça a do Session pooler.
+
 Peça essas 4 coisas **uma de cada vez**. Explique que a service_role é secreta.
 
 ### 3. Aponte o domínio pro servidor
@@ -81,6 +89,31 @@ Quando terminar, diga à pessoa para:
 - **"não consigo entrar / esqueci a senha"** → `bash reset-password.sh <email>`.
 - **"perdi o celular do autenticador"** → `bash reset-mfa.sh <email>`.
 - **Checar tudo de uma vez** → `bash healthcheck.sh`.
+
+## Armadilhas já mapeadas (o código já corrige — mas saiba reconhecer)
+
+Estes pontos já foram descobertos e corrigidos no `install.sh` / `docker-compose.prod.yml`.
+Se mesmo assim aparecerem, aqui está o diagnóstico pronto:
+
+1. **Firewall te tranca fora do VPS** — o `ufw` padrão libera a porta **22**, mas alguns
+   VPS da HostGator usam SSH em porta **custom** (ex.: `22022`). SEMPRE confira a porta do
+   SSH atual (`ss -tlnp | grep sshd` ou o número que você usou pra conectar) e libere ELA
+   antes de `ufw enable`. Nunca ative o firewall liberando só a 22 sem confirmar.
+2. **"type public.vector / citext does not exist" ao aplicar o schema** — faltam extensões.
+   O `install.sh` já cria `vector`, `citext` e `pg_trgm` no schema `public` antes do baseline.
+   Se rodar o schema na mão, crie-as antes:
+   `create extension if not exists vector with schema public;` (idem citext e pg_trgm).
+3. **Supabase "Network unreachable" / IPv6** — a connection string é a Direct (IPv6).
+   Troque pela do **Session pooler** (ver passo 2).
+4. **WhatsApp/WAHA dá 401** — a chave do WAHA precisa do prefixo `sha512:` na env do
+   container (o compose já faz). O app manda o texto puro; o WAHA hasheia e compara.
+5. **Stack não sobe: imagem do "srh" não encontrada** — a imagem correta é
+   `hiett/serverless-redis-http` (o compose já usa). Um nome antigo (`hjr265/...`) saiu do ar.
+6. **"usuário já existe" (422) no bootstrap do admin** — normal numa 2ª tentativa. O
+   `install.sh` é idempotente: ignora o 422 e encontra o usuário pelo e-mail. Não trava.
+7. **`/api/v1/health` diz "unhealthy" mas o site funciona** — versões antigas checavam
+   rotas erradas (`/ping`, `/api/health`). A imagem atual já checa as rotas certas; se ver
+   isso, garanta que a imagem do app está na tag `latest` mais nova (`bash update.sh`).
 
 ## Depois de instalado
 

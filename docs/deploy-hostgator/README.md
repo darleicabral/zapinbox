@@ -71,7 +71,12 @@ Você está "dentro" do servidor.
 > Se aparecer "Docker não encontrado" mais pra frente, instale com:
 > `curl -fsSL https://get.docker.com | sh`
 
-**Agora libere as portas do site** (sem isso o cadeado de segurança/SSL não funciona):
+**Agora libere as portas do site** (sem isso o cadeado de segurança/SSL não funciona).
+
+⚠️ **Antes de ativar o firewall, confira em que porta você está conectado por SSH.** Se
+for a padrão (**22**), use o comando abaixo como está. Se a HostGator te deu uma porta
+diferente (ex.: `2222`, `22022`), **troque o `22` pela sua porta** — senão o firewall te
+**tranca pra fora do servidor**.
 
 ```bash
 ufw allow 22,80,443/tcp && ufw --force enable
@@ -91,7 +96,17 @@ ufw allow 22,80,443/tcp && ufw --force enable
    - **Project URL** (algo como `https://xxxx.supabase.co`)
    - **anon public** key
    - **service_role** key (secreta!)
-5. Em **Settings → Database → Connection string**, copie a URL no modo **URI**.
+5. Em **Settings → Database**, na seção **Connection string**, clique em **Session pooler**
+   (⚠️ **NÃO** use a "Direct connection") e copie a URL no modo **URI**.
+
+> **Por que Session pooler, e não a conexão direta?** A conexão "direct" do Supabase é
+> **só IPv6** — e quase todo VPS (incluindo os da HostGator) tem só IPv4, então ela
+> **não conecta** e a instalação trava. O **Session pooler** aceita IPv4 e é **grátis**
+> (você **não** precisa do add-on pago "IPv4 dedicado"). A URL correta se parece com:
+> `postgresql://postgres.SEUPROJETO:SUASENHA@aws-1-<região>.pooler.supabase.com:5432/postgres`
+>
+> Se a senha do banco tiver caracteres especiais (`@`, `#`, etc.), o Supabase mostra um
+> aviso pra "percent-encode" — o instalador já lida com isso; copie a URL como o painel mostra.
 
 Pronto — você tem as 4 informações do banco.
 

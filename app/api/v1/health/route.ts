@@ -60,9 +60,16 @@ async function checkRedis(): Promise<Check> {
     if (!url || !token) {
       return { status: "degraded", latency_ms: 0, error: "not_configured" };
     }
+    // Protocolo REST do Upstash (compatível com serverless-redis-http): comando no
+    // corpo via POST na raiz. NÃO existe GET /ping — daria 404 no SRH self-host.
     const res = await withTimeout(
-      fetch(`${url}/ping`, {
-        headers: { Authorization: `Bearer ${token}` },
+      fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(["PING"]),
         cache: "no-store",
       }),
     );
@@ -90,8 +97,10 @@ async function checkWaha(): Promise<Check> {
     if (!base) {
       return { status: "degraded", latency_ms: 0, error: "not_configured" };
     }
+    // /api/sessions valida conectividade E autenticação num tiro só. O WAHA Core não
+    // expõe /api/health (daria 404 mesmo autenticado).
     const res = await withTimeout(
-      fetch(`${base.replace(/\/$/, "")}/api/health`, {
+      fetch(`${base.replace(/\/$/, "")}/api/sessions`, {
         headers: env.WAHA_API_KEY ? { "X-Api-Key": env.WAHA_API_KEY } : {},
         cache: "no-store",
       }),

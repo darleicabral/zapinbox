@@ -147,6 +147,7 @@ NODE_ENV=production
 NUVEMSHOP_ENABLED=false
 INTERNAL_AGENT_RUN_STUB=false
 OWNER_EMAIL=${OWNER_EMAIL}
+OWNER_PASSWORD=${OWNER_PASSWORD}
 ENV
 chmod 600 .env
 c_grn "✓ .env escrito (permissão 600)"
@@ -166,6 +167,15 @@ fi
 # ── 7. Aplica o schema (baseline) no Supabase — via container postgres ───────
 step "Aplicando o schema no Supabase (baseline.sql)"
 if [ -f supabase/baseline.sql ]; then
+  # O baseline é um pg_dump: referencia public.vector, public.citext e gin_trgm_ops
+  # (pg_trgm) mas NÃO cria as extensões. Supabase não as habilita no schema public por
+  # padrão — criamos aqui, senão o schema quebra no meio (ex.: "type public.vector does
+  # not exist"). Idempotente (if not exists).
+  docker run --rm postgres:17-alpine psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
+    "create extension if not exists vector with schema public; create extension if not exists citext with schema public; create extension if not exists pg_trgm with schema public;" \
+    >/dev/null 2>&1 \
+    && c_grn "✓ extensões (vector, citext, pg_trgm) habilitadas no public" \
+    || c_ylw "⚠ não consegui habilitar as extensões — o schema pode falhar abaixo."
   docker run --rm -i -v "$PROJECT_DIR/supabase/baseline.sql:/baseline.sql:ro" \
     postgres:17-alpine psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f /baseline.sql \
     && c_grn "✓ schema aplicado" \
@@ -174,28 +184,30 @@ else
   c_ylw "⚠ supabase/baseline.sql não encontrado — pulei (aplique o schema manualmente)."
 fi
 
-# ── 8. Bootstrap do 1º dono (curl na admin API + psql) ──────────────────────
+# ── 8. Bootstrap do 1º dono (cria no Auth + promove via psql) ───────────────
 step "Criando o primeiro admin (${OWNER_EMAIL})"
-auth_resp="$(curl -fsS -X POST "${NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users" \
+# 1) Cria o usuário no Supabase Auth. Se já existe, a API responde 422 — ignoramos
+#    (|| true): a re-execução é idempotente, o passo seguinte encontra o usuário.
+curl -fsS -X POST "${NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users" \
   -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"${OWNER_EMAIL}\",\"password\":\"${OWNER_PASSWORD}\",\"email_confirm\":true}" 2>/dev/null || echo '')"
-# Extrai o id do usuário (novo) — ou busca o existente se já criado.
-owner_id="$(printf '%s' "$auth_resp" | grep -o '"id":"[0-9a-f-]\{36\}"' | head -1 | sed 's/.*:"//;s/"//')"
-if [ -z "$owner_id" ]; then
-  # já existe: busca por e-mail
-  owner_id="$(curl -fsS "${NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users?filter=email.eq.${OWNER_EMAIL}" \
-    -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" 2>/dev/null \
-    | grep -o '"id":"[0-9a-f-]\{36\}"' | head -1 | sed 's/.*:"//;s/"//')"
-fi
-[ -n "$owner_id" ] || die "Não consegui criar/achar o usuário dono. Confira a service_role key e a URL do Supabase."
+  -d "{\"email\":\"${OWNER_EMAIL}\",\"password\":\"${OWNER_PASSWORD}\",\"email_confirm\":true}" \
+  >/dev/null 2>&1 || true
 
-# org + membership admin + platform_admins (idempotente)
-docker run --rm -i postgres:17-alpine psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<SQL
+# 2) Resolve o id direto do auth.users e cria org + membership + platform_admin.
+#    Resolver o uid DENTRO do SQL evita parsing frágil de JSON e funciona tanto para
+#    usuário recém-criado quanto para um que já existia (re-execução).
+docker run --rm -i postgres:17-alpine psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<SQL \
+  && c_grn "✓ dono criado e promovido a super-admin" \
+  || die "Não consegui promover o admin. Confira a service_role key, a URL e a connection string do Supabase."
 do \$\$
-declare v_org uuid; v_uid uuid := '${owner_id}';
+declare v_org uuid; v_uid uuid;
 begin
+  select id into v_uid from auth.users where email = '${OWNER_EMAIL}';
+  if v_uid is null then
+    raise exception 'usuário % não encontrado no auth.users (a criação no Auth falhou?)', '${OWNER_EMAIL}';
+  end if;
   select id into v_org from public.organizations where slug='minha-empresa';
   if v_org is null then
     insert into public.organizations (slug, display_name, legal_name, created_by)
@@ -210,7 +222,6 @@ begin
   end if;
 end \$\$;
 SQL
-c_grn "✓ dono criado e promovido a super-admin"
 
 # ── 9. Sobe a stack ─────────────────────────────────────────────────────────
 step "Puxando a imagem e subindo os serviços"

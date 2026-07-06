@@ -43,7 +43,9 @@ services:
     image: ${WAHA_IMAGE:-devlikeapro/waha}
     restart: unless-stopped
     environment:
-      WAHA_API_KEY: ${WAHA_API_KEY_SHA512}
+      # Prefixo sha512: faz o WAHA HASHEAR o X-Api-Key recebido e comparar com este
+      # hash. Sem o prefixo ele compara literal → o app (que manda o plaintext) toma 401.
+      WAHA_API_KEY: "sha512:${WAHA_API_KEY_SHA512}"
       WHATSAPP_HOOK_URL: ${WAHA_WEBHOOK_BASE_URL}/api/v1/webhooks/waha
       WHATSAPP_HOOK_EVENTS: "message,message.any,message.ack,session.status,state.change"
       WHATSAPP_HOOK_HMAC: ${WAHA_HMAC_SECRET}
@@ -70,7 +72,7 @@ services:
   srh:
     # serverless-redis-http: fala o REST do Upstash sobre o redis normal, mantendo
     # o SDK @upstash/redis sem tocar código. Pinar tag (validar encoding base64 — T6).
-    image: hjr265/serverless-redis-http:latest
+    image: hiett/serverless-redis-http:latest
     restart: unless-stopped
     environment:
       SRH_MODE: env
