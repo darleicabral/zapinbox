@@ -37,7 +37,7 @@ DeskcommCRM unifica **atendimento humano**, **chatbot com RAG por tenant**, **ge
 
 ```bash
 # 1. Clone
-git clone https://github.com/SEU_USER/DeskcommCRM.git
+git clone https://github.com/melgarafael/DeskcommCRM.git
 cd DeskcommCRM
 
 # 2. Node 20 + pnpm
@@ -176,7 +176,7 @@ git commit -m "feat(EPIC-XX): descrição"
 
 ## 🐛 Reportando bugs
 
-Abra uma [issue](https://github.com/SEU_USER/DeskcommCRM/issues) com:
+Abra uma [issue](https://github.com/melgarafael/DeskcommCRM/issues) com:
 - Versão do Node, pnpm e SO.
 - Output do `/api/v1/health`.
 - Stack trace ou screenshot.
@@ -198,8 +198,8 @@ Detalhe wave-by-wave: [`docs/stories/epics/MASTER.md`](docs/stories/epics/MASTER
 
 ## 💬 Comunidade
 
-- **Discussões:** [GitHub Discussions](https://github.com/SEU_USER/DeskcommCRM/discussions) — pra perguntas, ideias, showcase.
-- **Issues:** [GitHub Issues](https://github.com/SEU_USER/DeskcommCRM/issues) — bugs e tasks.
+- **Discussões:** [GitHub Discussions](https://github.com/melgarafael/DeskcommCRM/discussions) — pra perguntas, ideias, showcase.
+- **Issues:** [GitHub Issues](https://github.com/melgarafael/DeskcommCRM/issues) — bugs e tasks.
 - **Twitter / X:** [@rafaelmelgaco](https://twitter.com) (a confirmar).
 
 ---

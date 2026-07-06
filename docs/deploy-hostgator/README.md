@@ -122,7 +122,7 @@ sozinho — inclusive resolver erros.
 No servidor, baixe o projeto e rode o instalador:
 
 ```bash
-git clone https://github.com/SEU-USUARIO/deskcommcrm.git
+git clone https://github.com/melgarafael/DeskcommCRM.git
 cd deskcommcrm
 bash hostgator-setup-kit/install.sh
 ```
