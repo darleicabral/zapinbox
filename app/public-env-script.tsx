@@ -19,6 +19,9 @@ export async function PublicEnvScript() {
   const payload = JSON.stringify({
     NEXT_PUBLIC_SUPABASE_URL: env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    // Exposto pro Sentry do browser respeitar o opt-out (SENTRY_DSN=off) em runtime,
+    // sem rebuild. DSN não é segredo. Ver lib/sentry/dsn.ts.
+    SENTRY_DSN: env.SENTRY_DSN,
   })
     // Evita quebrar o </script> se algum valor contiver a sequência.
     .replace(/</g, "\\u003c");

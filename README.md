@@ -206,7 +206,32 @@ Detalhe wave-by-wave: [`docs/stories/epics/MASTER.md`](docs/stories/epics/MASTER
 
 ## 📜 Licença
 
-> ⚠️ **A definir.** O projeto está sendo liberado pra comunidade — a licença final (MIT, Apache-2.0, AGPL-3.0 ou outra) será definida antes do release público. Por enquanto, considere "all rights reserved" até o `LICENSE` ser commitado.
+Distribuído sob a licença **MIT** — veja [`LICENSE`](LICENSE). Você pode usar, modificar
+e distribuir livremente, inclusive comercialmente. O software é fornecido **"como está",
+sem garantias** (ver cláusula de isenção no `LICENSE`).
+
+---
+
+## 🛟 Suporte & responsabilidades (self-host)
+
+Este é um projeto **self-host**: cada pessoa roda o CRM na **própria infraestrutura**
+(VPS, banco Supabase e chave de IA próprios). Isso implica:
+
+- **Suporte é comunitário e "as-is".** Dúvidas e bugs entram como
+  [Issues](https://github.com/melgarafael/DeskcommCRM/issues) ou
+  [Discussions](https://github.com/melgarafael/DeskcommCRM/discussions). Não há SLA nem
+  suporte garantido — é open source mantido por boa vontade.
+- **Você é responsável pela sua instalação.** Atualizações não são automáticas
+  (`bash hostgator-setup-kit/update.sh` quando quiser), e manter/backup do seu servidor
+  é com você.
+- **LGPD — atenção:** quem **hospeda** a instância é o **controlador** dos dados pessoais
+  ali tratados (clientes, conversas, pedidos), com as obrigações legais decorrentes. Os
+  mantenedores do projeto **não têm acesso** aos seus dados e **não são** controladores
+  nem operadores da sua instância.
+- **Telemetria (Sentry):** por padrão, erros **anonimizados** (CPF/telefone/e-mail
+  removidos) são enviados ao Sentry da comunidade pra ajudar a corrigir bugs que afetam
+  todos. Para **desligar**, use `SENTRY_DSN=off` no `.env`; para enviar ao **seu** Sentry,
+  use `SENTRY_DSN=<seu-dsn>`. Ver [`lib/sentry/dsn.ts`](lib/sentry/dsn.ts).
 
 ---
 

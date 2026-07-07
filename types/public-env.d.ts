@@ -9,6 +9,7 @@
 interface PublicEnv {
   NEXT_PUBLIC_SUPABASE_URL?: string;
   NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
+  SENTRY_DSN?: string;
 }
 
 interface Window {

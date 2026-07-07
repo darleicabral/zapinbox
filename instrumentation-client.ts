@@ -3,6 +3,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { resolveSentryDsn } from "./lib/sentry/dsn";
 
 const SENSITIVE_HEADERS = [
   "authorization",
@@ -21,7 +22,9 @@ function scrubMessage(input: string): string {
 }
 
 Sentry.init({
-  dsn: "https://58fabf8ad54504863d404a3647ef3714@o4509908078559232.ingest.us.sentry.io/4509908083212288",
+  dsn: resolveSentryDsn(
+    typeof window !== "undefined" ? window.__PUBLIC_ENV__?.SENTRY_DSN : undefined,
+  ),
 
   integrations: [Sentry.replayIntegration()],
 
