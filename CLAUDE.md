@@ -167,6 +167,24 @@ CI deve rodar todos antes de merge. Teste de isolamento RLS é gate obrigatório
 
 ---
 
+## Migrations & Banco — DOUTRINA (projeto open-source)
+
+**Este projeto é open-source. Toda mudança de schema DEVE sair como migration versionada** — quem clonou uma versão antiga do banco precisa conseguir atualizar aplicando as migrations em ordem. **Nunca** aplique `ALTER`/`CREATE` solto no banco sem o arquivo correspondente. Isto é critério de aceite de TODA sessão, não opcional.
+
+Processo padrão (siga sempre):
+
+1. **Arquivo versionado** em `supabase/migrations/` com o padrão do repo: `<timestamp>_<NNNN>_<slug>.sql` (ex.: `20260706210000_0027_whatsapp_conversation_unification.sql`). `NNNN` é o próximo número sequencial (veja o último em `ls supabase/migrations/`).
+2. **Idempotente sempre que possível**: `add column if not exists`, `create ... if not exists`, `create or replace function`. Uma migration deve poder ser re-aplicada sem quebrar nem duplicar efeito.
+3. **Portável em `psql` puro** (clones podem não usar o MCP/CLI Supabase): **sem** `create temporary table ... on commit drop` fora de transação explícita; **sem** `BEGIN`/`COMMIT` explícito (o runner já envolve em transação, como as demais migrations). Prefira CTEs, subqueries de janela e colunas-mapa (ex.: `is_merged_into`) a temp tables.
+4. **Data migrations genéricas**: se a migration corrige/deduplica dados, escreva pensando em QUALQUER banco de clone (não hardcode IDs do seu tenant). Repointe FKs conferindo o catálogo (`information_schema` FK map) para não perder histórico.
+5. **Registre no MANIFEST**: adicione uma linha em `supabase/migrations/MANIFEST.md` (tabela "Applied") descrevendo versão, nome e o QUÊ/PORQUÊ.
+6. **Aplique e prove**: aplique via `mcp__plugin_supabase_supabase__apply_migration` (ou `supabase db push`), capture o estado ANTES/DEPOIS e prove invariantes (ex.: contagem de linhas que não pode mudar). Se mexeu em contrato, regenere `lib/database.types.ts`.
+7. **Backfill de dados quebrados existentes**: constraint nova falha se os dados atuais a violam — a migration deve deduplicar/corrigir ANTES de criar a constraint.
+
+O `supabase/baseline.sql` é o snapshot consolidado; migrations incrementais são a fonte da verdade para quem atualiza. Nunca edite migrations já aplicadas — corrija com uma migration "forward-fix" nova.
+
+---
+
 ## Skills relevantes a usar (Claude Code)
 
 - `superpowers:brainstorming` — antes de implementar feature não-trivial
@@ -196,5 +214,6 @@ Antes de declarar uma task pronta:
 8. Sem `console.log` esquecido
 9. Env vars novas adicionadas em `.env.example` + `lib/env.ts`
 10. Doc atualizada se mudou contrato (PRD/spec)
+11. **Mudança de schema saiu como migration versionada + linha no MANIFEST** (ver Doutrina de Migrations) — clones conseguem atualizar
 
 Um staff engineer aprovaria? Se não, itera.
