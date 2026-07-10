@@ -16,6 +16,15 @@
 
 ---
 
+> ### ☁️ Rode este CRM em produção com 1 comando
+>
+> O DeskcommCRM foi desenvolvido em **parceria com a HostGator**: o [`hostgator-setup-kit/`](hostgator-setup-kit/)
+> instala o CRM completo (app + WAHA + banco) numa VPS com um único comando, e o
+> [runbook de produção](docs/runbooks/waha-hostgator.md) já assume esse ambiente.
+>
+> **[👉 Assinar a VPS HostGator com desconto da parceria](https://www.hostgator.com.br/52708-141-3-52.html)** —
+> datacenter em São Paulo, ideal pro WhatsApp rodando 24/7. *(link de parceiro — assinar por ele apoia o projeto e sai mais barato)*
+
 ## ✨ O que é
 
 DeskcommCRM unifica **atendimento humano**, **chatbot com RAG por tenant**, **gestão de pedidos** e **pipeline de pós-venda** numa única plataforma. Canal primário: **WhatsApp via WAHA**. Multi-tenant desde o dia 1. LGPD nativa.
