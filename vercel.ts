@@ -22,7 +22,13 @@ const config: VercelConfig = {
     // EPIC-13 S-13.07: drains ai_agent.dispatch_requested events. Vercel cron
     // cannot go sub-minute; per-minute batch of 100 events is sized for the
     // MVP target tenant (~300 inbound/day, headroom ~6k/hour).
-    { path: "/api/v1/cron/agent-dispatcher", schedule: "*/1 * * * *" },
+    //
+    // [ZapInbox] Plano Hobby da Vercel só permite cron DIÁRIO — agendado 1x/dia
+    // como fallback. O disparo por-minuto real virá do crontab da VPS Hostgator:
+    //   * * * * * curl -s -X POST https://<app>/api/v1/cron/agent-dispatcher \
+    //       -H "Authorization: Bearer $INTERNAL_SECRET"
+    // (ou upgrade p/ Vercel Pro e voltar este schedule p/ "*/1 * * * *").
+    { path: "/api/v1/cron/agent-dispatcher", schedule: "30 3 * * *" },
   ],
   functions: {
     // EPIC-13 S-13.08: ToolLoopAgent runtime can issue multiple tool calls per
