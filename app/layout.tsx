@@ -23,13 +23,13 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Deskcomm — CRM operacional para e-commerce",
-    template: "%s · Deskcomm",
+    default: "ZapInbox — Atendimento no WhatsApp com IA",
+    template: "%s · ZapInbox",
   },
   description:
-    "Centralize WhatsApp, e-mail e Instagram em um único atendimento. IA que resolve sozinha o que dá pra resolver, time humano focado no que importa. Multi-tenant, LGPD-nativo, sob medida pra operações brasileiras.",
-  applicationName: "Deskcomm",
-  authors: [{ name: "Deskcomm" }],
+    "Centralize o atendimento do WhatsApp com IA que qualifica e responde sozinha, e time humano focado no que importa. Multi-tenant, LGPD-nativo, sob medida pra operações brasileiras.",
+  applicationName: "ZapInbox",
+  authors: [{ name: "ZapInbox" }],
   keywords: [
     "CRM",
     "atendimento",
@@ -53,8 +53,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#faf9f6" },
-    { media: "(prefers-color-scheme: dark)", color: "#161510" },
+    { media: "(prefers-color-scheme: light)", color: "#f4f8f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c1a18" },
   ],
 };
 

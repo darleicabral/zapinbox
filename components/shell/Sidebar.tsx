@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { usePermission } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
+import { Logo } from "@/components/brand/Logo";
 
 interface NavItem {
   href: string;
@@ -42,8 +43,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       )}
     >
       <div className={cn("flex items-center border-b px-4 h-14", collapsed ? "justify-center" : "justify-start")}>
-        <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>DeskcommCRM</span>
-        {collapsed && <span aria-hidden className="text-lg font-bold text-primary">D</span>}
+        <Logo collapsed={collapsed} />
       </div>
       <nav className="flex-1 space-y-1 p-2" aria-label="Navegação principal">
         {NAV_ITEMS.filter((item) => {

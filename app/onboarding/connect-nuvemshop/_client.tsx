@@ -17,7 +17,7 @@ export function ConnectNuvemshopClient() {
     <div className="space-y-4 rounded-lg border bg-background p-6">
       <p className="text-sm">
         Ao clicar em <strong>Conectar</strong>, você será redirecionado para autorizar o
-        DeskcommCRM na sua conta Nuvemshop.
+        ZapInbox na sua conta Nuvemshop.
       </p>
 
       <div className="flex flex-wrap gap-2">

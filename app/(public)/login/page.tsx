@@ -1,6 +1,7 @@
 import { LoginForm } from "@/components/auth/LoginForm";
+import { Logo } from "@/components/brand/Logo";
 
-export const metadata = { title: "Entrar — DeskcommCRM" };
+export const metadata = { title: "Entrar" };
 
 export default async function LoginPage({
   searchParams,
@@ -10,9 +11,9 @@ export default async function LoginPage({
   const { next } = await searchParams;
   return (
     <div className="space-y-6">
-      <div className="space-y-1.5 text-center">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <Logo />
         <h1 className="text-2xl font-semibold tracking-tight">Entrar</h1>
-        <p className="text-sm text-muted-foreground">DeskcommCRM</p>
       </div>
       <LoginForm next={next} />
     </div>

@@ -12,7 +12,7 @@ export default async function WelcomePage() {
   return (
     <div className="space-y-6">
       <header>
-        <h2 className="text-2xl font-semibold tracking-tight">Boas-vindas ao DeskcommCRM</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Boas-vindas ao ZapInbox</h2>
         <p className="text-sm text-muted-foreground">
           Vamos configurar sua operação em alguns passos rápidos.
         </p>

@@ -34,7 +34,7 @@ export async function enrollMfa(): Promise<EnrollMfaResult> {
 
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: "totp",
-    friendlyName: `DeskcommCRM ${new Date().toISOString().slice(0, 10)}`,
+    friendlyName: `ZapInbox ${new Date().toISOString().slice(0, 10)}`,
   });
   if (error || !data) {
     return { ok: false, error: "enroll_failed", message: error?.message };

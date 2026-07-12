@@ -5,6 +5,7 @@ import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { loadOnboardingState } from "@/app/actions/onboarding/_shared";
 import { Stepper } from "./_components/Stepper";
 import { SkipToEnd } from "./_components/SkipToEnd";
+import { Logo } from "@/components/brand/Logo";
 
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAuth();
@@ -24,8 +25,8 @@ export default async function OnboardingLayout({ children }: { children: React.R
     <div className="flex min-h-screen flex-col bg-muted/40">
       <header className="border-b bg-background">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-6 py-4">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">DeskcommCRM</p>
+          <div className="space-y-1.5">
+            <Logo />
             <h1 className="text-lg font-semibold tracking-tight">{activeOrg.name}</h1>
           </div>
           {isDev ? <SkipToEnd /> : null}

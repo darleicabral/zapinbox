@@ -14,6 +14,8 @@ import {
   type ImpersonatingInfo,
 } from "@/components/app/ImpersonateBanner";
 import { PresenceHeartbeat } from "@/components/app/PresenceHeartbeat";
+import { BrandSync } from "@/components/app/BrandSync";
+import { brandForOrg, type Brand } from "@/lib/brand";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await loadAuthUser();
@@ -23,15 +25,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // EPIC-02: gate /app/* on completed onboarding.
   // EPIC-11: gate /app/* on org not being suspended (S-11.08).
+  // Rebranding Fase 3: a paleta (data-brand) segue o slug da org ativa.
+  let brand: Brand = "zapinbox";
   if (activeOrg) {
     const admin = createAdminClient();
     const { data: orgRow } = await admin
       .from("organizations")
-      .select("onboarded_at, status")
+      .select("onboarded_at, status, slug")
       .eq("id", activeOrg.orgId)
       .maybeSingle();
     if (orgRow && !orgRow.onboarded_at) redirect("/onboarding");
     if (orgRow?.status === "suspended") redirect("/account-suspended");
+    brand = brandForOrg(orgRow?.slug);
   }
 
   // Read sidebar collapsed state SSR to avoid flash.
@@ -67,9 +72,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AuthProvider user={user} activeOrg={activeOrg}>
+      <BrandSync brand={brand} />
       <PresenceHeartbeat organizationId={activeOrg?.orgId ?? null} />
       <ImpersonateBanner impersonating={impersonating} />
-      {mustEnroll ? <MfaEnrollGate /> : <AppShell sidebarCollapsed={collapsed}>{children}</AppShell>}
+      {mustEnroll ? (
+        <MfaEnrollGate />
+      ) : (
+        <AppShell brand={brand} sidebarCollapsed={collapsed}>
+          {children}
+        </AppShell>
+      )}
     </AuthProvider>
   );
 }

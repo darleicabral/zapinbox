@@ -3,70 +3,78 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────────────────
-   DeskcommCRM — Design System tokens (Sage palette · density Aerada)
-   Source of truth: /app/design/lib/tokens.ts (PALETTES.sage)
-   Light + dark drawn separately (NOT inverted).
+   ZapInbox — Design System tokens
+   Duas dimensões independentes:
+     • data-theme  → light | dark
+     • data-brand  → zapinbox (default) | avant   (white-label de cores)
+   Paletas:
+     ZapInbox → verde da marca #038C7B (site zapinbox.com.br)
+     Avant    → vinho #7B2525 + cinzas do print, base clara
+   Light + dark desenhados separadamente (NÃO invertidos).
    ───────────────────────────────────────────────────────────────────────── */
 
 :root {
   /* Surfaces (light) */
-  --color-bg: #faf9f6;
+  --color-bg: #f4f8f7;
   --color-surface: #ffffff;
-  --color-surface-elevated: #f5f3ee;
-  --color-overlay: rgba(28, 26, 22, 0.42);
+  --color-surface-elevated: #eaf2ef;
+  --color-overlay: rgba(14, 44, 42, 0.42);
 
   /* Text (light) */
-  --color-text: #1c1a16;
-  --color-text-muted: #5d594f;
-  --color-text-subtle: #7d786c;
+  --color-text: #0e2c2a;
+  --color-text-muted: #46605b;
+  --color-text-subtle: #6c837e;
 
   /* Borders (light) */
-  --color-border: #e7e3da;
-  --color-border-strong: #d2cdbf;
+  --color-border: #dde9e5;
+  --color-border-strong: #c6d8d1;
 
-  /* Accent — Sage (11 stops) */
-  --color-accent-50:  #f3f6f1;
-  --color-accent-100: #e4ebe0;
-  --color-accent-200: #c8d6c1;
-  --color-accent-300: #a4ba9a;
-  --color-accent-400: #82a077;
-  --color-accent-500: #67885d;
-  --color-accent-600: #506d48;
-  --color-accent-700: #41573b;
-  --color-accent-800: #374731;
-  --color-accent-900: #2f3c2b;
-  --color-accent-950: #171f15;
+  /* Accent — ZapInbox green (11 stops) */
+  --color-accent-50:  #eafaf5;
+  --color-accent-100: #cbf1e7;
+  --color-accent-200: #99e3d1;
+  --color-accent-300: #5fceb6;
+  --color-accent-400: #2bb598;
+  --color-accent-500: #0f9a83;
+  --color-accent-600: #038c7b;
+  --color-accent-700: #0a7265;
+  --color-accent-800: #0d5b52;
+  --color-accent-900: #114741;
+  --color-accent-950: #0e2c2a;
   --color-accent: var(--color-accent-600);
   --color-accent-fg: #ffffff;
   --color-accent-soft: var(--color-accent-100);
   --color-accent-hover: var(--color-accent-700);
 
-  /* Neutrals — greige (11 stops, light) */
-  --color-neutral-50:  #faf9f6;
-  --color-neutral-100: #f3f1ec;
-  --color-neutral-200: #e7e3da;
-  --color-neutral-300: #d2cdbf;
-  --color-neutral-400: #a9a395;
-  --color-neutral-500: #7d786c;
-  --color-neutral-600: #5d594f;
-  --color-neutral-700: #46433b;
-  --color-neutral-800: #2e2c26;
-  --color-neutral-900: #1c1a16;
-  --color-neutral-950: #0e0d0a;
+  /* Neutrals — cool green-gray (11 stops, light) */
+  --color-neutral-50:  #f4f8f7;
+  --color-neutral-100: #e8f1ee;
+  --color-neutral-200: #d7e6e1;
+  --color-neutral-300: #bcd2cb;
+  --color-neutral-400: #93b0a8;
+  --color-neutral-500: #688079;
+  --color-neutral-600: #4c635d;
+  --color-neutral-700: #3a4d48;
+  --color-neutral-800: #263733;
+  --color-neutral-900: #142f2c;
+  --color-neutral-950: #0b1f1d;
 
   /* States (light) */
-  --color-success: #5a8a5f;
-  --color-success-bg: rgba(90, 138, 95, 0.12);
-  --color-success-fg: #41673f;
-  --color-warning: #b07a2b;
-  --color-warning-bg: rgba(176, 122, 43, 0.12);
-  --color-warning-fg: #875a1a;
-  --color-error: #a94a3c;
-  --color-error-bg: rgba(169, 74, 60, 0.12);
-  --color-error-fg: #8a3a2e;
-  --color-info: #4a7a93;
-  --color-info-bg: rgba(74, 122, 147, 0.12);
-  --color-info-fg: #355d72;
+  --color-success: #2f9e6f;
+  --color-success-bg: rgba(47, 158, 111, 0.12);
+  --color-success-fg: #1f7a54;
+  --color-warning: #b8791f;
+  --color-warning-bg: rgba(184, 121, 31, 0.12);
+  --color-warning-fg: #8a5a15;
+  --color-error: #c0473a;
+  --color-error-bg: rgba(192, 71, 58, 0.12);
+  --color-error-fg: #97382e;
+  --color-info: #2f7d99;
+  --color-info-bg: rgba(47, 125, 153, 0.12);
+  --color-info-fg: #235f74;
+
+  /* Brand gradient (badge/logo) */
+  --brand-grad: linear-gradient(135deg, #038c7b 0%, #29bd99 55%, #4fc79a 100%);
 
   /* Spacing (4-base) */
   --space-0: 0px;
@@ -93,11 +101,11 @@
   --radius-full: 9999px;
 
   /* Shadows — desaturated, neutral-based */
-  --shadow-xs: 0 1px 2px 0 rgba(20, 18, 14, 0.04);
-  --shadow-sm: 0 1px 2px 0 rgba(20, 18, 14, 0.05), 0 1px 1px 0 rgba(20, 18, 14, 0.03);
-  --shadow-md: 0 4px 12px -2px rgba(20, 18, 14, 0.06), 0 2px 4px -1px rgba(20, 18, 14, 0.04);
-  --shadow-lg: 0 12px 32px -6px rgba(20, 18, 14, 0.10), 0 4px 12px -2px rgba(20, 18, 14, 0.06);
-  --shadow-xl: 0 24px 48px -12px rgba(20, 18, 14, 0.16), 0 8px 16px -4px rgba(20, 18, 14, 0.08);
+  --shadow-xs: 0 1px 2px 0 rgba(14, 32, 30, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgba(14, 32, 30, 0.05), 0 1px 1px 0 rgba(14, 32, 30, 0.03);
+  --shadow-md: 0 4px 12px -2px rgba(14, 32, 30, 0.07), 0 2px 4px -1px rgba(14, 32, 30, 0.04);
+  --shadow-lg: 0 12px 32px -6px rgba(14, 32, 30, 0.11), 0 4px 12px -2px rgba(14, 32, 30, 0.06);
+  --shadow-xl: 0 24px 48px -12px rgba(14, 32, 30, 0.16), 0 8px 16px -4px rgba(14, 32, 30, 0.08);
 
   /* Density — Aerada */
   --density-row: 56px;
@@ -144,64 +152,67 @@
 }
 
 [data-theme="dark"] {
-  /* Surfaces (dark — drawn) */
-  --color-bg: #161510;
-  --color-surface: #1d1c17;
-  --color-surface-elevated: #272620;
+  /* Surfaces (dark — drawn, deep teal-ink) */
+  --color-bg: #0c1a18;
+  --color-surface: #11201e;
+  --color-surface-elevated: #172b28;
   --color-overlay: rgba(0, 0, 0, 0.55);
 
   /* Text (dark) */
-  --color-text: #f5f4ef;
-  --color-text-muted: #8e8b7f;
-  --color-text-subtle: #605e54;
+  --color-text: #eaf3f0;
+  --color-text-muted: #89a39d;
+  --color-text-subtle: #5c716c;
 
   /* Borders (dark) */
-  --color-border: #33312a;
-  --color-border-strong: #444239;
+  --color-border: #1f322e;
+  --color-border-strong: #2b4440;
 
   /* Accent stays same hex stops; default shifts up for dark contrast */
-  --color-accent-50:  #f3f6f1;
-  --color-accent-100: #e4ebe0;
-  --color-accent-200: #c8d6c1;
-  --color-accent-300: #a4ba9a;
-  --color-accent-400: #82a077;
-  --color-accent-500: #67885d;
-  --color-accent-600: #506d48;
-  --color-accent-700: #41573b;
-  --color-accent-800: #374731;
-  --color-accent-900: #2f3c2b;
-  --color-accent-950: #171f15;
+  --color-accent-50:  #eafaf5;
+  --color-accent-100: #cbf1e7;
+  --color-accent-200: #99e3d1;
+  --color-accent-300: #5fceb6;
+  --color-accent-400: #2bb598;
+  --color-accent-500: #0f9a83;
+  --color-accent-600: #038c7b;
+  --color-accent-700: #0a7265;
+  --color-accent-800: #0d5b52;
+  --color-accent-900: #114741;
+  --color-accent-950: #0e2c2a;
   --color-accent: var(--color-accent-400);
-  --color-accent-fg: #161510;
-  --color-accent-soft: rgba(130, 160, 119, 0.16);
+  --color-accent-fg: #0c1a18;
+  --color-accent-soft: rgba(43, 181, 152, 0.16);
   --color-accent-hover: var(--color-accent-300);
 
-  /* Neutrals — greige (11 stops, dark) */
-  --color-neutral-50:  #f5f4ef;
-  --color-neutral-100: #e6e4dc;
-  --color-neutral-200: #bbb8ac;
-  --color-neutral-300: #8e8b7f;
-  --color-neutral-400: #605e54;
-  --color-neutral-500: #444239;
-  --color-neutral-600: #33312a;
-  --color-neutral-700: #272620;
-  --color-neutral-800: #1d1c17;
-  --color-neutral-900: #161510;
-  --color-neutral-950: #0c0b08;
+  /* Neutrals — cool green-gray (11 stops, dark) */
+  --color-neutral-50:  #eaf3f0;
+  --color-neutral-100: #cfe0db;
+  --color-neutral-200: #9db8b1;
+  --color-neutral-300: #6e8781;
+  --color-neutral-400: #4c635d;
+  --color-neutral-500: #3a4d48;
+  --color-neutral-600: #2b4440;
+  --color-neutral-700: #1f322e;
+  --color-neutral-800: #11201e;
+  --color-neutral-900: #0c1a18;
+  --color-neutral-950: #060f0e;
 
   /* States (dark) */
-  --color-success: #82a077;
-  --color-success-bg: rgba(130, 160, 119, 0.18);
-  --color-success-fg: #a4ba9a;
-  --color-warning: #d09455;
-  --color-warning-bg: rgba(208, 148, 85, 0.18);
-  --color-warning-fg: #e0ad77;
-  --color-error: #c87263;
-  --color-error-bg: rgba(200, 114, 99, 0.18);
-  --color-error-fg: #d99182;
-  --color-info: #7da9bf;
-  --color-info-bg: rgba(125, 169, 191, 0.18);
-  --color-info-fg: #9bbfd2;
+  --color-success: #4fc79a;
+  --color-success-bg: rgba(79, 199, 154, 0.16);
+  --color-success-fg: #7ad6b4;
+  --color-warning: #d9a24e;
+  --color-warning-bg: rgba(217, 162, 78, 0.16);
+  --color-warning-fg: #e6bd80;
+  --color-error: #d9756a;
+  --color-error-bg: rgba(217, 117, 106, 0.16);
+  --color-error-fg: #e69b92;
+  --color-info: #6bb0cc;
+  --color-info-bg: rgba(107, 176, 204, 0.16);
+  --color-info-fg: #97c8dd;
+
+  /* Brand gradient (same brand hues on dark) */
+  --brand-grad: linear-gradient(135deg, #038c7b 0%, #29bd99 55%, #4fc79a 100%);
 
   /* Shadows — heavier in dark */
   --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.30);
@@ -209,6 +220,171 @@
   --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 2px 4px -1px rgba(0, 0, 0, 0.30);
   --shadow-lg: 0 12px 32px -6px rgba(0, 0, 0, 0.55), 0 4px 12px -2px rgba(0, 0, 0, 0.40);
   --shadow-xl: 0 24px 48px -12px rgba(0, 0, 0, 0.65), 0 8px 16px -4px rgba(0, 0, 0, 0.50);
+
+  /* shadcn-compat aliases */
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-text);
+  --primary: var(--color-accent);
+  --primary-foreground: var(--color-accent-fg);
+  --secondary: var(--color-surface-elevated);
+  --secondary-foreground: var(--color-text);
+  --muted: var(--color-surface-elevated);
+  --muted-foreground: var(--color-text-muted);
+  --accent-foreground: var(--color-accent-fg);
+  --destructive: var(--color-error);
+  --destructive-foreground: #ffffff;
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-accent-400);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BRAND · Avant — vinho #7B2525 + cinzas do print, base clara
+   Sobrepõe só as cores (as demais tokens herdam do :root). Herança de custom
+   properties: o elemento com [data-brand="avant"] e seus descendentes passam a
+   ler estes valores; portais (toasts/popovers) herdam via <body data-brand>
+   sincronizado pelo <BrandSync>.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+[data-brand="avant"] {
+  /* Surfaces (light, mais clara) */
+  --color-bg: #f6f6f7;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #efeff1;
+  --color-overlay: rgba(28, 24, 24, 0.42);
+
+  /* Text (light) */
+  --color-text: #262528;
+  --color-text-muted: #5b5a60;
+  --color-text-subtle: #86868c;
+
+  /* Borders (light) — cinzas do print */
+  --color-border: #e4e4e6;
+  --color-border-strong: #cdcdd0;
+
+  /* Accent — Avant wine (11 stops) */
+  --color-accent-50:  #faf2f1;
+  --color-accent-100: #f4dedc;
+  --color-accent-200: #e8bdb9;
+  --color-accent-300: #d8938d;
+  --color-accent-400: #c46861;
+  --color-accent-500: #a94740;
+  --color-accent-600: #8f322f;
+  --color-accent-700: #7b2525;
+  --color-accent-800: #661f20;
+  --color-accent-900: #571e1e;
+  --color-accent-950: #300f10;
+  --color-accent: var(--color-accent-700);
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: var(--color-accent-100);
+  --color-accent-hover: var(--color-accent-800);
+
+  /* Neutrals — cinzas neutros do print (E0E0E0 / B7B7B7 / 49494A) */
+  --color-neutral-50:  #f7f7f8;
+  --color-neutral-100: #efeff0;
+  --color-neutral-200: #e4e4e6;
+  --color-neutral-300: #d0d0d3;
+  --color-neutral-400: #b7b7b7;
+  --color-neutral-500: #86868a;
+  --color-neutral-600: #5c5c62;
+  --color-neutral-700: #49494a;
+  --color-neutral-800: #343437;
+  --color-neutral-900: #212124;
+  --color-neutral-950: #131315;
+
+  /* States (light) — error/info distintos do vinho */
+  --color-success: #2f9e6f;
+  --color-success-bg: rgba(47, 158, 111, 0.12);
+  --color-success-fg: #1f7a54;
+  --color-warning: #b8791f;
+  --color-warning-bg: rgba(184, 121, 31, 0.12);
+  --color-warning-fg: #8a5a15;
+  --color-error: #cf4b3a;
+  --color-error-bg: rgba(207, 75, 58, 0.12);
+  --color-error-fg: #a2382b;
+  --color-info: #3f6f99;
+  --color-info-bg: rgba(63, 111, 153, 0.12);
+  --color-info-fg: #2f5474;
+
+  /* Brand gradient */
+  --brand-grad: linear-gradient(135deg, #7b2525 0%, #a5403a 55%, #c46861 100%);
+
+  /* shadcn-compat aliases (re-substituir no escopo da marca) */
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-text);
+  --primary: var(--color-accent);
+  --primary-foreground: var(--color-accent-fg);
+  --secondary: var(--color-surface-elevated);
+  --secondary-foreground: var(--color-text);
+  --muted: var(--color-surface-elevated);
+  --muted-foreground: var(--color-text-muted);
+  --accent-foreground: var(--color-accent-fg);
+  --destructive: var(--color-error);
+  --destructive-foreground: #ffffff;
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-accent-500);
+}
+
+/* data-theme fica no <html>; data-brand fica no <body> (BrandSync) e no wrapper
+   do AppShell (SSR) — sempre em elementos distintos, então o combinador
+   descendente cobre tanto a UI principal quanto os portais (toasts/popovers). */
+[data-theme="dark"] [data-brand="avant"] {
+  /* Surfaces (dark, warm) */
+  --color-bg: #161211;
+  --color-surface: #1f1917;
+  --color-surface-elevated: #29211f;
+  --color-overlay: rgba(0, 0, 0, 0.6);
+
+  /* Text (dark) */
+  --color-text: #f3efee;
+  --color-text-muted: #a89f9c;
+  --color-text-subtle: #6f6663;
+
+  /* Borders (dark) */
+  --color-border: #332a28;
+  --color-border-strong: #453936;
+
+  /* Accent — wine, default sobe para contraste no escuro */
+  --color-accent: var(--color-accent-400);
+  --color-accent-fg: #161211;
+  --color-accent-soft: rgba(196, 104, 97, 0.16);
+  --color-accent-hover: var(--color-accent-300);
+
+  /* Neutrals — warm gray (dark) */
+  --color-neutral-50:  #f3efee;
+  --color-neutral-100: #ddd6d4;
+  --color-neutral-200: #b0a6a3;
+  --color-neutral-300: #837a77;
+  --color-neutral-400: #5a5350;
+  --color-neutral-500: #453936;
+  --color-neutral-600: #332a28;
+  --color-neutral-700: #29211f;
+  --color-neutral-800: #1f1917;
+  --color-neutral-900: #161211;
+  --color-neutral-950: #0c0908;
+
+  /* States (dark) */
+  --color-success: #63c79a;
+  --color-success-bg: rgba(99, 199, 154, 0.16);
+  --color-success-fg: #8fd6b4;
+  --color-warning: #d9a24e;
+  --color-warning-bg: rgba(217, 162, 78, 0.16);
+  --color-warning-fg: #e6bd80;
+  --color-error: #e0796a;
+  --color-error-bg: rgba(224, 121, 106, 0.16);
+  --color-error-fg: #eca093;
+  --color-info: #7aa6c8;
+  --color-info-bg: rgba(122, 166, 200, 0.16);
+  --color-info-fg: #a3c5db;
 
   /* shadcn-compat aliases */
   --background: var(--color-bg);
@@ -269,7 +445,7 @@
     color: var(--color-accent-50);
   }
 
-  /* Focus ring: Sage 500/400, 2px with offset */
+  /* Focus ring: accent 500/400, 2px with offset */
   :focus-visible {
     outline: 2px solid var(--color-accent-500);
     outline-offset: 2px;
@@ -279,7 +455,7 @@
     outline-color: var(--color-accent-400);
   }
 
-  /* Scrollbar — subtle greige */
+  /* Scrollbar — subtle neutral */
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--color-neutral-300) transparent;

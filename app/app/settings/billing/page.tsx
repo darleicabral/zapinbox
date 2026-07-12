@@ -15,8 +15,8 @@ export default async function BillingPage() {
         <h2 className="text-sm font-semibold">Em breve — Fase 2</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Billing entra na Fase 2 do roadmap. Para questões de pagamento, contate{" "}
-          <a className="underline" href="mailto:suporte@deskcomm.app">
-            suporte@deskcomm.app
+          <a className="underline" href="mailto:suporte@zapinbox.com.br">
+            suporte@zapinbox.com.br
           </a>
           .
         </p>

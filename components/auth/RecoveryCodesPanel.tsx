@@ -33,7 +33,7 @@ export function RecoveryCodesPanel({ codes, onAcknowledge }: RecoveryCodesPanelP
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "deskcommcrm-recovery-codes.txt";
+    a.download = "zapinbox-recovery-codes.txt";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
