@@ -245,6 +245,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     let inboundBody: string | null = null;
     let chatId: string | null = null;
     let waSessionName: string | null = null;
+    let contactName: string | null = null;
     const conversationIdForHandoff: string | null = run.conversation_id;
 
     if (run.is_dry_run) {
@@ -265,7 +266,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       const { data: convRaw } = await admin
         .from("conversations")
         .select(
-          "id, group_chat_id, is_group, contacts:contact_id(phone_number, wa_identity), channel_sessions:channel_session_id(waha_session_name)",
+          "id, group_chat_id, is_group, contacts:contact_id(phone_number, wa_identity, display_name, name), channel_sessions:channel_session_id(waha_session_name)",
         )
         .eq("id", run.conversation_id)
         .eq("organization_id", run.organization_id)
@@ -274,11 +275,17 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
         id: string;
         group_chat_id: string | null;
         is_group: boolean;
-        contacts: { phone_number: string | null; wa_identity: string | null } | null;
+        contacts: {
+          phone_number: string | null;
+          wa_identity: string | null;
+          display_name: string | null;
+          name: string | null;
+        } | null;
         channel_sessions: { waha_session_name: string } | null;
       } | null;
       if (conv) {
         waSessionName = conv.channel_sessions?.waha_session_name ?? null;
+        contactName = conv.contacts?.name?.trim() || conv.contacts?.display_name?.trim() || null;
         chatId = resolveWahaChatId({
           isGroup: conv.is_group,
           groupChatId: conv.group_chat_id,
@@ -418,6 +425,11 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       "--- CONTEXTO DA CONVERSA (uso interno; nunca mencione estes dados ao cliente) ---",
       `contact_id: ${run.contact_id ?? "desconhecido"}`,
       `conversation_id: ${run.conversation_id ?? "desconhecida"}`,
+      ...(contactName
+        ? [
+            `nome_do_cliente_no_whatsapp: ${contactName} (nome do perfil; use com naturalidade e inclua no title do lead)`,
+          ]
+        : []),
     ].join("\n");
 
     const result = await generateText({

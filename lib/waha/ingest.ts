@@ -44,6 +44,11 @@ export interface WahaPayload {
   _data?: {
     notifyName?: string;
     pushName?: string;
+    // NOWEB/Baileys: em chats @lid o número real vem no key (senderPn/participantPn).
+    key?: {
+      senderPn?: string;
+      participantPn?: string;
+    } & Record<string, unknown>;
   } & Record<string, unknown>;
 }
 
@@ -134,6 +139,18 @@ function notifyNameOf(p: WahaPayload): string | null {
 }
 
 /**
+ * Número real do contato quando o chat é @lid (número protegido): o NOWEB
+ * entrega o phone-number-jid em `_data.key.senderPn`/`participantPn`
+ * (ex.: "5531999999999@s.whatsapp.net"). Retorna E.164 ou null.
+ */
+function phoneHintOf(p: WahaPayload): string | null {
+  const raw = p._data?.key?.senderPn ?? p._data?.key?.participantPn ?? null;
+  if (!raw || typeof raw !== "string") return null;
+  const parsed = parseChatId(raw);
+  return parsed.kind === "phone" ? parsed.phone : null;
+}
+
+/**
  * Upsert atômico de contato pela identidade canônica. Retorna null se a
  * identidade for de grupo ou a RPC falhar.
  */
@@ -143,6 +160,7 @@ async function upsertContact(
   parsed: ChatIdentity,
   chatId: string,
   notifyName: string | null,
+  phoneHint: string | null = null,
 ): Promise<string | null> {
   if (parsed.kind === "group") return null;
   const { data, error } = await admin.rpc("fn_upsert_wa_contact" as never, {
@@ -157,7 +175,20 @@ async function upsertContact(
     console.error("[waha.ingest] fn_upsert_wa_contact failed", error.message);
     return null;
   }
-  return (data as string) ?? null;
+  const contactId = (data as string) ?? null;
+
+  // Chat @lid esconde o número, mas o payload traz o real em key.senderPn —
+  // preenche phone_number se ainda estiver vazio (não sobrescreve edição manual).
+  if (contactId && parsed.kind === "lid" && phoneHint) {
+    const { error: phoneErr } = await admin
+      .from("contacts")
+      .update({ phone_number: phoneHint })
+      .eq("id", contactId)
+      .is("phone_number", null);
+    if (phoneErr) console.error("[waha.ingest] phone backfill failed", phoneErr.message);
+  }
+
+  return contactId;
 }
 
 async function upsertConversation(
@@ -210,7 +241,14 @@ async function handleInbound(
   // WAHA emite eventos vazios p/ status/read-receipt/presence — não viram mensagem.
   if (!p.body && !p.mediaUrl && !p.hasMedia) return;
 
-  const contactId = await upsertContact(admin, session.organization_id, parsed, chatId, notifyNameOf(p));
+  const contactId = await upsertContact(
+    admin,
+    session.organization_id,
+    parsed,
+    chatId,
+    notifyNameOf(p),
+    phoneHintOf(p),
+  );
   if (!contactId) return;
   const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
   if (!conversationId) return;

@@ -41,6 +41,11 @@ export function KanbanCard({
   onSelect,
 }: KanbanCardProps) {
   const value = formatBRL(lead.value_cents, lead.currency);
+  const contactName = lead.contact?.display_name?.trim() || lead.contact?.name?.trim() || null;
+  const contactPhone = lead.contact?.phone_number ?? null;
+  // Evita repetir o nome quando o título do lead já começa com ele.
+  const showContactName =
+    contactName != null && !lead.title.toLowerCase().startsWith(contactName.toLowerCase());
 
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     if (!onSelect) return;
@@ -69,6 +74,14 @@ export function KanbanCard({
             </h3>
             <KanbanCardActions lead={lead} pipelineId={pipelineId} />
           </div>
+
+          {(showContactName || contactPhone) && (
+            <p className="mt-1 truncate text-xs text-text-muted">
+              {showContactName ? contactName : null}
+              {showContactName && contactPhone ? " · " : null}
+              {contactPhone ? <span className="tabular-nums">{contactPhone}</span> : null}
+            </p>
+          )}
 
           {value && (
             <p className="mt-2 text-xs font-medium tabular-nums text-text-muted">

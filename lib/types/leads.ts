@@ -32,4 +32,10 @@ export interface Lead {
   created_at: string;
   updated_at: string;
   created_by_user_id: string | null;
+  /** Embed opcional do contato (retornado pelo board do Kanban). */
+  contact?: {
+    display_name: string | null;
+    name: string | null;
+    phone_number: string | null;
+  } | null;
 }
