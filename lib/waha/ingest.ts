@@ -44,10 +44,13 @@ export interface WahaPayload {
   _data?: {
     notifyName?: string;
     pushName?: string;
-    // NOWEB/Baileys: em chats @lid o número real vem no key (senderPn/participantPn).
+    // NOWEB/Baileys: em chats @lid o número real vem no key — o nome do campo
+    // varia com a versão do Baileys (senderPn, remoteJidAlt, participantPn...).
     key?: {
       senderPn?: string;
       participantPn?: string;
+      remoteJidAlt?: string;
+      participantAlt?: string;
     } & Record<string, unknown>;
   } & Record<string, unknown>;
 }
@@ -144,10 +147,15 @@ function notifyNameOf(p: WahaPayload): string | null {
  * (ex.: "5531999999999@s.whatsapp.net"). Retorna E.164 ou null.
  */
 function phoneHintOf(p: WahaPayload): string | null {
-  const raw = p._data?.key?.senderPn ?? p._data?.key?.participantPn ?? null;
-  if (!raw || typeof raw !== "string") return null;
-  const parsed = parseChatId(raw);
-  return parsed.kind === "phone" ? parsed.phone : null;
+  const key = p._data?.key;
+  if (!key) return null;
+  const candidates = [key.senderPn, key.remoteJidAlt, key.participantPn, key.participantAlt];
+  for (const raw of candidates) {
+    if (!raw || typeof raw !== "string") continue;
+    const parsed = parseChatId(raw);
+    if (parsed.kind === "phone") return parsed.phone;
+  }
+  return null;
 }
 
 /**
@@ -272,7 +280,13 @@ async function handleInbound(
       sent_via: "external_device",
       sent_at: p.timestamp ? new Date(p.timestamp * 1000).toISOString() : now,
       delivered_at: now,
-      metadata: { raw_type: p.type, ack_name: p.ackName },
+      metadata: {
+        raw_type: p.type,
+        ack_name: p.ackName,
+        // Chats @lid: guarda o key cru pra diagnosticar de onde vem o número
+        // real nesta versão do Baileys/WAHA (senderPn vs remoteJidAlt etc.).
+        ...(parsed.kind === "lid" && p._data?.key ? { wa_key: p._data.key } : {}),
+      },
     })
     .select("id")
     .maybeSingle();

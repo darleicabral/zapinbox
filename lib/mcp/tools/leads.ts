@@ -126,12 +126,53 @@ const createInputShape = {
 export const crmCreateLead: McpToolDefinition<typeof createInputShape> = {
   name: "crm_create_lead",
   description:
-    "Cria um lead no pipeline informado. Use após qualificar um contato. Position é gerenciado pelo servidor.",
+    "Cria um lead no pipeline informado (ou atualiza o lead aberto do contato, se já existir — nunca duplica). Use após qualificar um contato. Position é gerenciado pelo servidor.",
   inputSchema: createInputShape,
   category: "write",
   requiresRole: "manager",
   requiresScope: "mcp:write",
   handler: async (input, ctx) => {
+    // Regra "1 lead aberto por contato": as tools do C2/C3 (save_lead_profile /
+    // link_lead_product) criam o lead cedo, na 1ª etapa. Quando o handoff manda
+    // "criar" com o stage do motivo (ex.: Visita agendada), atualizamos esse
+    // lead — título/valor/descrição + move de stage — em vez de duplicar.
+    if (input.contact_id) {
+      const { data: existing } = await ctx.supabase
+        .from("crm_leads")
+        .select("id, stage_id")
+        .eq("organization_id", ctx.organizationId)
+        .eq("pipeline_id", input.pipeline_id)
+        .eq("contact_id", input.contact_id)
+        .eq("status", "open")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        const patch = updateLeadSchema.parse({
+          title: input.title,
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.value_cents !== undefined ? { value_cents: input.value_cents } : {}),
+          ...(input.currency !== undefined ? { currency: input.currency } : {}),
+          ...(input.expected_close_date !== undefined
+            ? { expected_close_date: input.expected_close_date }
+            : {}),
+        });
+        const handlerCtx = {
+          organization_id: ctx.organizationId,
+          actor: ctx.actor,
+          requestId: ctx.requestId,
+        };
+        let lead = await updateLeadHandler(ctx.supabase, handlerCtx, existing.id, patch);
+        if (existing.stage_id !== input.stage_id) {
+          lead = await moveLeadHandler(ctx.supabase, handlerCtx, existing.id, {
+            to_stage_id: input.stage_id,
+          });
+        }
+        return { lead, updated_existing: true };
+      }
+    }
+
     const parsed = createLeadSchema.parse({
       pipeline_id: input.pipeline_id,
       stage_id: input.stage_id,
