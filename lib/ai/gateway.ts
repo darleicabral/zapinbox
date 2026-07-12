@@ -11,6 +11,10 @@
  * Only model strings via the gateway-shaped `ai` SDK calls.
  */
 
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import type { EmbeddingModel, LanguageModel } from "ai";
+
 import { env } from "@/lib/env";
 
 export type ModelId =
@@ -68,18 +72,14 @@ export function gatewayConfig(): { apiKey: string; baseURL?: string } | null {
  * provider module." — so we build the direct provider module from the
  * per-provider API key, same pattern as lib/ai/runtime/agent.ts#buildModel.
  */
-export function resolveLanguageModel(modelId: ModelId): Parameters<typeof import("ai").generateText>[0]["model"] {
+export function resolveLanguageModel(modelId: ModelId): LanguageModel {
   if (env.AI_GATEWAY_API_KEY) return modelId;
   const [provider, ...rest] = String(modelId).split("/");
   const bareModel = rest.join("/");
   if (provider === "anthropic" && env.ANTHROPIC_API_KEY && bareModel) {
-    // Lazy require keeps the provider module out of edge bundles that only
-    // need the string path.
-    const { createAnthropic } = require("@ai-sdk/anthropic") as typeof import("@ai-sdk/anthropic");
     return createAnthropic({ apiKey: env.ANTHROPIC_API_KEY })(bareModel);
   }
   if (provider === "openai" && env.OPENAI_API_KEY && bareModel) {
-    const { createOpenAI } = require("@ai-sdk/openai") as typeof import("@ai-sdk/openai");
     return createOpenAI({ apiKey: env.OPENAI_API_KEY })(bareModel);
   }
   // No key for the provider — return the string; the call will fail with the
@@ -88,12 +88,11 @@ export function resolveLanguageModel(modelId: ModelId): Parameters<typeof import
 }
 
 /** Embedding counterpart of resolveLanguageModel (OpenAI-only capability). */
-export function resolveEmbeddingModel(modelId: ModelId): Parameters<typeof import("ai").embed>[0]["model"] {
+export function resolveEmbeddingModel(modelId: ModelId): EmbeddingModel {
   if (env.AI_GATEWAY_API_KEY) return modelId;
   const [provider, ...rest] = String(modelId).split("/");
   const bareModel = rest.join("/");
   if (provider === "openai" && env.OPENAI_API_KEY && bareModel) {
-    const { createOpenAI } = require("@ai-sdk/openai") as typeof import("@ai-sdk/openai");
     return createOpenAI({ apiKey: env.OPENAI_API_KEY }).textEmbeddingModel(bareModel);
   }
   return modelId;
