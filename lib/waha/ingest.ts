@@ -11,7 +11,10 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { after } from "next/server";
+
 import { audit } from "@/lib/audit";
+import { dispatchAgents } from "@/lib/ai/dispatcher";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ackToStatus } from "@/lib/types/messaging";
 
@@ -267,11 +270,15 @@ async function handleInbound(
     metadata: { conversation_id: conversationId, type: p.type, external_id: p.id },
   });
 
-  // Dispara o agent-dispatcher worker (fire-and-forget; falha não quebra o 200).
+  // Enfileira o dispatch e drena o dispatcher na sequência via after() — roda
+  // depois do 200 pro WAHA, então não atrasa o webhook. Sem isso a resposta do
+  // bot espera o próximo tick do cron (minutos). O cron continua como rede de
+  // segurança: se o drain inline falhar, o evento fica `pending` e o próximo
+  // tick agendado o processa.
   if (insertedMessage?.id) {
     const inboundMessageId = insertedMessage.id;
-    admin
-      .rpc("emit_event" as never, {
+    after(async () => {
+      const { error } = await admin.rpc("emit_event" as never, {
         p_event_type: "ai_agent.dispatch_requested",
         p_entity_kind: "message",
         p_entity_id: inboundMessageId,
@@ -284,10 +291,20 @@ async function handleInbound(
         },
         p_metadata: { source: "waha_webhook", request_id: requestId },
         p_organization_id: session.organization_id,
-      } as never)
-      .then(({ error }) => {
-        if (error) console.error("[waha.ingest] emit dispatch_requested failed", error.message);
-      });
+      } as never);
+      if (error) {
+        console.error("[waha.ingest] emit dispatch_requested failed", error.message);
+        return;
+      }
+      try {
+        await dispatchAgents();
+      } catch (err) {
+        console.error(
+          "[waha.ingest] inline agent dispatch failed",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    });
   }
 }
 
