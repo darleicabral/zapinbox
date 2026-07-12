@@ -37,7 +37,7 @@ const inputShape = {
     .describe("Resumo curto do que o cliente procura (vira a descrição do lead)."),
 };
 
-async function resolveOrCreateLead(
+export async function resolveOrCreateLead(
   supabase: SupabaseClient,
   orgId: string,
   contactId: string,

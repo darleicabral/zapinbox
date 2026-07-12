@@ -27,9 +27,11 @@ export const TOOL_CATALOG: ReadonlyArray<McpToolCatalogEntry> = [
   { name: "crm_get_lead", category: "read", description: "Detalhe de lead" },
   { name: "crm_list_pipelines", category: "read", description: "Lista pipelines da org" },
   { name: "crm_search_knowledge", category: "read", description: "Busca semântica na base de conhecimento (catálogo/imóveis/produtos/políticas/FAQ)" },
+  { name: "crm_search_catalog", category: "read", description: "Busca no catálogo estruturado (crm_products) e devolve itens com ID para vincular ao lead" },
   // write
   { name: "crm_create_lead", category: "write", description: "Cria um lead" },
   { name: "crm_save_lead_profile", category: "write", description: "Grava dados de qualificação (perfil) no lead; cria o lead se não existir" },
+  { name: "crm_link_lead_product", category: "write", description: "Anexa imóveis/produtos do catálogo ao lead (interesse estruturado); cria o lead se não existir" },
   { name: "crm_update_lead", category: "write", description: "Atualiza campos de um lead" },
   { name: "crm_move_lead_stage", category: "write", description: "Move lead para outro stage" },
   { name: "crm_send_whatsapp_message", category: "write", description: "Envia mensagem WhatsApp" },

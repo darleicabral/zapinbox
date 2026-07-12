@@ -58,6 +58,36 @@ interface ActivityRow {
   payload: Record<string, unknown> | null;
 }
 
+interface LinkedProduct {
+  id: string;
+  title: string;
+  price_cents: number | null;
+  currency: string | null;
+  location: string | null;
+  url: string | null;
+  kind: string | null;
+}
+
+interface LeadProductRow {
+  id: string;
+  relation: string;
+  note: string | null;
+  // Supabase devolve o embed FK como objeto; tipamos como união por segurança.
+  product: LinkedProduct | LinkedProduct[] | null;
+}
+
+const RELATION_LABEL: Record<string, string> = {
+  interest: "Interesse",
+  proposal: "Proposta",
+  visit: "Visita",
+  discarded: "Descartado",
+};
+
+/** Normaliza o embed do PostgREST (objeto em FK many-to-one, array em fallback). */
+function productOf(row: LeadProductRow): LinkedProduct | null {
+  return Array.isArray(row.product) ? (row.product[0] ?? null) : row.product;
+}
+
 function formatMoney(cents: number | null, currency: string | null): string {
   if (cents == null) return "—";
   const cur = currency ?? "BRL";
@@ -81,6 +111,7 @@ export function CRMSidePanel({ conversation }: Props) {
   const [leads, setLeads] = useState<LeadRow[] | null>(null);
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
   const [activities, setActivities] = useState<ActivityRow[] | null>(null);
+  const [leadProducts, setLeadProducts] = useState<LeadProductRow[] | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -88,6 +119,7 @@ export function CRMSidePanel({ conversation }: Props) {
       setLeads(null);
       setOrders(null);
       setActivities(null);
+      setLeadProducts(null);
       return;
     }
     const supabase = createClient();
@@ -116,12 +148,24 @@ export function CRMSidePanel({ conversation }: Props) {
         .order("performed_at", { ascending: false })
         .limit(5);
 
-      const [lr, or, ar] = await Promise.all([leadsP, ordersP, actsP]);
+      // Imóveis/produtos vinculados aos leads do contato (C3). O join !inner em
+      // crm_leads permite filtrar por contact_id sem uma 2ª rodada de queries.
+      const lpP = supabase
+        .from("crm_lead_products")
+        .select(
+          "id, relation, note, product:crm_products(id, title, price_cents, currency, location, url, kind), lead:crm_leads!inner(contact_id)",
+        )
+        .eq("lead.contact_id", contactId)
+        .order("created_at", { ascending: false })
+        .limit(6);
+
+      const [lr, or, ar, lp] = await Promise.all([leadsP, ordersP, actsP, lpP]);
 
       if (cancelled) return;
       setLeads(lr.error ? [] : ((lr.data ?? []) as LeadRow[]));
       setOrders(or.error ? [] : ((or.data ?? []) as OrderRow[]));
       setActivities(ar.error ? [] : ((ar.data ?? []) as ActivityRow[]));
+      setLeadProducts(lp.error ? [] : ((lp.data ?? []) as unknown as LeadProductRow[]));
       setLoading(false);
     }
 
@@ -225,6 +269,55 @@ export function CRMSidePanel({ conversation }: Props) {
                 </dl>
               )}
             </Card>
+          </section>
+        </>
+      )}
+
+      {leadProducts && leadProducts.length > 0 && (
+        <>
+          <Separator />
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {leadProducts.every((lp) => (productOf(lp)?.kind ?? "imovel") === "imovel")
+                ? "Imóveis de interesse"
+                : "Produtos de interesse"}
+            </h3>
+            <ul className="mt-2 space-y-1.5">
+              {leadProducts.map((lp) => {
+                const p = productOf(lp);
+                if (!p) return null;
+                return (
+                  <li key={lp.id} className="rounded-md border border-border p-2 text-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">
+                          {p.url ? (
+                            <a
+                              href={p.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hover:underline"
+                            >
+                              {p.title}
+                            </a>
+                          ) : (
+                            p.title
+                          )}
+                        </div>
+                        <div className="text-muted-foreground">
+                          {p.location ? `${p.location} · ` : ""}
+                          {formatMoney(p.price_cents, p.currency)}
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px]">
+                        {RELATION_LABEL[lp.relation] ?? lp.relation}
+                      </Badge>
+                    </div>
+                    {lp.note && <p className="mt-1 text-muted-foreground">{lp.note}</p>}
+                  </li>
+                );
+              })}
+            </ul>
           </section>
         </>
       )}
