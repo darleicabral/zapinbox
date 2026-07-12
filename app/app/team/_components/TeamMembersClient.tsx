@@ -5,8 +5,11 @@ import { toast } from "sonner";
 import { useTeamMembers, type TeamMember } from "@/hooks/team/useTeamMembers";
 import { useChangeRole } from "@/hooks/team/useChangeRole";
 import { useRevokeMember } from "@/hooks/team/useRevokeMember";
+import { useSetNotifyPhone } from "@/hooks/team/useSetNotifyPhone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -48,10 +51,13 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
   const { data, isLoading, isError } = useTeamMembers();
   const changeRole = useChangeRole();
   const revoke = useRevokeMember();
+  const setNotifyPhone = useSetNotifyPhone();
 
   const [roleDialog, setRoleDialog] = useState<TeamMember | null>(null);
   const [revokeDialog, setRevokeDialog] = useState<TeamMember | null>(null);
   const [pendingRole, setPendingRole] = useState<Role>("agent");
+  const [phoneDialog, setPhoneDialog] = useState<TeamMember | null>(null);
+  const [pendingPhone, setPendingPhone] = useState("");
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">Carregando…</p>;
@@ -72,6 +78,7 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
             <TableRow>
               <TableHead>Membro</TableHead>
               <TableHead>Role</TableHead>
+              <TableHead>WhatsApp (avisos)</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Última atividade</TableHead>
               {canManage ? <TableHead className="w-[80px]" /> : null}
@@ -89,6 +96,13 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
                 <TableCell>
                   <Badge variant="secondary">{m.role}</Badge>
                 </TableCell>
+                <TableCell className="text-sm">
+                  {m.notify_whatsapp_e164 ? (
+                    <span className="tabular-nums">{m.notify_whatsapp_e164}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
                 <TableCell>
                   {m.accepted_at ? (
                     <Badge variant="default">Aceito</Badge>
@@ -103,33 +117,41 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
                 </TableCell>
                 {canManage ? (
                   <TableCell>
-                    {m.user_id !== currentUserId ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="Ações">
-                            <DotsThree size={20} />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setPendingRole(m.role as Role);
-                              setRoleDialog(m);
-                            }}
-                          >
-                            Mudar role
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setRevokeDialog(m)}
-                          >
-                            Revogar acesso
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">você</span>
-                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" aria-label="Ações">
+                          <DotsThree size={20} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setPendingPhone(m.notify_whatsapp_e164 ?? "");
+                            setPhoneDialog(m);
+                          }}
+                        >
+                          Definir WhatsApp de avisos
+                        </DropdownMenuItem>
+                        {m.user_id !== currentUserId ? (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setPendingRole(m.role as Role);
+                                setRoleDialog(m);
+                              }}
+                            >
+                              Mudar role
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setRevokeDialog(m)}
+                            >
+                              Revogar acesso
+                            </DropdownMenuItem>
+                          </>
+                        ) : null}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 ) : null}
               </TableRow>
@@ -209,6 +231,57 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
               }}
             >
               Revogar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!phoneDialog} onOpenChange={(o) => !o && setPhoneDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>WhatsApp de avisos</DialogTitle>
+            <DialogDescription>
+              Número que recebe o aviso quando um lead é atribuído a{" "}
+              {phoneDialog?.full_name ?? phoneDialog?.email ?? "este membro"}. Deixe vazio para
+              desativar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="notify-phone">Número (formato internacional)</Label>
+            <Input
+              id="notify-phone"
+              placeholder="+5531999998888"
+              value={pendingPhone}
+              onChange={(e) => setPendingPhone(e.target.value)}
+              inputMode="tel"
+              autoComplete="tel"
+            />
+            <p className="text-xs text-muted-foreground">
+              Comece com + e o código do país. Ex.: +55 (Brasil) 31 (DDD) e o número.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPhoneDialog(null)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={setNotifyPhone.isPending}
+              onClick={async () => {
+                if (!phoneDialog) return;
+                const trimmed = pendingPhone.trim();
+                try {
+                  await setNotifyPhone.mutateAsync({
+                    userId: phoneDialog.user_id,
+                    phone: trimmed === "" ? null : trimmed,
+                  });
+                  toast.success(trimmed === "" ? "WhatsApp removido." : "WhatsApp salvo.");
+                  setPhoneDialog(null);
+                } catch {
+                  /* showApiError already triggered */
+                }
+              }}
+            >
+              Salvar
             </Button>
           </DialogFooter>
         </DialogContent>

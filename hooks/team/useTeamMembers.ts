@@ -12,6 +12,7 @@ export interface TeamMember {
   email: string | null;
   full_name: string | null;
   last_sign_in_at: string | null;
+  notify_whatsapp_e164: string | null;
 }
 
 export function useTeamMembers() {

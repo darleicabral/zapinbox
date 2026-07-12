@@ -16,6 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { triggerHandoff } from "@/lib/ai/handoff/orchestrator";
 import { loadAttendanceSettings, pickNextAssignee } from "@/lib/attendance/rotation";
+import { notifyAssigneeNewLead } from "@/lib/attendance/notify";
 import type { McpToolDefinition } from "../types";
 
 const inputShape = {
@@ -139,6 +140,14 @@ export const crmRequestHumanHandoff: McpToolDefinition<typeof inputShape> = {
         if (assignErr) {
           console.error("[mcp.handoff] assignment failed", assignErr.message);
           assignedUserId = null;
+        } else {
+          // Avisa o corretor por WhatsApp (mobile-first). Fire-and-forget.
+          void notifyAssigneeNewLead(ctx.supabase, {
+            organizationId: ctx.organizationId,
+            conversationId: input.conversation_id,
+            assigneeUserId: assignedUserId,
+            kind: "assigned",
+          });
         }
       }
     }

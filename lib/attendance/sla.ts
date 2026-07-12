@@ -19,6 +19,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { notifyAssigneeNewLead } from "./notify";
 import {
   loadAttendanceSettings,
   pickFallbackManager,
@@ -130,6 +131,12 @@ async function sweepOrg(
         manager_user_id: manager,
         passes,
       });
+      void notifyAssigneeNewLead(admin, {
+        organizationId: orgId,
+        conversationId: conv.id,
+        assigneeUserId: manager,
+        kind: "escalated",
+      });
       summary.escalated_to_manager += 1;
       continue;
     }
@@ -155,6 +162,12 @@ async function sweepOrg(
       to_user_id: next,
       from_user_id: conv.assigned_to_user_id,
       pass: passes + 1,
+    });
+    void notifyAssigneeNewLead(admin, {
+      organizationId: orgId,
+      conversationId: conv.id,
+      assigneeUserId: next,
+      kind: "reassigned",
     });
     summary.reassigned += 1;
   }
