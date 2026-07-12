@@ -114,7 +114,7 @@ export const agentPatchSchema = z
     description: z.string().max(500).nullable().optional(),
     is_active: z.boolean().optional(),
     model: agentModelSchema.optional(),
-    system_prompt: z.string().min(20).max(32000).optional(),
+    system_prompt: z.string().min(20).max(40000).optional(),
     config: agentConfigSchema.partial().optional(),
     guardrails: guardrailsSchema.optional(),
   })
@@ -129,7 +129,7 @@ export const agentCreateSchema = z
     system_prompt: z
       .string()
       .min(20)
-      .max(32000)
+      .max(40000)
       .default(
         "Você é um assistente da loja. Responda com clareza e cordialidade, em português do Brasil. Use a base de conhecimento abaixo quando relevante.",
       ),

@@ -593,7 +593,7 @@ export function AgentForm(props: Props) {
               onChange={(e) => patch({ system_prompt: e.target.value })}
               disabled={disabled}
               rows={12}
-              maxLength={32000}
+              maxLength={40000}
               spellCheck={false}
               className="font-mono text-xs"
               aria-invalid={!!validation.system_prompt}

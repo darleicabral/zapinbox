@@ -43,7 +43,7 @@ export type TriggerConfig = z.infer<typeof triggerConfigSchema>;
 
 const versionShapeSchema = z
   .object({
-    system_prompt: z.string().trim().min(10).max(32000),
+    system_prompt: z.string().trim().min(10).max(40000),
     provider: z.enum(PROVIDERS),
     model: z.string().trim().min(1).max(120),
     credential_id: UUID,
