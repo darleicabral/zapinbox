@@ -13,6 +13,7 @@ import {
   ImpersonateBanner,
   type ImpersonatingInfo,
 } from "@/components/app/ImpersonateBanner";
+import { PresenceHeartbeat } from "@/components/app/PresenceHeartbeat";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await loadAuthUser();
@@ -66,6 +67,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AuthProvider user={user} activeOrg={activeOrg}>
+      <PresenceHeartbeat organizationId={activeOrg?.orgId ?? null} />
       <ImpersonateBanner impersonating={impersonating} />
       {mustEnroll ? <MfaEnrollGate /> : <AppShell sidebarCollapsed={collapsed}>{children}</AppShell>}
     </AuthProvider>

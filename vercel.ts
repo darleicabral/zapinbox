@@ -36,6 +36,11 @@ const config: VercelConfig = {
     //   * * * * * curl -s -X POST https://crm.zapinbox.com.br/api/v1/cron/event-log-drain \
     //       -H "Authorization: Bearer $INTERNAL_SECRET"
     { path: "/api/v1/cron/event-log-drain", schedule: "35 3 * * *" },
+    // [ZapInbox] C4 — SLA de atendimento (repasse por rodízio + alerta gestor).
+    // Idem: fallback diário; tick por-minuto real no crontab da VPS:
+    //   * * * * * curl -s -X POST https://crm.zapinbox.com.br/api/v1/cron/attendance-sla \
+    //       -H "Authorization: Bearer $INTERNAL_SECRET"
+    { path: "/api/v1/cron/attendance-sla", schedule: "40 3 * * *" },
   ],
   functions: {
     // EPIC-13 S-13.08: ToolLoopAgent runtime can issue multiple tool calls per

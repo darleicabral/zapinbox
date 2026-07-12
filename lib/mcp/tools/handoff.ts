@@ -15,6 +15,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { triggerHandoff } from "@/lib/ai/handoff/orchestrator";
+import { loadAttendanceSettings, pickNextAssignee } from "@/lib/attendance/rotation";
 import type { McpToolDefinition } from "../types";
 
 const inputShape = {
@@ -34,7 +35,13 @@ const ELIGIBLE_ROLES_BY_MIN: Record<string, string[]> = {
   admin: ["admin"],
 };
 
-async function pickRoundRobinAssignee(
+/**
+ * Fallback quando o rodízio C4 está desligado (attendance_settings.enabled=false):
+ * atribuição simples, DETERMINÍSTICA (primeiro elegível por user_id), sem sorteio
+ * e sem exigir presença — só pra a conversa não ficar órfã. O rodízio real
+ * (online + ponteiro) vive em lib/attendance/rotation.ts e é usado quando C4 liga.
+ */
+async function pickFirstEligible(
   supabase: SupabaseClient,
   organizationId: string,
   minRole: string,
@@ -45,12 +52,11 @@ async function pickRoundRobinAssignee(
     .select("user_id, role")
     .eq("organization_id", organizationId)
     .is("revoked_at", null)
-    .in("role", eligibleRoles);
+    .in("role", eligibleRoles)
+    .order("user_id", { ascending: true });
 
   if (error || !data || data.length === 0) return null;
-  const idx = Math.floor(Math.random() * data.length);
-  const picked = data[idx] as { user_id: string };
-  return picked?.user_id ?? null;
+  return (data[0] as { user_id: string }).user_id;
 }
 
 export const crmRequestHumanHandoff: McpToolDefinition<typeof inputShape> = {
@@ -102,18 +108,31 @@ export const crmRequestHumanHandoff: McpToolDefinition<typeof inputShape> = {
     });
 
     let assignedUserId: string | null = null;
+    let rotationActive = false;
     if (result.triggered) {
-      assignedUserId = await pickRoundRobinAssignee(
-        ctx.supabase,
-        ctx.organizationId,
-        input.suggested_assignee_role ?? "agent",
-      );
+      // C4: rodízio real (online + ponteiro) quando o tenant habilitou o
+      // atendimento por rodízio; senão, atribuição simples pra não deixar órfã.
+      const settings = await loadAttendanceSettings(ctx.supabase, ctx.organizationId);
+      if (settings?.enabled) {
+        rotationActive = true;
+        // Pode voltar null (ninguém online) — decisão aprovada: fila sem dono,
+        // bot já silenciado; o worker de SLA cuida do escalonamento.
+        assignedUserId = await pickNextAssignee(ctx.supabase, ctx.organizationId);
+      } else {
+        assignedUserId = await pickFirstEligible(
+          ctx.supabase,
+          ctx.organizationId,
+          input.suggested_assignee_role ?? "agent",
+        );
+      }
       if (assignedUserId) {
         const { error: assignErr } = await ctx.supabase
           .from("conversations")
           .update({
             assigned_to_user_id: assignedUserId,
             assigned_at: new Date().toISOString(),
+            // Etapa 1 do SLA começa a contar deste 1º repasse (só relevante com C4 on).
+            ...(rotationActive ? { assignment_passes: 1 } : {}),
           })
           .eq("id", input.conversation_id)
           .eq("organization_id", ctx.organizationId);
@@ -128,6 +147,7 @@ export const crmRequestHumanHandoff: McpToolDefinition<typeof inputShape> = {
       handoff_recorded: result.triggered,
       conversation_id: input.conversation_id,
       assigned_to_user_id: assignedUserId,
+      rotation_active: rotationActive,
       idempotent: !result.triggered && result.reason === "idempotent_5s",
       next_action:
         "Avise o cliente em tom acolhedor que um atendente humano vai assumir em instantes.",
