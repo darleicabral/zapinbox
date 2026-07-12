@@ -7,9 +7,11 @@
  * identical because we reuse `auditMcpToolCall` and `ensureRole/ensureScope`.
  *
  * The handoff tool (`crm_request_human_handoff`) is special: when the agent
- * calls it, the runtime needs to know mid-flight so it can short-circuit the
- * loop. We wrap that tool's execute to publish a one-shot signal via
- * `runtimeHandoffSignal`, which `runAgent` checks after each step.
+ * calls it, the runtime needs to know so it can finalize the run as handoff
+ * (após o loop — o modelo ainda termina de falar e o texto final é enviado ao
+ * cliente antes do silenciamento). We wrap that tool's execute to publish a
+ * one-shot signal via `runtimeHandoffSignal`, which `runAgent` checks after
+ * the loop completes.
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";

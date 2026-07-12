@@ -326,13 +326,17 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     });
     ephemeralTokenId = ephemeral.id;
 
+    // Role "manager": a fronteira de autorização do runtime é o `tool_ids` da
+    // versão publicada (o admin escolhe as tools no publish). Sem isso, tools
+    // de escrita (crm_create_lead etc.) devolvem 403 mesmo whitelistadas.
+    // ensureRole continua protegendo o servidor MCP externo (tokens humanos).
     const auth: McpAuthResult = {
       organizationId: run.organization_id,
-      role: "agent",
+      role: "manager",
       actor: {
         type: "ai_agent",
         id: run.id,
-        role: "agent",
+        role: "manager",
         api_token_id: ephemeral.id,
       },
       apiTokenId: ephemeral.id,
@@ -341,12 +345,12 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
         "mcp:write",
         "actor:ai_agent",
         `agent_run:${run.id}`,
-        "role:agent",
+        "role:manager",
       ],
     };
     const ctx: McpContext = {
       organizationId: run.organization_id,
-      role: "agent",
+      role: "manager",
       actor: auth.actor,
       apiTokenId: ephemeral.id,
       requestId: run.id,
@@ -379,10 +383,9 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     // 10) Cost/token guard. Fires BEFORE the next step is taken.
     let abortReason: string | null = null;
     const budgetGuard: StopCondition<ToolSet> = async ({ steps }) => {
-      if (handoffSignal.triggered) {
-        abortReason = "handoff_tool";
-        return true;
-      }
+      // Handoff NÃO corta o loop: o modelo precisa terminar de falar depois de
+      // chamar a tool (as mensagens-gatilho "Só um momento" são o contrato com
+      // o cliente). O sinal é tratado no passo 13, após o loop.
       const usage = totalUsage(steps as Array<{ usage?: { inputTokens?: number; outputTokens?: number } }>);
       const totalTokens = usage.inputTokens + usage.outputTokens;
       if (totalTokens > version.token_budget) {
@@ -408,9 +411,18 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       { role: "user" as const, content: inboundBody },
     ];
 
+    // Contexto da conversa anexado ao prompt: as tools de escrita (ex.
+    // crm_create_lead) recebem UUIDs, e o modelo não tem como adivinhá-los.
+    const runtimeContext = [
+      "",
+      "--- CONTEXTO DA CONVERSA (uso interno; nunca mencione estes dados ao cliente) ---",
+      `contact_id: ${run.contact_id ?? "desconhecido"}`,
+      `conversation_id: ${run.conversation_id ?? "desconhecida"}`,
+    ].join("\n");
+
     const result = await generateText({
       model,
-      system: version.system_prompt,
+      system: version.system_prompt + runtimeContext,
       messages,
       tools,
       stopWhen: [stepCountIs(version.max_steps), budgetGuard],
@@ -427,8 +439,21 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     const latencyMs = Date.now() - startedAt;
     const trace = serializeSteps(result.steps as never);
 
-    // 13) Handoff via tool call?
+    // 13) Handoff via tool call? Envia o texto final ao cliente ANTES de
+    // silenciar o bot — sem isso a tool de handoff deixaria o cliente sem
+    // resposta nenhuma (a conversa é silenciada com bot_silenced_until=inf).
     if (handoffSignal.triggered) {
+      const farewell = (result.text ?? "").trim();
+      if (!run.is_dry_run && farewell && run.conversation_id) {
+        await sendFinalResponse({
+          supabase: admin,
+          organizationId: run.organization_id,
+          runId: run.id,
+          conversationId: run.conversation_id,
+          text: farewell,
+          requestId: run.id,
+        });
+      }
       await finalizeHandoff({
         runId: run.id,
         organizationId: run.organization_id,
