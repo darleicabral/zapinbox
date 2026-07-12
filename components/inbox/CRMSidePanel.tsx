@@ -23,6 +23,22 @@ interface LeadRow {
   value_cents: number | null;
   currency: string | null;
   updated_at: string;
+  description: string | null;
+  custom_fields: Record<string, unknown> | null;
+}
+
+/** Rótulo legível a partir da chave snake_case do custom_fields. */
+function humanizeKey(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatFieldValue(value: unknown): string {
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "boolean") return value ? "Sim" : "Não";
+  if (value == null) return "—";
+  return String(value);
 }
 
 interface OrderRow {
@@ -81,7 +97,7 @@ export function CRMSidePanel({ conversation }: Props) {
     async function load() {
       const leadsP = supabase
         .from("crm_leads")
-        .select("id, title, status, value_cents, currency, updated_at")
+        .select("id, title, status, value_cents, currency, updated_at, description, custom_fields")
         .eq("contact_id", contactId)
         .order("updated_at", { ascending: false })
         .limit(3);
@@ -126,6 +142,19 @@ export function CRMSidePanel({ conversation }: Props) {
     () => loading || (leads === null && orders === null && activities === null),
     [loading, leads, orders, activities],
   );
+
+  // Perfil qualificado (custom_fields) do lead aberto mais recente — capturado
+  // pela IA via crm_save_lead_profile (C2).
+  const profile = useMemo(() => {
+    const withFields = (leads ?? []).find(
+      (l) => l.custom_fields && Object.keys(l.custom_fields).length > 0,
+    );
+    if (!withFields?.custom_fields) return null;
+    const entries = Object.entries(withFields.custom_fields).filter(
+      ([, v]) => v != null && !(Array.isArray(v) && v.length === 0) && String(v).trim() !== "",
+    );
+    return { description: withFields.description, entries };
+  }, [leads]);
 
   if (!conversation) {
     return (
@@ -173,6 +202,32 @@ export function CRMSidePanel({ conversation }: Props) {
           </div>
         </Card>
       </section>
+
+      {profile && (profile.entries.length > 0 || profile.description) && (
+        <>
+          <Separator />
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Perfil do lead <span className="text-[10px] normal-case">· capturado pela IA</span>
+            </h3>
+            <Card className="mt-2 space-y-2 p-3 text-xs">
+              {profile.description && (
+                <p className="text-muted-foreground">{profile.description}</p>
+              )}
+              {profile.entries.length > 0 && (
+                <dl className="grid grid-cols-[minmax(0,auto)_1fr] gap-x-3 gap-y-1">
+                  {profile.entries.map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt className="truncate text-muted-foreground">{humanizeKey(k)}</dt>
+                      <dd className="font-medium">{formatFieldValue(v)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </Card>
+          </section>
+        </>
+      )}
 
       <Separator />
 
