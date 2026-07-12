@@ -19,6 +19,11 @@ export const PUBLIC_PATHS: RegExp[] = [
   /^\/favicon\.ico$/,
   /^\/team\/accept-invite\/.+$/,
   /^\/account-suspended$/,
+  // PWA: precisam ser públicos (o install falha se o manifest cair no login).
+  // `.webmanifest` e `.html` não estão na exclusão de extensões do matcher.
+  /^\/manifest\.webmanifest$/,
+  /^\/sw\.js$/,
+  /^\/offline\.html$/,
 ];
 
 export function isPublicPath(pathname: string): boolean {
