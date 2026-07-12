@@ -22,6 +22,7 @@ import {
   crmMoveLeadStage,
 } from "./leads";
 import { crmListPipelines } from "./pipelines";
+import { crmSearchKnowledge } from "./knowledge";
 import { crmSendWhatsappMessage } from "./messages";
 import { crmRequestHumanHandoff } from "./handoff";
 
@@ -40,6 +41,7 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListLeads,
   crmGetLead,
   crmListPipelines,
+  crmSearchKnowledge,
   // write
   crmCreateLead,
   crmUpdateLead,

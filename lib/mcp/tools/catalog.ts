@@ -26,6 +26,7 @@ export const TOOL_CATALOG: ReadonlyArray<McpToolCatalogEntry> = [
   { name: "crm_list_leads", category: "read", description: "Lista leads de um pipeline" },
   { name: "crm_get_lead", category: "read", description: "Detalhe de lead" },
   { name: "crm_list_pipelines", category: "read", description: "Lista pipelines da org" },
+  { name: "crm_search_knowledge", category: "read", description: "Busca semântica na base de conhecimento (catálogo/imóveis/produtos/políticas/FAQ)" },
   // write
   { name: "crm_create_lead", category: "write", description: "Cria um lead" },
   { name: "crm_update_lead", category: "write", description: "Atualiza campos de um lead" },
