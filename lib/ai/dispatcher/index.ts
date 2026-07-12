@@ -50,6 +50,7 @@ export type DispatchOutcome =
   | "rate_limited"
   | "skipped_invalid_payload"
   | "skipped_missing_message"
+  | "skipped_silenced"
   | "error";
 
 export interface DispatchSummary {
@@ -93,6 +94,7 @@ const EMPTY_OUTCOMES = (): Record<DispatchOutcome, number> => ({
   rate_limited: 0,
   skipped_invalid_payload: 0,
   skipped_missing_message: 0,
+  skipped_silenced: 0,
   error: 0,
 });
 
@@ -206,7 +208,7 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
 
   const { data: convRow } = await admin
     .from("conversations")
-    .select("id, organization_id, is_group, group_chat_id")
+    .select("id, organization_id, is_group, group_chat_id, bot_silenced_until")
     .eq("id", conversationId)
     .eq("organization_id", orgId)
     .maybeSingle();
@@ -214,6 +216,19 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
   if (!convRow) {
     await markEventProcessed(event, "skipped_missing_message", { reason: "conv_missing" });
     return "skipped_missing_message";
+  }
+
+  // Pós-handoff o bot fica mudo: bot_silenced_until='infinity' (EPIC-06/IA-06).
+  // Sem este check o dispatcher responderia por cima do humano que assumiu.
+  // Atenção: PostgREST serializa timestamptz 'infinity' como a string
+  // "infinity", que NÃO parseia via new Date() — trate explicitamente.
+  const silencedUntil = convRow.bot_silenced_until as string | null;
+  const isSilenced =
+    !!silencedUntil &&
+    (silencedUntil === "infinity" || new Date(silencedUntil).getTime() > Date.now());
+  if (isSilenced) {
+    await markEventProcessed(event, "skipped_silenced");
+    return "skipped_silenced";
   }
 
   const conversation: DispatchConversation = {
