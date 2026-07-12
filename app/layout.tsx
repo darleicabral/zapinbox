@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { ThemeProvider } from "@/lib/theme";
 import { Providers } from "./providers";
 import { PublicEnvScript } from "./public-env-script";
+import { ServiceWorkerRegister } from "@/components/app/ServiceWorkerRegister";
 import "./globals.css";
 
 const atkinson = Atkinson_Hyperlegible({
@@ -39,6 +40,15 @@ export const metadata: Metadata = {
     "multi-tenant",
   ],
   robots: { index: false, follow: false },
+  icons: {
+    icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/apple-icon-180.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "ZapInbox",
+  },
 };
 
 export const viewport: Viewport = {
@@ -68,6 +78,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-screen bg-bg font-sans text-text antialiased">
+        <ServiceWorkerRegister />
         <Providers>
           <ThemeProvider>{children}</ThemeProvider>
           <Toaster
