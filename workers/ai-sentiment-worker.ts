@@ -17,7 +17,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 
 import { computeCost } from "@/lib/ai/cost";
-import { DEFAULT_CLASSIFIER_MODEL, isAiGatewayConfigured } from "@/lib/ai/gateway";
+import { DEFAULT_CLASSIFIER_MODEL, isAiGatewayConfigured, resolveLanguageModel } from "@/lib/ai/gateway";
 import { logInvocation } from "@/lib/ai/log-invocation";
 import { SENTIMENT_SYSTEM_PROMPT } from "@/lib/ai/prompts/sentiment";
 import type { EventRow } from "@/lib/event-log/dispatcher";
@@ -104,7 +104,7 @@ export async function processSentiment(event: EventRow): Promise<SentimentResult
 
     try {
       const generated = await generateObject({
-        model: SENTIMENT_MODEL,
+        model: resolveLanguageModel(SENTIMENT_MODEL),
         schema: sentimentSchema,
         system: SENTIMENT_SYSTEM_PROMPT,
         prompt: body,

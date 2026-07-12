@@ -29,12 +29,21 @@ const config: VercelConfig = {
     //       -H "Authorization: Bearer $INTERNAL_SECRET"
     // (ou upgrade p/ Vercel Pro e voltar este schedule p/ "*/1 * * * *").
     { path: "/api/v1/cron/agent-dispatcher", schedule: "30 3 * * *" },
+    // [ZapInbox] Drena o event_log (message.received → ai-response-worker etc.).
+    // Rota criada por nós — o fork prometia mas nunca implementou. Mesmo
+    // esquema do agent-dispatcher: fallback diário aqui, tick por-minuto real
+    // no crontab da VPS:
+    //   * * * * * curl -s -X POST https://crm.zapinbox.com.br/api/v1/cron/event-log-drain \
+    //       -H "Authorization: Bearer $INTERNAL_SECRET"
+    { path: "/api/v1/cron/event-log-drain", schedule: "35 3 * * *" },
   ],
   functions: {
     // EPIC-13 S-13.08: ToolLoopAgent runtime can issue multiple tool calls per
     // step. 300s max keeps Fluid Compute within bounds; the runtime's own
     // step/token/cost guards usually finish much earlier.
     "app/api/internal/agents/run/route.ts": { maxDuration: 300 },
+    // event-log-drain roda LLM+embeddings por evento — mesmo teto do runner.
+    "app/api/v1/cron/event-log-drain/route.ts": { maxDuration: 300 },
   },
 };
 

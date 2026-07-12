@@ -22,6 +22,7 @@ import {
   gatewayHeaders,
   isAiGatewayConfigured,
   isEmbeddingProviderConfigured,
+  resolveLanguageModel,
 } from "@/lib/ai/gateway";
 import { embedText } from "@/lib/ai/embed";
 import { computeCost } from "@/lib/ai/cost";
@@ -540,7 +541,7 @@ async function invokeBot(ctx: BotContext): Promise<BotResponse> {
 
   const start = Date.now();
   const result = await generateText({
-    model: ctx.agent.model,
+    model: resolveLanguageModel(ctx.agent.model),
     system: renderedSystem,
     messages,
     headers,

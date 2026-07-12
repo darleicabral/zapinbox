@@ -13,6 +13,7 @@ import {
   gatewayConfig,
   gatewayHeaders,
   isEmbeddingProviderConfigured,
+  resolveEmbeddingModel,
   type ModelId,
 } from "@/lib/ai/gateway";
 
@@ -38,10 +39,11 @@ export async function embedText(
   const cfg = gatewayConfig();
 
   // When using the gateway, model string `openai/text-embedding-3-small` is
-  // routed automatically. The SDK reads AI_GATEWAY_API_KEY from process.env.
-  // Headers are still attached for per-tenant observability + ZDR.
+  // routed automatically (SDK reads AI_GATEWAY_API_KEY from process.env).
+  // Without the gateway, resolveEmbeddingModel builds the direct OpenAI
+  // provider — a plain string would fail with "Unauthenticated".
   const result = await embed({
-    model,
+    model: resolveEmbeddingModel(model),
     value: content,
     headers: cfg ? gatewayHeaders({ organizationId: opts.organizationId }) : undefined,
   });

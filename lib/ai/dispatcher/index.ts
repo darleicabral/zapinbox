@@ -12,9 +12,12 @@
  *
  * Schema mapping note: the spec talks about `processed_at`, but `event_log`
  * uses `status` + `consumed_by[]`. We mark a successfully-handled event as
- * `status='processed'` and stamp `metadata.outcome`. Requeue (rate-limit) sets
+ * `status='done'` and stamp `metadata.outcome`. Requeue (rate-limit) sets
  * `next_attempt_at = now()+5s` and keeps `status='pending'` so the next batch
- * picks it up.
+ * picks it up. NOTE: the CHECK constraint only allows
+ * pending|processing|done|dead — 'processed'/'failed' (usados numa versão
+ * anterior deste arquivo) violavam o constraint e deixavam eventos presos em
+ * 'processing' pra sempre.
  */
 
 import { randomUUID } from "node:crypto";
@@ -400,7 +403,7 @@ async function markEventProcessed(
   const { error } = await admin
     .from("event_log")
     .update({
-      status: "processed",
+      status: "done",
       metadata,
       consumed_by: consumed,
       updated_at: new Date().toISOString(),
@@ -453,7 +456,7 @@ async function markEventFailed(event: EventRow, detail: string): Promise<void> {
   const { error } = await admin
     .from("event_log")
     .update({
-      status: "failed",
+      status: "dead",
       last_error: detail.slice(0, 500),
       metadata,
       updated_at: new Date().toISOString(),
