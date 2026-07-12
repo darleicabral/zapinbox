@@ -9,6 +9,13 @@
  *
  * Idempotente e conservador: só preenche phone_number quando está NULL.
  *
+ * ⚠️ Requer NOWEB store na sessão WAHA (config.noweb.store.enabled=true +
+ * full_sync=true ao criar/reiniciar a sessão) — sem isso a API /lids devolve
+ * 400. As sessões criadas pelo CRM vêm com config:{} (sem store), então este
+ * backfill só funciona após recriar a sessão com store. Alternativa que já
+ * está no ar: o ingest preenche o telefone via _data.key.senderPn na próxima
+ * mensagem que o contato mandar.
+ *
  * Uso (na raiz do repo): npx --yes tsx scripts/backfill-lid-phones.ts
  */
 
