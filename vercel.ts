@@ -41,6 +41,11 @@ const config: VercelConfig = {
     //   * * * * * curl -s -X POST https://crm.zapinbox.com.br/api/v1/cron/attendance-sla \
     //       -H "Authorization: Bearer $INTERNAL_SECRET"
     { path: "/api/v1/cron/attendance-sla", schedule: "40 3 * * *" },
+    // [ZapInbox] C1 — follow-up por inatividade (cadência de reengajamento).
+    // Idem: fallback diário; tick por-minuto real no crontab da VPS:
+    //   * * * * * curl -s -X POST https://crm.zapinbox.com.br/api/v1/cron/inactivity-followup \
+    //       -H "Authorization: Bearer $INTERNAL_SECRET"
+    { path: "/api/v1/cron/inactivity-followup", schedule: "45 3 * * *" },
   ],
   functions: {
     // EPIC-13 S-13.08: ToolLoopAgent runtime can issue multiple tool calls per
@@ -49,6 +54,8 @@ const config: VercelConfig = {
     "app/api/internal/agents/run/route.ts": { maxDuration: 300 },
     // event-log-drain roda LLM+embeddings por evento — mesmo teto do runner.
     "app/api/v1/cron/event-log-drain/route.ts": { maxDuration: 300 },
+    // inactivity-followup envia N mensagens com throttle — mesmo teto.
+    "app/api/v1/cron/inactivity-followup/route.ts": { maxDuration: 300 },
   },
 };
 
