@@ -1,10 +1,15 @@
 /**
- * Pure trigger predicates for the 4 handoff gates (EPIC-06 wave 3).
+ * Pure trigger predicates for the handoff gates (EPIC-06 wave 3 + G5).
  *
  *   G1 — checkG1(body)               — usuário pede humano (regex PT-BR).
  *   G3 — checkG3({ confidence, ... }) — bot inseguro (low confidence + uncertainty).
  *   G4 — checkG4Legal(body)          — termos jurídicos no inbound.
  *   G4 — checkG4Stage(leadId, org)   — lead está em stage `requires_human=true`.
+ *   G5 — checkG5BotHandoffCue(text)  — o próprio bot sinalizou fim de atendimento
+ *        (linha-gatilho exata definida no system prompt do agente, ex.: "Só um
+ *        momento"). Ao contrário de G3, o texto DEVE ser enviado ao cliente
+ *        (é a mensagem de transição) — o caller despacha normalmente e só
+ *        então aciona o handoff pra silenciar respostas futuras do bot.
  *
  * (G2 = low sentiment é consumido por `ai-handoff-from-sentiment.handler.ts`,
  *  já dispara via evento `ai.sentiment_alert` emitido pelo sentiment worker.)
@@ -16,6 +21,7 @@ import {
   G1_REGEX,
   G4_LEGAL_REGEX,
   containsUncertaintyMarkers,
+  containsBotHandoffCue,
 } from "@/lib/ai/handoff/regex";
 
 export function checkG1(body: string): boolean {
@@ -37,6 +43,10 @@ export interface CheckG3Input {
 export function checkG3(input: CheckG3Input): boolean {
   const lowConfidence = Number.isFinite(input.confidence) && input.confidence < input.threshold;
   return lowConfidence || containsUncertaintyMarkers(input.outputText ?? "");
+}
+
+export function checkG5BotHandoffCue(outputText: string): boolean {
+  return containsBotHandoffCue(outputText);
 }
 
 /**

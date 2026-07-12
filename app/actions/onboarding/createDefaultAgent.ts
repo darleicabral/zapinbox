@@ -10,6 +10,7 @@ import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { aiAgentDefaultSchema, type PromptTemplate } from "@/lib/schemas/onboarding";
+import { AGENT_CONFIG_DEFAULTS } from "@/lib/ai/guardrails-schema";
 import { requireOnboardingCtx, patchOnboardingState, OnboardingError } from "./_shared";
 
 const PROMPT_BODIES: Record<PromptTemplate, string> = {
@@ -63,6 +64,11 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
       is_default: true,
       is_active: true,
       created_by: ctx.userId,
+      // Explícito em vez de confiar no default da coluna: o default da
+      // migration tem rag_similarity_threshold=0.72, irrealista pro
+      // text-embedding-3-small (ver comentário em guardrails-schema.ts) —
+      // sem isso o RAG do agente nunca retorna resultado nenhum.
+      config: AGENT_CONFIG_DEFAULTS,
     })
     .select("id")
     .single();

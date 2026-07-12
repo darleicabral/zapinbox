@@ -28,7 +28,13 @@ import { computeCost } from "@/lib/ai/cost";
 import { logInvocation } from "@/lib/ai/log-invocation";
 import { renderSystemPrompt } from "@/lib/ai/render-system-prompt";
 import { triggerHandoff } from "@/lib/ai/handoff/orchestrator";
-import { checkG1, checkG3, checkG4Legal, checkG4Stage } from "@/lib/ai/handoff/triggers";
+import {
+  checkG1,
+  checkG3,
+  checkG4Legal,
+  checkG4Stage,
+  checkG5BotHandoffCue,
+} from "@/lib/ai/handoff/triggers";
 import type {
   BotContext,
   BotResponse,
@@ -44,7 +50,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const RECENT_MESSAGES_LIMIT = 20;
 const RAG_TOP_K = 5;
-const RAG_THRESHOLD = 0.72;
+// Fallback quando o agente não define `config.rag_similarity_threshold`.
+// text-embedding-3-small (OpenAI) raramente ultrapassa ~0.65 de similaridade
+// coseno mesmo em matches corretos contra parágrafos/registros de catálogo
+// (não é normalizado como sentence-transformers) — um threshold de 0.72
+// filtra praticamente TODO resultado real. Calibrado empiricamente: matches
+// relevantes ficaram na faixa 0.53–0.65, ruído por sobreposição léxica
+// acidental em ~0.36. 0.4 captura os primeiros com folga e descarta o ruído.
+const RAG_THRESHOLD_FALLBACK = 0.4;
 const WINDOW_24H_MS = 24 * 60 * 60 * 1000;
 const HANDOFF_RECENT_GUARD_MS = 5_000;
 
@@ -207,6 +220,31 @@ export async function processMessageReceived(row: EventRow): Promise<ProcessResu
       finish_reason: response.finish_reason,
       citations: response.citations as unknown as Array<Record<string, unknown>>,
     });
+
+    // ── G5 — bot's own text carries a handoff cue (e.g. "Só um momento").
+    //    Unlike G3, the message WAS meant to reach the customer (it's the
+    //    transition line the prompt asks for) — dispatch already happened
+    //    above. We just silence the bot going forward so it never talks over
+    //    the human taking the conversation. ------------------------------
+    if (checkG5BotHandoffCue(response.text)) {
+      await triggerHandoff({
+        conversationId: ctx.conversation_id,
+        organizationId: ctx.organization_id,
+        reason: "bot_handoff_cue",
+        leadId,
+        metadata: {
+          message_id: ctx.message_id,
+          outbound_message_id: persisted.outbound_message_id,
+          source: "g5_bot_handoff_cue",
+        },
+      });
+      return {
+        status: "sent_to_dispatch",
+        reason: "handoff_g5_bot_cue",
+        outbound_message_id: persisted.outbound_message_id,
+      };
+    }
+
     return { status: "sent_to_dispatch", outbound_message_id: persisted.outbound_message_id };
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
@@ -347,10 +385,16 @@ async function buildContext(input: BuildContextInput): Promise<GuardDecision> {
     .reverse();
 
   // RAG retrieval (best-effort — empty list when embedding provider missing)
+  const agentConfig = (agent.config as Record<string, unknown>) ?? {};
   const retrieved_chunks = await retrieveContext({
     organizationId: input.organizationId,
     kbVersionId: agent.active_kb_version_id,
     query: inbound_body,
+    topK: typeof agentConfig["rag_top_k"] === "number" ? (agentConfig["rag_top_k"] as number) : undefined,
+    threshold:
+      typeof agentConfig["rag_similarity_threshold"] === "number"
+        ? (agentConfig["rag_similarity_threshold"] as number)
+        : undefined,
   });
 
   return {
@@ -420,6 +464,8 @@ interface RetrieveInput {
   organizationId: string;
   kbVersionId: string;
   query: string;
+  topK?: number;
+  threshold?: number;
 }
 
 async function retrieveContext(input: RetrieveInput): Promise<RagHit[]> {
@@ -443,8 +489,8 @@ async function retrieveContext(input: RetrieveInput): Promise<RagHit[]> {
     p_organization_id: input.organizationId,
     p_kb_version_id: input.kbVersionId,
     p_embedding: embedding as unknown as string,
-    p_k: RAG_TOP_K,
-    p_threshold: RAG_THRESHOLD,
+    p_k: input.topK ?? RAG_TOP_K,
+    p_threshold: input.threshold ?? RAG_THRESHOLD_FALLBACK,
   } as never);
 
   if (error) {

@@ -29,7 +29,8 @@ export type HandoffReason =
   | "low_confidence"
   | "critical_stage"
   | "legal_mention"
-  | "refund_mention";
+  | "refund_mention"
+  | "bot_handoff_cue";
 
 export interface TriggerHandoffInput {
   conversationId: string;

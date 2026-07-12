@@ -33,3 +33,17 @@ export function containsUncertaintyMarkers(text: string): boolean {
   }
   return false;
 }
+
+// G5 — bot's own output contains a standalone handoff-cue line. Some agent
+// prompts (e.g. Avant) instruct the model to end its final pre-handoff
+// message with an exact phrase (the prompt itself forbids using these
+// phrases outside that context) as a signal that a human must take over.
+// Matched as a full line (per-line trim) so normal prose that happens to
+// contain these words doesn't false-positive.
+export const BOT_HANDOFF_LINE_RE =
+  /^\s*(só um momento|sua simulação ficará pronta em instantes|só confirmando aqui a disponibilidade da agenda)\s*$/im;
+
+export function containsBotHandoffCue(text: string): boolean {
+  if (!text) return false;
+  return BOT_HANDOFF_LINE_RE.test(text);
+}

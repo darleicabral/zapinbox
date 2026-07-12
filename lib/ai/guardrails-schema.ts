@@ -86,7 +86,11 @@ export const agentConfigSchema = z.object({
   max_tokens: z.number().int().min(64).max(4096).default(1024),
   context_message_window: z.number().int().min(1).max(50).default(20),
   rag_top_k: z.number().int().min(1).max(20).default(5),
-  rag_similarity_threshold: z.number().min(0).max(1).default(0.72),
+  // 0.72 era o default original mas é irrealista pra cosine similarity do
+  // text-embedding-3-small (matches corretos tipicamente na faixa 0.4–0.65) —
+  // com 0.72 o retrieval nunca retorna nada. Ver comentário em
+  // workers/ai-response-worker.ts (RAG_THRESHOLD_FALLBACK).
+  rag_similarity_threshold: z.number().min(0).max(1).default(0.4),
   confidence_threshold: z.number().min(0).max(1).default(0.6),
 });
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
@@ -96,7 +100,7 @@ export const AGENT_CONFIG_DEFAULTS: AgentConfig = {
   max_tokens: 1024,
   context_message_window: 20,
   rag_top_k: 5,
-  rag_similarity_threshold: 0.72,
+  rag_similarity_threshold: 0.4,
   confidence_threshold: 0.6,
 };
 
@@ -110,7 +114,7 @@ export const agentPatchSchema = z
     description: z.string().max(500).nullable().optional(),
     is_active: z.boolean().optional(),
     model: agentModelSchema.optional(),
-    system_prompt: z.string().min(20).max(10000).optional(),
+    system_prompt: z.string().min(20).max(32000).optional(),
     config: agentConfigSchema.partial().optional(),
     guardrails: guardrailsSchema.optional(),
   })
@@ -125,7 +129,7 @@ export const agentCreateSchema = z
     system_prompt: z
       .string()
       .min(20)
-      .max(10000)
+      .max(32000)
       .default(
         "Você é um assistente da loja. Responda com clareza e cordialidade, em português do Brasil. Use a base de conhecimento abaixo quando relevante.",
       ),
