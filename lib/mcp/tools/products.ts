@@ -40,6 +40,7 @@ const searchShape = {
 
 interface ProductRow {
   id: string;
+  external_ref: string | null;
   title: string;
   description: string | null;
   kind: string;
@@ -61,29 +62,60 @@ export const crmSearchCatalog: McpToolDefinition<typeof searchShape> = {
   handler: async (input, ctx) => {
     let q = ctx.supabase
       .from("crm_products")
-      .select("id, title, description, kind, price_cents, currency, location, url, attributes")
+      .select("id, external_ref, title, description, kind, price_cents, currency, location, url, attributes")
       .eq("organization_id", ctx.organizationId)
       .eq("status", "active");
 
     if (input.kind) q = q.eq("kind", input.kind);
     if (typeof input.min_price === "number") q = q.gte("price_cents", Math.round(input.min_price * 100));
     if (typeof input.max_price === "number") q = q.lte("price_cents", Math.round(input.max_price * 100));
-    if (input.query) {
-      const term = input.query.replace(/[%,]/g, " ").trim();
-      // Busca em título OU descrição OU localização.
-      q = q.or(`title.ilike.%${term}%,description.ilike.%${term}%,location.ilike.%${term}%`);
-    }
 
-    const { data, error } = await q
-      .order("price_cents", { ascending: true, nullsFirst: false })
-      .limit(input.limit);
+    // O ranking textual roda aqui (não em SQL): o modelo manda frases inteiras
+    // ("casa geminada duplex céu azul 2 quartos") e ilike com a frase única
+    // não casa nada; tokenizar + ignorar acento resolve ("céu" vs "CEU").
+    const { data, error } = await q.limit(1000);
     if (error) throw new Error(error.message);
 
-    const rows = (data ?? []) as ProductRow[];
+    const all = (data ?? []) as ProductRow[];
+    let rows = all;
+    if (input.query) {
+      const norm = (s: string) =>
+        s
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "")
+          .toLowerCase();
+      const tokens = norm(input.query)
+        .split(/[^a-z0-9]+/)
+        .filter((t) => t.length >= 2);
+      if (tokens.length > 0) {
+        const scored = all
+          .map((p) => {
+            const hay = norm(
+              [p.title, p.description ?? "", p.location ?? ""].join(" "),
+            );
+            let score = tokens.filter((t) => hay.includes(t)).length / tokens.length;
+            // referência exata (ex.: bot busca pelo número do imóvel "115")
+            if (p.external_ref && tokens.includes(norm(p.external_ref))) score += 1;
+            return { p, score };
+          })
+          .filter((x) => x.score >= 0.34) // pelo menos ~1/3 dos termos presentes
+          .sort(
+            (a, b) =>
+              b.score - a.score || (a.p.price_cents ?? Infinity) - (b.p.price_cents ?? Infinity),
+          );
+        rows = scored.map((x) => x.p);
+      }
+    } else {
+      rows = [...all].sort(
+        (a, b) => (a.price_cents ?? Infinity) - (b.price_cents ?? Infinity),
+      );
+    }
+    rows = rows.slice(0, input.limit);
     return {
       count: rows.length,
       products: rows.map((p) => ({
         id: p.id,
+        ref: p.external_ref,
         title: p.title,
         kind: p.kind,
         price:
