@@ -92,12 +92,12 @@ async function main() {
     if (!manifest.org_slug) throw new Error("Manifesto precisa de org_slug ou org_id.");
     const { data, error } = await supabase
       .from("organizations")
-      .select("id, name")
+      .select("id, display_name")
       .eq("slug", manifest.org_slug)
       .single();
     if (error || !data) throw new Error(`Org slug '${manifest.org_slug}' não encontrada: ${error?.message}`);
     orgId = data.id as string;
-    console.log(`Org: ${data.name} (${orgId})`);
+    console.log(`Org: ${data.display_name} (${orgId})`);
   }
 
   const rows = items.map((i) => ({
