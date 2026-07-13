@@ -1,10 +1,11 @@
-import { requireAuth } from "@/lib/auth/server";
+import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import {
   NOTIFICATION_CATEGORIES,
   NOTIFICATION_CHANNELS,
 } from "@/lib/schemas/settings";
+import { PushToggleCard } from "./_push";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,8 @@ const CHANNEL_LABELS: Record<(typeof NOTIFICATION_CHANNELS)[number], string> = {
 };
 
 export default async function NotificationsPage() {
-  await requireAuth();
+  const user = await requireAuth();
+  const activeOrg = await resolveActiveOrg(user);
   return (
     <div className="flex h-full flex-col gap-6 p-6">
       <header>
@@ -30,9 +32,10 @@ export default async function NotificationsPage() {
         <p className="text-sm text-muted-foreground">Canais e categorias.</p>
       </header>
 
+      {activeOrg && <PushToggleCard organizationId={activeOrg.orgId} />}
+
       <Card className="border-amber-500/40 bg-amber-50/40 p-4 text-sm dark:bg-amber-900/10">
-        Preferências de notificação em breve. Por enquanto, alertas críticos são enviados por
-        email.
+        Preferências por categoria em breve. Alertas críticos seguem por email e WhatsApp.
       </Card>
 
       <Card className="p-0">

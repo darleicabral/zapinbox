@@ -53,3 +53,43 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+// ── Web Push ────────────────────────────────────────────────────────────────
+// Payload JSON: { title, body, url?, tag? } (ver lib/push/send.ts).
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: "ZapInbox", body: event.data ? event.data.text() : "" };
+  }
+  const title = data.title || "ZapInbox";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: data.tag || undefined,
+      data: { url: data.url || "/app/inbox" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/app/inbox";
+  event.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      // Reusa uma aba do app se houver; senão abre nova.
+      for (const client of all) {
+        if ("focus" in client && new URL(client.url).pathname.startsWith("/app")) {
+          await client.focus();
+          if ("navigate" in client) await client.navigate(url);
+          return;
+        }
+      }
+      await self.clients.openWindow(url);
+    })(),
+  );
+});

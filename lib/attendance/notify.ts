@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { sendPushToUser } from "@/lib/push/send";
 import { resolveWahaChatId, sendWAHA } from "@/lib/waha/send";
 
 export type NotifyKind = "assigned" | "reassigned" | "escalated";
@@ -29,40 +30,8 @@ export async function notifyAssigneeNewLead(
   },
 ): Promise<boolean> {
   try {
-    // 1) Gate por tenant.
-    const { data: settings } = await admin
-      .from("attendance_settings")
-      .select("notify_whatsapp")
-      .eq("organization_id", args.organizationId)
-      .maybeSingle();
-    if (settings && (settings as { notify_whatsapp: boolean }).notify_whatsapp === false) {
-      return false;
-    }
-
-    // 2) Número do corretor.
-    const { data: member } = await admin
-      .from("user_organizations")
-      .select("notify_whatsapp_e164")
-      .eq("organization_id", args.organizationId)
-      .eq("user_id", args.assigneeUserId)
-      .is("revoked_at", null)
-      .maybeSingle();
-    const phone = (member as { notify_whatsapp_e164: string | null } | null)?.notify_whatsapp_e164;
-    if (!phone) return false; // sem número cadastrado → noop silencioso
-
-    // 3) Sessão WAHA do tenant que envia (a WORKING mais recente).
-    const { data: session } = await admin
-      .from("channel_sessions")
-      .select("waha_session_name, status, created_at")
-      .eq("organization_id", args.organizationId)
-      .eq("status", "WORKING")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const sessionName = (session as { waha_session_name: string } | null)?.waha_session_name;
-    if (!sessionName) return false;
-
-    // 4) Resumo do lead: nome do contato + última mensagem inbound (interesse).
+    // 1) Resumo do lead: nome do contato + última mensagem inbound (interesse).
+    //    Usado pelos DOIS canais (push nativo + WhatsApp).
     const { data: conv } = await admin
       .from("conversations")
       .select("id, contacts:contact_id(display_name, phone_number)")
@@ -84,27 +53,70 @@ export async function notifyAssigneeNewLead(
       .maybeSingle();
     const interest = ((lastMsg as { body: string | null } | null)?.body ?? "").trim().slice(0, 140);
 
-    // 5) Texto + deep link.
-    const base = (env.NEXT_PUBLIC_APP_URL || "https://crm.zapinbox.com.br").replace(/\/$/, "");
-    const link = `${base}/app/inbox/${args.conversationId}`;
     const header =
       args.kind === "escalated"
         ? "⚠️ Lead sem atendimento — assumiu o comando"
         : args.kind === "reassigned"
           ? "🔁 Lead repassado pra você"
           : "🔔 Novo lead pra você";
+
+    // 2) Push nativo (PWA) — independente do canal WhatsApp; noop sem VAPID
+    //    ou sem assinatura deste usuário.
+    const pushed = await sendPushToUser(admin, args.organizationId, args.assigneeUserId, {
+      title: header,
+      body: `${contactName}${interest ? ` — "${interest}"` : ""}`,
+      url: `/app/inbox/${args.conversationId}`,
+      tag: `lead-${args.conversationId}`,
+    });
+
+    // 3) WhatsApp — gate por tenant.
+    const { data: settings } = await admin
+      .from("attendance_settings")
+      .select("notify_whatsapp")
+      .eq("organization_id", args.organizationId)
+      .maybeSingle();
+    if (settings && (settings as { notify_whatsapp: boolean }).notify_whatsapp === false) {
+      return pushed > 0;
+    }
+
+    // 4) Número do corretor.
+    const { data: member } = await admin
+      .from("user_organizations")
+      .select("notify_whatsapp_e164")
+      .eq("organization_id", args.organizationId)
+      .eq("user_id", args.assigneeUserId)
+      .is("revoked_at", null)
+      .maybeSingle();
+    const phone = (member as { notify_whatsapp_e164: string | null } | null)?.notify_whatsapp_e164;
+    if (!phone) return pushed > 0; // sem número cadastrado → só o push
+
+    // 5) Sessão WAHA do tenant que envia (a WORKING mais recente).
+    const { data: session } = await admin
+      .from("channel_sessions")
+      .select("waha_session_name, status, created_at")
+      .eq("organization_id", args.organizationId)
+      .eq("status", "WORKING")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const sessionName = (session as { waha_session_name: string } | null)?.waha_session_name;
+    if (!sessionName) return pushed > 0;
+
+    // 6) Texto + deep link.
+    const base = (env.NEXT_PUBLIC_APP_URL || "https://crm.zapinbox.com.br").replace(/\/$/, "");
+    const link = `${base}/app/inbox/${args.conversationId}`;
     const text = `${header}\n\n👤 ${contactName}${interest ? `\n💬 "${interest}"` : ""}\n\nAbrir e atender:\n${link}`;
 
-    // 6) Envia direto (sem persistir).
+    // 7) Envia direto (sem persistir).
     const chatId = resolveWahaChatId({
       isGroup: false,
       groupChatId: null,
       phoneNumber: phone,
       waIdentity: null,
     });
-    if (!chatId) return false;
+    if (!chatId) return pushed > 0;
     const res = await sendWAHA({ sessionName, chatId, text });
-    return res !== null; // null = WAHA não configurado (noop)
+    return res !== null || pushed > 0; // null = WAHA não configurado (noop)
   } catch (err) {
     logger.warn("[attendance.notify] falhou (ignorado)", {
       organization_id: args.organizationId,

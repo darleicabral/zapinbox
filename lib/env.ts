@@ -93,6 +93,12 @@ const schema = z.object({
     .default("true")
     .transform((v) => v === "true"),
 
+  // Web Push (VAPID) — opcional: sem as chaves o push degrada pra noop
+  // (o WhatsApp continua sendo o canal de aviso do corretor).
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().optional().default(""),
+  VAPID_PRIVATE_KEY: z.string().optional().default(""),
+  VAPID_SUBJECT: z.string().optional().default("mailto:suporte@zapinbox.com.br"),
+
   // Sentry
   SENTRY_DSN: z.string().optional().default(""),
 
