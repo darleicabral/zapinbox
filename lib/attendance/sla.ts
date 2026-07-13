@@ -21,6 +21,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { notifyAssigneeNewLead } from "./notify";
 import {
+  inBusinessHours,
   loadAttendanceSettings,
   pickFallbackManager,
   pickNextAssignee,
@@ -227,6 +228,9 @@ export async function sweepAttendanceSla(
   for (const row of (enabledOrgs ?? []) as { organization_id: string }[]) {
     const settings = await loadAttendanceSettings(admin, row.organization_id);
     if (!settings || !settings.enabled) continue;
+    // Fora do expediente o tick pula a org: nada repassa/escala/alerta de
+    // madrugada; o próximo tick dentro da janela retoma de onde parou.
+    if (!inBusinessHours(settings.business_hours, new Date(now))) continue;
     summary.orgs_scanned += 1;
     try {
       await sweepOrg(admin, settings, now, summary);
