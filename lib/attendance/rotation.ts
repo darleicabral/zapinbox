@@ -25,11 +25,20 @@ export interface AttendanceSettings {
   last_assigned_user_id: string | null;
 }
 
-export interface BusinessHours {
-  timezone: string;
+export interface BusinessWindow {
   days: number[]; // 0=domingo … 6=sábado
   start: string; // "HH:MM"
   end: string; // "HH:MM"
+}
+
+export interface BusinessHours {
+  timezone: string;
+  // Forma legada: janela única (days/start/end na raiz).
+  days?: number[];
+  start?: string;
+  end?: string;
+  // Forma nova: janelas por grupo de dias (ex.: seg-sex 09-18 + sáb 09-12).
+  windows?: BusinessWindow[];
 }
 
 interface MemberRow {
@@ -120,6 +129,12 @@ export async function pickFallbackManager(
   return manager?.user_id ?? null;
 }
 
+function inWindow(w: BusinessWindow, dayIdx: number, cur: string): boolean {
+  if (!w.days.includes(dayIdx)) return false;
+  if (w.start <= w.end) return cur >= w.start && cur <= w.end;
+  return cur >= w.start || cur <= w.end; // cruza meia-noite
+}
+
 /** Mesma semântica do inBusinessHours dos triggers de agente (janela pode cruzar meia-noite). */
 export function inBusinessHours(cfg: BusinessHours | null, at: Date): boolean {
   if (!cfg) return true;
@@ -136,10 +151,18 @@ export function inBusinessHours(cfg: BusinessHours | null, at: Date): boolean {
     const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
     const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
     const dayIdx = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
-    if (dayIdx === -1 || !cfg.days.includes(dayIdx)) return false;
+    if (dayIdx === -1) return false;
     const cur = `${hour}:${minute}`;
-    if (cfg.start <= cfg.end) return cur >= cfg.start && cur <= cfg.end;
-    return cur >= cfg.start || cur <= cfg.end; // cruza meia-noite
+
+    // Forma nova: qualquer janela vale (ex.: seg-sex 09-18 + sáb 09-12).
+    if (Array.isArray(cfg.windows) && cfg.windows.length > 0) {
+      return cfg.windows.some((w) => inWindow(w, dayIdx, cur));
+    }
+    // Forma legada: janela única na raiz.
+    if (Array.isArray(cfg.days) && cfg.start && cfg.end) {
+      return inWindow({ days: cfg.days, start: cfg.start, end: cfg.end }, dayIdx, cur);
+    }
+    return true; // config sem janelas não restringe
   } catch {
     return true; // config inválida não pode travar o atendimento
   }
