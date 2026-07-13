@@ -1,7 +1,8 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,41 @@ interface FormShape {
   expected_close_date: string;
 }
 
+interface LinkedProductRow {
+  id: string;
+  relation: string;
+  note: string | null;
+  product: {
+    id: string;
+    title: string;
+    price_cents: number | null;
+    currency: string | null;
+    location: string | null;
+    url: string | null;
+    kind: string | null;
+  } | null;
+}
+
+const RELATION_LABEL: Record<string, string> = {
+  interest: "Interesse",
+  proposal: "Proposta",
+  visit: "Visita",
+  discarded: "Descartado",
+};
+
+function formatMoney(cents: number | null, currency: string | null): string {
+  if (cents == null) return "—";
+  try {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: currency ?? "BRL",
+      maximumFractionDigits: 0,
+    }).format(cents / 100);
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${currency ?? "BRL"}`;
+  }
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -40,6 +76,23 @@ function centsToReais(cents: number | null | undefined): string {
 
 export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) {
   const edit = useEditLead(pipelineId);
+  const [linked, setLinked] = useState<LinkedProductRow[] | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch(`/api/v1/leads/${lead.id}/products`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((json: { data: { products: LinkedProductRow[] } }) => {
+        if (!cancelled) setLinked(json.data.products ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setLinked([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, lead.id]);
 
   const form = useForm<FormShape>({
     defaultValues: {
@@ -162,6 +215,53 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
             <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
             <Input id="tagsRaw" placeholder="vip, recompra" {...form.register("tagsRaw")} />
           </div>
+
+          {linked && linked.length > 0 && (
+            <div className="space-y-2">
+              <Label>
+                {linked.every((lp) => (lp.product?.kind ?? "imovel") === "imovel")
+                  ? "Imóveis de interesse"
+                  : "Produtos de interesse"}
+              </Label>
+              <ul className="max-h-40 space-y-1.5 overflow-y-auto">
+                {linked.map((lp) => {
+                  if (!lp.product) return null;
+                  const p = lp.product;
+                  return (
+                    <li
+                      key={lp.id}
+                      className="flex items-start justify-between gap-2 rounded-md border border-border p-2 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">
+                          {p.url ? (
+                            <a
+                              href={p.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hover:underline"
+                            >
+                              {p.title}
+                            </a>
+                          ) : (
+                            p.title
+                          )}
+                        </div>
+                        <div className="text-muted-foreground">
+                          {p.location ? `${p.location} · ` : ""}
+                          {formatMoney(p.price_cents, p.currency)}
+                        </div>
+                        {lp.note && <div className="text-muted-foreground">{lp.note}</div>}
+                      </div>
+                      <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px]">
+                        {RELATION_LABEL[lp.relation] ?? lp.relation}
+                      </Badge>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           <DialogFooter>
             <Button

@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Tag, Receipt, Users, ArrowRight } from "@/lib/ui/icons";
-import { createClient } from "@/lib/supabase/browser";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 
 interface Props {
@@ -122,51 +121,40 @@ export function CRMSidePanel({ conversation }: Props) {
       setLeadProducts(null);
       return;
     }
-    const supabase = createClient();
     let cancelled = false;
     setLoading(true);
 
+    // Via API (cookie de sessão httpOnly): supabase-js direto do browser não
+    // tem sessão aqui e a RLS devolvia vazio — mesmo bug/fix do board Kanban.
     async function load() {
-      const leadsP = supabase
-        .from("crm_leads")
-        .select("id, title, status, value_cents, currency, updated_at, description, custom_fields")
-        .eq("contact_id", contactId)
-        .order("updated_at", { ascending: false })
-        .limit(3);
-
-      const ordersP = supabase
-        .from("orders")
-        .select("id, external_id, status, total_cents, currency, created_at")
-        .eq("contact_id", contactId)
-        .order("created_at", { ascending: false })
-        .limit(3);
-
-      const actsP = supabase
-        .from("crm_lead_activities")
-        .select("id, type, source_module, performed_at, payload")
-        .eq("contact_id", contactId)
-        .order("performed_at", { ascending: false })
-        .limit(5);
-
-      // Imóveis/produtos vinculados aos leads do contato (C3). O join !inner em
-      // crm_leads permite filtrar por contact_id sem uma 2ª rodada de queries.
-      const lpP = supabase
-        .from("crm_lead_products")
-        .select(
-          "id, relation, note, product:crm_products(id, title, price_cents, currency, location, url, kind), lead:crm_leads!inner(contact_id)",
-        )
-        .eq("lead.contact_id", contactId)
-        .order("created_at", { ascending: false })
-        .limit(6);
-
-      const [lr, or, ar, lp] = await Promise.all([leadsP, ordersP, actsP, lpP]);
-
-      if (cancelled) return;
-      setLeads(lr.error ? [] : ((lr.data ?? []) as LeadRow[]));
-      setOrders(or.error ? [] : ((or.data ?? []) as OrderRow[]));
-      setActivities(ar.error ? [] : ((ar.data ?? []) as ActivityRow[]));
-      setLeadProducts(lp.error ? [] : ((lp.data ?? []) as unknown as LeadProductRow[]));
-      setLoading(false);
+      try {
+        const res = await fetch(`/api/v1/contacts/${contactId}/crm-summary`, {
+          cache: "no-store",
+        });
+        if (cancelled) return;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as {
+          data: {
+            leads: LeadRow[];
+            orders: OrderRow[];
+            activities: ActivityRow[];
+            lead_products: LeadProductRow[];
+          };
+        };
+        if (cancelled) return;
+        setLeads(json.data.leads ?? []);
+        setOrders(json.data.orders ?? []);
+        setActivities(json.data.activities ?? []);
+        setLeadProducts(json.data.lead_products ?? []);
+      } catch {
+        if (cancelled) return;
+        setLeads([]);
+        setOrders([]);
+        setActivities([]);
+        setLeadProducts([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
 
     void load();
