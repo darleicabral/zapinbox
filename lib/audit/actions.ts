@@ -37,6 +37,7 @@ export type AuditAction =
   | "token.revoked"
   | "profile.updated"
   | "org.updated"
+  | "attendance_settings.updated"
   | "pipeline.config_updated"
   | "mfa.recovery_codes_regenerated"
   | "notification_prefs.changed"

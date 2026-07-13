@@ -45,6 +45,12 @@ const LINKS: SettingsLink[] = [
     adminOnly: true,
   },
   {
+    href: "/app/settings/attendance",
+    title: "Atendimento",
+    description: "Expediente, rodízio da equipe, SLAs e reengajamento automático.",
+    managerOnly: true,
+  },
+  {
     href: "/app/connections",
     title: "Conexões WhatsApp",
     description: "Saúde, reconexão e novos números.",
