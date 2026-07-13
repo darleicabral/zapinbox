@@ -20,4 +20,6 @@ export interface ActiveOrg {
   orgId: string;
   name: string;
   role: Role;
+  /** true quando o escopo veio do cookie de impersonate (platform admin agindo como o tenant). */
+  impersonated?: boolean;
 }

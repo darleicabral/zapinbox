@@ -9,6 +9,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {
+  IMPERSONATE_COOKIE_NAME,
+  verifyImpersonateCookie,
+} from "@/lib/impersonate/cookie";
 import type { AuthUser, Role, UserOrgMembership, ActiveOrg } from "./types";
 
 const ACTIVE_ORG_COOKIE = "active_org";
@@ -76,12 +80,40 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
 
 /**
  * Resolves the active organization for the current request.
- * Priority: cookie `active_org` (if member of) → first membership.
- * Returns null if user has zero memberships.
+ * Priority: impersonate cookie (platform admin agindo como tenant) →
+ * cookie `active_org` (if member of) → first membership.
+ * Returns null if user has zero memberships (and no valid impersonation).
  */
 export async function resolveActiveOrg(authUser: AuthUser): Promise<ActiveOrg | null> {
-  if (authUser.organizations.length === 0) return null;
   const store = await cookies();
+
+  // Impersonate: escopa TODO o app pro tenant do cookie, não só o banner.
+  // Só vale pra platform admin e só se o cookie foi emitido pra ELE (HMAC +
+  // TTL verificados). O RLS já permite o acesso via fn_is_platform_admin().
+  if (authUser.is_platform_admin) {
+    const impToken = store.get(IMPERSONATE_COOKIE_NAME)?.value;
+    if (impToken) {
+      const verified = verifyImpersonateCookie(impToken);
+      if (verified.valid && verified.payload?.platformAdminId === authUser.id) {
+        const supabase = await createClient();
+        const { data: org } = await supabase
+          .from("organizations")
+          .select("id, display_name")
+          .eq("id", verified.payload.tenantId)
+          .maybeSingle();
+        if (org) {
+          return {
+            orgId: org.id as string,
+            name: (org.display_name as string) ?? "Tenant",
+            role: "admin",
+            impersonated: true,
+          };
+        }
+      }
+    }
+  }
+
+  if (authUser.organizations.length === 0) return null;
   const cookieOrg = store.get(ACTIVE_ORG_COOKIE)?.value;
   if (cookieOrg) {
     const found = authUser.organizations.find((o) => o.organization_id === cookieOrg);
