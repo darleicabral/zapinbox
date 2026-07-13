@@ -18,7 +18,7 @@ import { logger } from "@/lib/logger";
 import { sendPushToUser } from "@/lib/push/send";
 import { resolveWahaChatId, sendWAHA } from "@/lib/waha/send";
 
-export type NotifyKind = "assigned" | "reassigned" | "escalated";
+export type NotifyKind = "assigned" | "reassigned" | "escalated" | "sla_alert";
 
 export async function notifyAssigneeNewLead(
   admin: SupabaseClient,
@@ -54,11 +54,13 @@ export async function notifyAssigneeNewLead(
     const interest = ((lastMsg as { body: string | null } | null)?.body ?? "").trim().slice(0, 140);
 
     const header =
-      args.kind === "escalated"
-        ? "⚠️ Lead sem atendimento — assumiu o comando"
-        : args.kind === "reassigned"
-          ? "🔁 Lead repassado pra você"
-          : "🔔 Novo lead pra você";
+      args.kind === "sla_alert"
+        ? "🚨 Lead assumido e sem resposta — cobre o atendimento"
+        : args.kind === "escalated"
+          ? "⚠️ Lead sem atendimento — assumiu o comando"
+          : args.kind === "reassigned"
+            ? "🔁 Lead repassado pra você"
+            : "🔔 Novo lead pra você";
 
     // 2) Push nativo (PWA) — independente do canal WhatsApp; noop sem VAPID
     //    ou sem assinatura deste usuário.

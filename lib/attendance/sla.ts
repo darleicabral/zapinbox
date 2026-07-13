@@ -205,6 +205,17 @@ async function sweepOrg(
       assigned_to_user_id: conv.assigned_to_user_id,
       sla_minutes: settings.first_response_sla_minutes,
     });
+    // Alerta ativo pro gestor (push + WhatsApp) — o event_log/realtime só
+    // aparece pra quem está com o app aberto; o gestor precisa saber fora dele.
+    const manager = await pickFallbackManager(admin, orgId);
+    if (manager && manager !== conv.assigned_to_user_id) {
+      void notifyAssigneeNewLead(admin, {
+        organizationId: orgId,
+        conversationId: conv.id,
+        assigneeUserId: manager,
+        kind: "sla_alert",
+      });
+    }
     summary.first_response_alerts += 1;
   }
 }
