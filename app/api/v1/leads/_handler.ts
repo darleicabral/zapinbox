@@ -196,7 +196,7 @@ export async function createLeadHandler(
       tags: input.tags ?? [],
       source: input.source,
       source_metadata: {},
-      custom_fields: {},
+      custom_fields: input.custom_fields ?? {},
       status: "open",
       position_in_stage: nextPos,
       created_by_user_id: ctx.actor.type === "user" ? ctx.actor.id : null,
@@ -262,7 +262,7 @@ export async function updateLeadHandler(
 ): Promise<Record<string, unknown>> {
   const { data: existing, error: selErr } = await supabase
     .from("crm_leads")
-    .select("id, organization_id")
+    .select("id, organization_id, custom_fields")
     .eq("id", leadId)
     .maybeSingle();
 
@@ -289,6 +289,16 @@ export async function updateLeadHandler(
     patch.expected_close_date = input.expected_close_date;
   }
   if (input.tags !== undefined) patch.tags = input.tags;
+  if (input.custom_fields !== undefined) {
+    // Merge (não replace): a UI só conhece as chaves de pipeline.settings.fields,
+    // enquanto a IA (crm_save_lead_profile) pode ter gravado outras chaves. Merge
+    // preserva as chaves da IA e aplica as do formulário (null limpa uma chave).
+    const current =
+      existing.custom_fields && typeof existing.custom_fields === "object"
+        ? (existing.custom_fields as Record<string, unknown>)
+        : {};
+    patch.custom_fields = { ...current, ...input.custom_fields };
+  }
 
   const { data: updated, error: updErr } = await supabase
     .from("crm_leads")

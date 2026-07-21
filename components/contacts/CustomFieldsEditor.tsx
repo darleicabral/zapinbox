@@ -1,11 +1,12 @@
 "use client";
 /**
- * CustomFieldsEditor — scaffolded for EPIC-09/10 follow-ups.
+ * CustomFieldsEditor — declarative custom-fields form.
  *
  * Reads `crm_pipelines.settings.fields[]` declarative schema and renders the
- * appropriate input per field type. NOT WIRED to any page yet — the consumer
- * (lead detail / contact detail) plugs it in once pipelines have published
- * field schemas.
+ * appropriate input per field type. Wired into the Kanban New/Edit lead dialogs
+ * (see NewLeadDialog / EditLeadDialog) so a human can fill a lead's qualified
+ * profile from the UI. Generic/multi-tenant: renders nothing when a pipeline
+ * has no fields.
  */
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -228,4 +229,54 @@ export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props)
       })}
     </div>
   );
+}
+
+/**
+ * Extrai (com validação leve) a lista de campos declarados em
+ * `pipeline.settings.fields`. Retrocompatível: pipelines sem `fields` → [].
+ */
+export function readCustomFields(
+  settings: Record<string, unknown> | null | undefined,
+): CustomFieldDef[] {
+  const raw = settings?.fields;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (f): f is CustomFieldDef =>
+      !!f &&
+      typeof f === "object" &&
+      typeof (f as { key?: unknown }).key === "string" &&
+      typeof (f as { label?: unknown }).label === "string" &&
+      typeof (f as { type?: unknown }).type === "string",
+  );
+}
+
+/**
+ * Monta o payload `custom_fields` a partir do estado do formulário, restrito às
+ * chaves declaradas no pipeline. Valores vazios viram `null` para permitir
+ * limpar um campo (o handler faz merge, preservando chaves gravadas pela IA).
+ */
+export function buildCustomFields(
+  fields: CustomFieldDef[],
+  values: Record<string, unknown>,
+): Record<string, string | number | boolean | string[] | null> {
+  const out: Record<string, string | number | boolean | string[] | null> = {};
+  for (const f of fields) {
+    const v = values[f.key];
+    if (
+      v === undefined ||
+      v === null ||
+      v === "" ||
+      (Array.isArray(v) && v.length === 0)
+    ) {
+      out[f.key] = null;
+    } else if (
+      typeof v === "string" ||
+      typeof v === "number" ||
+      typeof v === "boolean" ||
+      Array.isArray(v)
+    ) {
+      out[f.key] = v as string | number | boolean | string[];
+    }
+  }
+  return out;
 }

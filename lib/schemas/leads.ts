@@ -56,8 +56,21 @@ export const loseLeadSchema = z.object({
 export type LoseLeadInput = z.infer<typeof loseLeadSchema>;
 
 /**
+ * custom_fields = perfil qualificado do lead (jsonb crm_leads.custom_fields).
+ * Validação leve: record de chave → escalar ou lista de strings. A forma de
+ * cada campo (tipo, opções) é declarada em pipeline.settings.fields e validada
+ * na UI, não aqui — assim funciona para qualquer tenant sem hardcode. `null`
+ * permite limpar um campo no update (o handler faz merge, ver _handler.ts).
+ */
+export const customFieldsRecordSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()]),
+);
+export type CustomFieldsRecord = z.infer<typeof customFieldsRecordSchema>;
+
+/**
  * createLeadSchema → POST /api/v1/leads
- * Status, source_metadata, custom_fields, position_in_stage are server-managed.
+ * Status, source_metadata, position_in_stage are server-managed.
  */
 export const createLeadSchema = z.object({
   pipeline_id: z.string().uuid(),
@@ -75,6 +88,7 @@ export const createLeadSchema = z.object({
     .optional(),
   tags: z.array(z.string()).default([]),
   source: z.string().min(1).default("manual"),
+  custom_fields: customFieldsRecordSchema.optional(),
 });
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 
@@ -95,6 +109,7 @@ export const updateLeadSchema = z.object({
     .nullable()
     .optional(),
   tags: z.array(z.string()).optional(),
+  custom_fields: customFieldsRecordSchema.optional(),
 });
 export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
 

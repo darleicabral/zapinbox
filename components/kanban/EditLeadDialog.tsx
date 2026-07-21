@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,8 +16,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  CustomFieldsEditor,
+  buildCustomFields,
+  readCustomFields,
+  type CustomFieldDef,
+} from "@/components/contacts/CustomFieldsEditor";
+import { ContactPicker } from "@/components/kanban/ContactPicker";
 import { useEditLead } from "@/hooks/kanban/useUpdateLead";
 import type { Lead } from "@/lib/types/leads";
+import type { BoardData } from "@/lib/kanban/types";
 import { updateLeadSchema, type UpdateLeadInput } from "@/lib/schemas/leads";
 
 interface FormShape {
@@ -76,7 +85,16 @@ function centsToReais(cents: number | null | undefined): string {
 
 export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) {
   const edit = useEditLead(pipelineId);
+  const qc = useQueryClient();
   const [linked, setLinked] = useState<LinkedProductRow[] | null>(null);
+
+  // Campos customizados declarados em pipeline.settings.fields. Lidos do cache
+  // do board (já carregado por PipelinePageClient em ["board", pipelineId]) —
+  // sem prop-drilling nem fetch extra. Vazio ⇒ a seção some (retrocompatível).
+  const settings = qc.getQueryData<BoardData>(["board", pipelineId])?.pipeline.settings;
+  const fields = useMemo<CustomFieldDef[]>(() => readCustomFields(settings), [settings]);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
+  const [contactId, setContactId] = useState<string | null>(lead.contact_id);
 
   useEffect(() => {
     if (!open) return;
@@ -113,6 +131,9 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
         tagsRaw: (lead.tags ?? []).join(", "),
         expected_close_date: lead.expected_close_date ?? "",
       });
+      // Pré-preenche os campos customizados com os valores atuais do lead.
+      setCustomValues((lead.custom_fields ?? {}) as Record<string, unknown>);
+      setContactId(lead.contact_id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead.id]);
@@ -141,7 +162,10 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
       value_cents: valueCents,
       tags,
       expected_close_date: values.expected_close_date || null,
+      contact_id: contactId,
     };
+    // O handler faz merge (não replace), preservando chaves gravadas pela IA.
+    if (fields.length > 0) patch.custom_fields = buildCustomFields(fields, customValues);
 
     const parsed = updateLeadSchema.safeParse(patch);
     if (!parsed.success) {
@@ -215,6 +239,23 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
             <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
             <Input id="tagsRaw" placeholder="vip, recompra" {...form.register("tagsRaw")} />
           </div>
+
+          <ContactPicker
+            value={contactId}
+            onChange={(id) => setContactId(id)}
+            initialContact={lead.contact ?? null}
+            disabled={edit.isPending}
+          />
+
+          {fields.length > 0 && (
+            <CustomFieldsEditor
+              fields={fields}
+              value={customValues}
+              onChange={setCustomValues}
+              mode="lead"
+              disabled={edit.isPending}
+            />
+          )}
 
           {linked && linked.length > 0 && (
             <div className="space-y-2">

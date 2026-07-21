@@ -22,6 +22,7 @@ import { KanbanBoard } from "@/components/kanban/KanbanBoard";
 import { FilterBar } from "@/components/kanban/FilterBar";
 import { BulkActionBar } from "@/components/kanban/BulkActionBar";
 import { NewLeadDialog } from "@/components/kanban/NewLeadDialog";
+import { readCustomFields } from "@/components/contacts/CustomFieldsEditor";
 import { Button } from "@/components/ui/button";
 import { Plus } from "@/lib/ui/icons";
 import type { LeadFilters } from "@/lib/kanban/filters";
@@ -57,6 +58,7 @@ export function PipelinePageClient({
           onOpenChange={setNewOpen}
           pipelineId={pipelineId}
           stages={data.stages}
+          fields={readCustomFields(data.pipeline.settings)}
         />
       )}
       <FilterBar filters={filters} onChange={setFilters} leads={data?.leads ?? []} />

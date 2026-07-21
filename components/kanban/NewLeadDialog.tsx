@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
@@ -21,6 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  CustomFieldsEditor,
+  buildCustomFields,
+  type CustomFieldDef,
+} from "@/components/contacts/CustomFieldsEditor";
+import { ContactPicker } from "@/components/kanban/ContactPicker";
 import { useCreateLead } from "@/hooks/kanban/useCreateLead";
 import type { Stage } from "@/lib/kanban/types";
 import { createLeadSchema, type CreateLeadInput } from "@/lib/schemas/leads";
@@ -39,6 +45,8 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   pipelineId: string;
   stages: Stage[];
+  /** Campos customizados declarados em pipeline.settings.fields. Vazio ⇒ some. */
+  fields?: CustomFieldDef[];
 }
 
 function defaultStageId(stages: Stage[]): string {
@@ -46,9 +54,17 @@ function defaultStageId(stages: Stage[]): string {
   return open?.id ?? stages[0]?.id ?? "";
 }
 
-export function NewLeadDialog({ open, onOpenChange, pipelineId, stages }: Props) {
+export function NewLeadDialog({
+  open,
+  onOpenChange,
+  pipelineId,
+  stages,
+  fields = [],
+}: Props) {
   const create = useCreateLead(pipelineId);
   const initialStage = useMemo(() => defaultStageId(stages), [stages]);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
+  const [contactId, setContactId] = useState<string | null>(null);
 
   const form = useForm<FormShape>({
     defaultValues: {
@@ -95,8 +111,10 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages }: Props)
       tags,
     };
     if (values.description.trim()) payload.description = values.description.trim();
+    if (contactId) payload.contact_id = contactId;
     if (valueCents !== null) payload.value_cents = valueCents;
     if (values.expected_close_date) payload.expected_close_date = values.expected_close_date;
+    if (fields.length > 0) payload.custom_fields = buildCustomFields(fields, customValues);
 
     const parsed = createLeadSchema.safeParse(payload);
     if (!parsed.success) {
@@ -116,6 +134,8 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages }: Props)
         tagsRaw: "",
         expected_close_date: "",
       });
+      setCustomValues({});
+      setContactId(null);
       onOpenChange(false);
     } catch {
       // toast already shown
@@ -152,6 +172,8 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages }: Props)
               {...form.register("description")}
             />
           </div>
+
+          <ContactPicker value={contactId} onChange={(id) => setContactId(id)} disabled={create.isPending} />
 
           <div className="space-y-2">
             <Label>Etapa</Label>
@@ -207,6 +229,16 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages }: Props)
               {...form.register("tagsRaw")}
             />
           </div>
+
+          {fields.length > 0 && (
+            <CustomFieldsEditor
+              fields={fields}
+              value={customValues}
+              onChange={setCustomValues}
+              mode="lead"
+              disabled={create.isPending}
+            />
+          )}
 
           <DialogFooter>
             <Button
