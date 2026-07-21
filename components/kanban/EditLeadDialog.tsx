@@ -193,8 +193,8 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90vh] flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle>
             {lead.external_id
               ? `${leadNoun} ${lead.external_id}`
@@ -205,7 +205,8 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
             próprias.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-1">
           <div className="space-y-2">
             <Label htmlFor="title">Título</Label>
             <Input
@@ -320,8 +321,9 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
               </ul>
             </div>
           )}
+          </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t pt-4">
             <Button
               type="button"
               variant="ghost"

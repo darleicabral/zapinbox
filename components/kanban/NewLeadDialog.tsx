@@ -229,14 +229,15 @@ export function NewLeadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90vh] flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Novo {leadNoun}</DialogTitle>
           <DialogDescription>
             Crie um {nounLower} manualmente neste pipeline.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-1">
           <BuyerLookup
             enabled={buyerLookupEnabled}
             onSelect={onSelectBuyer}
@@ -344,8 +345,9 @@ export function NewLeadDialog({
               disabled={create.isPending}
             />
           )}
+          </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t pt-4">
             <Button
               type="button"
               variant="ghost"
