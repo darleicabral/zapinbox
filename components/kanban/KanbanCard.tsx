@@ -68,6 +68,11 @@ export function KanbanCard({
             isSelected && "ring-2 ring-accent",
           )}
         >
+          {lead.external_id && (
+            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide tabular-nums text-text-muted">
+              {lead.external_id}
+            </p>
+          )}
           <div className="flex items-start justify-between gap-2">
             <h3 className="line-clamp-2 text-sm font-medium leading-snug text-text">
               {lead.title}

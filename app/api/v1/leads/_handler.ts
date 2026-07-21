@@ -10,6 +10,13 @@ import { ApiError } from "@/lib/api/types";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
 import type { CreateLeadInput, UpdateLeadInput } from "@/lib/schemas";
+import {
+  chamadoPrefix,
+  chamadoLikePattern,
+  formatChamado,
+  nextSeq,
+  isExternalIdConflict,
+} from "@/lib/chamados/numero";
 
 type SB = SupabaseClient;
 
@@ -180,29 +187,58 @@ export async function createLeadHandler(
   }
   const nextPos = maxRow?.position_in_stage ? Number(maxRow.position_in_stage) + 1000 : 1000;
 
-  const { data: lead, error: insErr } = await supabase
-    .from("crm_leads")
-    .insert({
-      organization_id: ctx.organization_id,
-      pipeline_id: input.pipeline_id,
-      stage_id: input.stage_id,
-      title: input.title,
-      description: input.description ?? null,
-      contact_id: input.contact_id ?? null,
-      value_cents: input.value_cents ?? null,
-      currency: input.currency ?? "BRL",
-      owner_user_id: input.owner_user_id ?? null,
-      expected_close_date: input.expected_close_date ?? null,
-      tags: input.tags ?? [],
-      source: input.source,
-      source_metadata: {},
-      custom_fields: input.custom_fields ?? {},
-      status: "open",
-      position_in_stage: nextPos,
-      created_by_user_id: ctx.actor.type === "user" ? ctx.actor.id : null,
-    })
-    .select(LEAD_COLS)
-    .single();
+  const baseInsert = {
+    organization_id: ctx.organization_id,
+    pipeline_id: input.pipeline_id,
+    stage_id: input.stage_id,
+    title: input.title,
+    description: input.description ?? null,
+    contact_id: input.contact_id ?? null,
+    value_cents: input.value_cents ?? null,
+    currency: input.currency ?? "BRL",
+    owner_user_id: input.owner_user_id ?? null,
+    expected_close_date: input.expected_close_date ?? null,
+    tags: input.tags ?? [],
+    source: input.source,
+    source_metadata: {},
+    custom_fields: input.custom_fields ?? {},
+    status: "open",
+    position_in_stage: nextPos,
+    created_by_user_id: ctx.actor.type === "user" ? ctx.actor.id : null,
+  };
+
+  const insertLead = (extra: Record<string, unknown>) =>
+    supabase
+      .from("crm_leads")
+      .insert({ ...baseInsert, ...extra })
+      .select(LEAD_COLS)
+      .single();
+
+  // Nº do chamado (VG-2026-001) quando o empreendimento tem prefixo mapeado.
+  const prefix = chamadoPrefix((input.custom_fields ?? {})["empreendimento"]);
+  let created: Awaited<ReturnType<typeof insertLead>>;
+  if (prefix) {
+    const year = new Date().getFullYear();
+    for (let attempt = 0; ; attempt++) {
+      const { data: used } = await supabase
+        .from("crm_leads")
+        .select("external_id")
+        .eq("organization_id", ctx.organization_id)
+        .eq("source", input.source)
+        .like("external_id", chamadoLikePattern(prefix, year));
+      const externalId = formatChamado(
+        prefix,
+        year,
+        nextSeq((used ?? []).map((r) => r.external_id as string | null), prefix, year),
+      );
+      created = await insertLead({ external_id: externalId });
+      if (!created.error || !isExternalIdConflict(created.error) || attempt >= 5) break;
+    }
+  } else {
+    created = await insertLead({});
+  }
+  const lead = created.data;
+  const insErr = created.error;
 
   if (insErr || !lead) {
     throw new ApiError(
@@ -262,7 +298,7 @@ export async function updateLeadHandler(
 ): Promise<Record<string, unknown>> {
   const { data: existing, error: selErr } = await supabase
     .from("crm_leads")
-    .select("id, organization_id, custom_fields")
+    .select("id, organization_id, custom_fields, external_id, source")
     .eq("id", leadId)
     .maybeSingle();
 
@@ -300,12 +336,42 @@ export async function updateLeadHandler(
     patch.custom_fields = { ...current, ...input.custom_fields };
   }
 
-  const { data: updated, error: updErr } = await supabase
-    .from("crm_leads")
-    .update(patch)
-    .eq("id", leadId)
-    .select(LEAD_COLS)
-    .maybeSingle();
+  // Nº do chamado: se ainda não tem e agora há um empreendimento mapeado, gera.
+  const mergedCf =
+    (patch.custom_fields as Record<string, unknown> | undefined) ??
+    (existing.custom_fields as Record<string, unknown> | null) ??
+    {};
+  const alreadyHasNumber =
+    typeof existing.external_id === "string" && existing.external_id.length > 0;
+  const updPrefix = alreadyHasNumber ? null : chamadoPrefix(mergedCf["empreendimento"]);
+
+  const runUpdate = () =>
+    supabase.from("crm_leads").update(patch).eq("id", leadId).select(LEAD_COLS).maybeSingle();
+
+  let updRes: Awaited<ReturnType<typeof runUpdate>>;
+  if (updPrefix) {
+    const year = new Date().getFullYear();
+    const source = typeof existing.source === "string" ? existing.source : "manual";
+    for (let attempt = 0; ; attempt++) {
+      const { data: used } = await supabase
+        .from("crm_leads")
+        .select("external_id")
+        .eq("organization_id", existing.organization_id)
+        .eq("source", source)
+        .like("external_id", chamadoLikePattern(updPrefix, year));
+      patch.external_id = formatChamado(
+        updPrefix,
+        year,
+        nextSeq((used ?? []).map((r) => r.external_id as string | null), updPrefix, year),
+      );
+      updRes = await runUpdate();
+      if (!updRes.error || !isExternalIdConflict(updRes.error) || attempt >= 5) break;
+    }
+  } else {
+    updRes = await runUpdate();
+  }
+  const updated = updRes.data;
+  const updErr = updRes.error;
 
   if (updErr) {
     throw new ApiError(500, "internal_error", undefined, ctx.requestId, updErr.message);

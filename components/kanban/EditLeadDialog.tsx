@@ -190,7 +190,9 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Editar lead</DialogTitle>
+          <DialogTitle>
+            {lead.external_id ? `Chamado ${lead.external_id}` : "Editar lead"}
+          </DialogTitle>
           <DialogDescription>
             Atualize os campos. Mover de etapa ou marcar ganho/perdido tem opções
             próprias.
