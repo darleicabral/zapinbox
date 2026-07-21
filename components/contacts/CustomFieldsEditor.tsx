@@ -37,6 +37,8 @@ export interface CustomFieldDef {
   label: string;
   type: CustomFieldType;
   required?: boolean;
+  /** Campo de acompanhamento: não aparece no diálogo de criação, só na edição. */
+  hideOnCreate?: boolean;
   options?: Array<{ value: string; label: string }>;
   /**
    * Opções dependentes do valor de outro campo (ex.: subcategoria depende de
@@ -274,6 +276,19 @@ export function readCustomFields(
       typeof (f as { label?: unknown }).label === "string" &&
       typeof (f as { type?: unknown }).type === "string",
   );
+}
+
+/**
+ * Campos EMBUTIDOS do formulário de lead que o pipeline pede pra esconder
+ * (`settings.form_hide`, ex.: ["value","expected_close_date"] num pipeline de
+ * chamados sem valor de negócio). Retrocompatível: sem a chave → esconde nada.
+ */
+export function readHiddenFormFields(
+  settings: Record<string, unknown> | null | undefined,
+): Set<string> {
+  const raw = settings?.form_hide;
+  if (!Array.isArray(raw)) return new Set();
+  return new Set(raw.filter((x): x is string => typeof x === "string"));
 }
 
 /**

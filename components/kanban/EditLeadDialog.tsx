@@ -20,6 +20,7 @@ import {
   CustomFieldsEditor,
   buildCustomFields,
   readCustomFields,
+  readHiddenFormFields,
   type CustomFieldDef,
 } from "@/components/contacts/CustomFieldsEditor";
 import { ContactPicker } from "@/components/kanban/ContactPicker";
@@ -94,6 +95,8 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
   const boardPipeline = qc.getQueryData<BoardData>(["board", pipelineId])?.pipeline;
   const settings = boardPipeline?.settings;
   const leadNoun = boardPipeline?.vocabulary?.lead ?? "Lead";
+  const hiddenFields = useMemo(() => readHiddenFormFields(settings), [settings]);
+  const hide = (k: string) => hiddenFields.has(k);
   const fields = useMemo<CustomFieldDef[]>(() => readCustomFields(settings), [settings]);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [contactId, setContactId] = useState<string | null>(lead.contact_id);
@@ -216,35 +219,43 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
             <Textarea id="description" rows={3} {...form.register("description")} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="valueReais">Valor (R$)</Label>
-              <Input
-                id="valueReais"
-                inputMode="decimal"
-                placeholder="0,00"
-                {...form.register("valueReais")}
-              />
-              {form.formState.errors.valueReais && (
-                <p className="text-xs text-error-fg">
-                  {form.formState.errors.valueReais.message}
-                </p>
+          {(!hide("value") || !hide("expected_close_date")) && (
+            <div className="grid grid-cols-2 gap-3">
+              {!hide("value") && (
+                <div className="space-y-2">
+                  <Label htmlFor="valueReais">Valor (R$)</Label>
+                  <Input
+                    id="valueReais"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    {...form.register("valueReais")}
+                  />
+                  {form.formState.errors.valueReais && (
+                    <p className="text-xs text-error-fg">
+                      {form.formState.errors.valueReais.message}
+                    </p>
+                  )}
+                </div>
+              )}
+              {!hide("expected_close_date") && (
+                <div className="space-y-2">
+                  <Label htmlFor="expected_close_date">Fechamento previsto</Label>
+                  <Input
+                    id="expected_close_date"
+                    type="date"
+                    {...form.register("expected_close_date")}
+                  />
+                </div>
               )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="expected_close_date">Fechamento previsto</Label>
-              <Input
-                id="expected_close_date"
-                type="date"
-                {...form.register("expected_close_date")}
-              />
-            </div>
-          </div>
+          )}
 
-          <div className="space-y-2">
-            <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
-            <Input id="tagsRaw" placeholder="vip, recompra" {...form.register("tagsRaw")} />
-          </div>
+          {!hide("tags") && (
+            <div className="space-y-2">
+              <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
+              <Input id="tagsRaw" placeholder="vip, recompra" {...form.register("tagsRaw")} />
+            </div>
+          )}
 
           <ContactPicker
             value={contactId}

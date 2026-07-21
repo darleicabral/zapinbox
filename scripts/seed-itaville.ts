@@ -72,10 +72,14 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
 
 // ── Fields do pipeline de chamados (settings.fields) ────────────────────────
 type Opt = { value: string; label: string };
-type Field =
+type Field = (
   | { key: string; label: string; type: "text" | "textarea" | "date" }
   | { key: string; label: string; type: "select"; options: Opt[] }
-  | { key: string; label: string; type: "select"; optionsBy: { field: string; map: Record<string, Opt[]> } };
+  | { key: string; label: string; type: "select"; optionsBy: { field: string; map: Record<string, Opt[]> } }
+) & {
+  /** Campo de acompanhamento: some do diálogo de criação (só edição). */
+  hideOnCreate?: boolean;
+};
 
 /** helper: select cujo options tem value === label */
 const sel = (key: string, label: string, options: string[]): Field => ({
@@ -120,7 +124,7 @@ const SUBCATEGORIAS: Record<string, string[]> = {
 
 const FIELDS: Field[] = [
   sel("empreendimento", "Empreendimento", ["Salvador Dalí", "Van Gogh", "Jardim Canaã"]),
-  txt("unidade", "Unidade (torre/apto)"),
+  txt("unidade", "Unidade"),
   txt("interlocutor", "Interlocutor (quem falou)"),
   sel("interlocutor_relacao", "Relação com o titular", [
     "Próprio titular",
@@ -129,8 +133,8 @@ const FIELDS: Field[] = [
     "Representante",
     "Advogado",
   ]),
+  // Todos os titulares no exterior são dos EUA — sem campo de país (decisão 21/07).
   sel("titular_exterior", "Titular no exterior?", ["Sim", "Não"]),
-  txt("pais_exterior", "País (se exterior)"),
   sel("canal", "Canal", ["WhatsApp", "Telefone", "E-mail", "Presencial"]),
   sel("categoria", "Categoria", [
     "Financeiro",
@@ -146,7 +150,7 @@ const FIELDS: Field[] = [
   selDep("subcategoria", "Subcategoria", "categoria", SUBCATEGORIAS),
   sel("nivel_acompanhamento", "Nível de acompanhamento", ["Verde", "Amarelo", "Vermelho"]),
   sel("responsavel_area", "Responsável (área)", ["Relacionamento", "Financeiro", "Obra/AT", "Jurídico"]),
-  dat("proximo_contato", "Próximo contato"),
+  { ...dat("proximo_contato", "Próximo contato"), hideOnCreate: true },
   area("observacoes", "Observações"),
   sel("vg_impacto_previsao", "VG · Impacto da nova previsão", [
     "Sem impacto",
@@ -162,8 +166,8 @@ const FIELDS: Field[] = [
     "Investimento",
     "Outro",
   ]),
-  sel("vg_contrapartida", "VG · Contrapartida comunicada", ["Sim", "Não"]),
-  sel("vg_material_enviado", "VG · Material enviado", ["Sim", "Não"]),
+  { ...sel("vg_contrapartida", "VG · Contrapartida comunicada", ["Sim", "Não"]), hideOnCreate: true },
+  { ...sel("vg_material_enviado", "VG · Material enviado", ["Sim", "Não"]), hideOnCreate: true },
 ];
 
 const VOCABULARY = {
@@ -336,6 +340,9 @@ async function remodelPipeline(orgId: string): Promise<string> {
     identity_resolution:
       prev.identity_resolution ?? { fields_in_priority_order: ["cpf", "phone_e164", "email"] },
     fields: FIELDS,
+    // Chamado de pós-venda não tem valor de negócio nem data de fechamento —
+    // esconde os campos de venda embutidos nos diálogos (ver form_hide na UI).
+    form_hide: ["value", "expected_close_date"],
   };
 
   const { error: upErr } = await admin

@@ -49,6 +49,8 @@ interface Props {
   fields?: CustomFieldDef[];
   /** Vocabulário do pipeline (ex.: "Chamado"). Default "Lead". */
   leadNoun?: string;
+  /** Campos embutidos escondidos via settings.form_hide ("value", "expected_close_date", "tags"). */
+  hiddenFields?: Set<string>;
 }
 
 function defaultStageId(stages: Stage[]): string {
@@ -63,8 +65,12 @@ export function NewLeadDialog({
   stages,
   fields = [],
   leadNoun = "Lead",
+  hiddenFields,
 }: Props) {
   const nounLower = leadNoun.toLowerCase();
+  const hide = (k: string) => hiddenFields?.has(k) ?? false;
+  // Criação enxuta: campos de acompanhamento (hideOnCreate) só aparecem na edição.
+  const createFields = useMemo(() => fields.filter((f) => !f.hideOnCreate), [fields]);
   const create = useCreateLead(pipelineId);
   const initialStage = useMemo(() => defaultStageId(stages), [stages]);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
@@ -118,7 +124,7 @@ export function NewLeadDialog({
     if (contactId) payload.contact_id = contactId;
     if (valueCents !== null) payload.value_cents = valueCents;
     if (values.expected_close_date) payload.expected_close_date = values.expected_close_date;
-    if (fields.length > 0) payload.custom_fields = buildCustomFields(fields, customValues);
+    if (createFields.length > 0) payload.custom_fields = buildCustomFields(createFields, customValues);
 
     const parsed = createLeadSchema.safeParse(payload);
     if (!parsed.success) {
@@ -200,43 +206,51 @@ export function NewLeadDialog({
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="valueReais">Valor (R$)</Label>
-              <Input
-                id="valueReais"
-                inputMode="decimal"
-                placeholder="0,00"
-                {...form.register("valueReais")}
-              />
-              {form.formState.errors.valueReais && (
-                <p className="text-xs text-error-fg">
-                  {form.formState.errors.valueReais.message}
-                </p>
+          {(!hide("value") || !hide("expected_close_date")) && (
+            <div className="grid grid-cols-2 gap-3">
+              {!hide("value") && (
+                <div className="space-y-2">
+                  <Label htmlFor="valueReais">Valor (R$)</Label>
+                  <Input
+                    id="valueReais"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    {...form.register("valueReais")}
+                  />
+                  {form.formState.errors.valueReais && (
+                    <p className="text-xs text-error-fg">
+                      {form.formState.errors.valueReais.message}
+                    </p>
+                  )}
+                </div>
+              )}
+              {!hide("expected_close_date") && (
+                <div className="space-y-2">
+                  <Label htmlFor="expected_close_date">Fechamento previsto</Label>
+                  <Input
+                    id="expected_close_date"
+                    type="date"
+                    {...form.register("expected_close_date")}
+                  />
+                </div>
               )}
             </div>
+          )}
+
+          {!hide("tags") && (
             <div className="space-y-2">
-              <Label htmlFor="expected_close_date">Fechamento previsto</Label>
+              <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
               <Input
-                id="expected_close_date"
-                type="date"
-                {...form.register("expected_close_date")}
+                id="tagsRaw"
+                placeholder="vip, recompra"
+                {...form.register("tagsRaw")}
               />
             </div>
-          </div>
+          )}
 
-          <div className="space-y-2">
-            <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
-            <Input
-              id="tagsRaw"
-              placeholder="vip, recompra"
-              {...form.register("tagsRaw")}
-            />
-          </div>
-
-          {fields.length > 0 && (
+          {createFields.length > 0 && (
             <CustomFieldsEditor
-              fields={fields}
+              fields={createFields}
               value={customValues}
               onChange={setCustomValues}
               mode="lead"
