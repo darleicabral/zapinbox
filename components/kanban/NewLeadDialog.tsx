@@ -26,10 +26,23 @@ import {
   buildCustomFields,
   type CustomFieldDef,
 } from "@/components/contacts/CustomFieldsEditor";
-import { ContactPicker } from "@/components/kanban/ContactPicker";
+import { ContactPicker, type ContactDisplay } from "@/components/kanban/ContactPicker";
+import { BuyerLookup } from "@/components/kanban/BuyerLookup";
 import { useCreateLead } from "@/hooks/kanban/useCreateLead";
+import { useCreateContact } from "@/hooks/contacts/useCreateContact";
+import type { Sale } from "@/hooks/sales/useSalesBase";
+import { apiClient } from "@/lib/api/client";
+import { showApiError } from "@/components/feedback/ApiErrorToast";
+import type { Contact } from "@/lib/types/contacts";
+import type { ContactCreate } from "@/lib/schemas/contacts";
 import type { Stage } from "@/lib/kanban/types";
 import { createLeadSchema, type CreateLeadInput } from "@/lib/schemas/leads";
+
+function formatBRL(cents: number): string {
+  return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface FormShape {
   title: string;
@@ -72,9 +85,68 @@ export function NewLeadDialog({
   // Criação enxuta: campos de acompanhamento (hideOnCreate) só aparecem na edição.
   const createFields = useMemo(() => fields.filter((f) => !f.hideOnCreate), [fields]);
   const create = useCreateLead(pipelineId);
+  const createContact = useCreateContact();
   const initialStage = useMemo(() => defaultStageId(stages), [stages]);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [contactId, setContactId] = useState<string | null>(null);
+  const [pickedContact, setPickedContact] = useState<ContactDisplay | null>(null);
+  // A busca do comprador só existe em pipelines que usam este fluxo (têm empreendimento).
+  const buyerLookupEnabled = useMemo(
+    () => createFields.some((f) => f.key === "empreendimento"),
+    [createFields],
+  );
+
+  /** Acha o contato pelo telefone (E.164) ou cria um novo com os dados da venda. */
+  async function findOrCreateContact(sale: Sale): Promise<Contact | null> {
+    const phone = sale.phone_e164?.trim() || null;
+    if (phone) {
+      const digits = phone.replace(/\D/g, "");
+      const res = await apiClient.get<{ data: Contact[] }>(
+        `/api/v1/contacts?search=${encodeURIComponent(digits)}&limit=50`,
+      );
+      const match = res.data.find((c) => (c.phone_number ?? "").replace(/\D/g, "") === digits);
+      if (match) return match;
+    }
+    const payload: ContactCreate = { source: "manual" };
+    if (sale.cliente) payload.name = sale.cliente;
+    if (phone) payload.phone_number = phone;
+    if (sale.email && EMAIL_RE.test(sale.email.trim())) payload.email = sale.email.trim();
+    if (!payload.name && !payload.phone_number) return null;
+    // O POST devolve { data: { contact, action } }; normaliza p/ o Contact.
+    const created = await createContact.mutateAsync(payload);
+    const d = created.data as unknown as ({ contact?: Contact } & Partial<Contact>);
+    return d.contact ?? (d as Contact) ?? null;
+  }
+
+  /** Auto-preenche o formulário a partir de uma venda escolhida na base. */
+  async function onSelectBuyer(sale: Sale) {
+    const cf: Record<string, unknown> = {};
+    if (sale.empreendimento) cf.empreendimento = sale.empreendimento;
+    if (sale.unidade) cf.unidade = sale.unidade;
+    if (sale.profissao) cf.profissao = sale.profissao;
+    if (sale.imobiliaria) cf.imobiliaria = sale.imobiliaria;
+    if (sale.valor_cents != null) cf.valor_venda = formatBRL(sale.valor_cents);
+    setCustomValues((prev) => ({ ...prev, ...cf }));
+
+    const local = [sale.empreendimento, sale.unidade].filter(Boolean).join(" ");
+    const title = [sale.cliente, local].filter(Boolean).join(" — ");
+    if (title.length >= 2) form.setValue("title", title);
+
+    if (!sale.cliente && !sale.phone_e164) return;
+    try {
+      const contact = await findOrCreateContact(sale);
+      if (contact?.id) {
+        setContactId(contact.id);
+        setPickedContact({
+          display_name: contact.display_name ?? null,
+          name: contact.name ?? null,
+          phone_number: contact.phone_number ?? null,
+        });
+      }
+    } catch (err) {
+      showApiError(err);
+    }
+  }
 
   const form = useForm<FormShape>({
     defaultValues: {
@@ -146,6 +218,7 @@ export function NewLeadDialog({
       });
       setCustomValues({});
       setContactId(null);
+      setPickedContact(null);
       onOpenChange(false);
     } catch {
       // toast already shown
@@ -164,6 +237,12 @@ export function NewLeadDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <BuyerLookup
+            enabled={buyerLookupEnabled}
+            onSelect={onSelectBuyer}
+            disabled={create.isPending}
+          />
+
           <div className="space-y-2">
             <Label htmlFor="title">Título</Label>
             <Input
@@ -183,7 +262,15 @@ export function NewLeadDialog({
             />
           </div>
 
-          <ContactPicker value={contactId} onChange={(id) => setContactId(id)} disabled={create.isPending} />
+          <ContactPicker
+            value={contactId}
+            onChange={(id) => {
+              setContactId(id);
+              if (!id) setPickedContact(null);
+            }}
+            initialContact={pickedContact}
+            disabled={create.isPending}
+          />
 
           <div className="space-y-2">
             <Label>Etapa</Label>

@@ -123,7 +123,7 @@ const SUBCATEGORIAS: Record<string, string[]> = {
 };
 
 const FIELDS: Field[] = [
-  sel("empreendimento", "Empreendimento", ["Salvador Dalí", "Van Gogh", "Jardim Canaã"]),
+  sel("empreendimento", "Empreendimento", ["Parque Olímpico 4", "Van Gogh", "Salvador Dalí", "Jardim Canaã"]),
   txt("unidade", "Unidade"),
   txt("interlocutor", "Interlocutor (quem falou)"),
   sel("interlocutor_relacao", "Relação com o titular", [
@@ -150,6 +150,11 @@ const FIELDS: Field[] = [
   selDep("subcategoria", "Subcategoria", "categoria", SUBCATEGORIAS),
   sel("nivel_acompanhamento", "Nível de acompanhamento", ["Verde", "Amarelo", "Vermelho"]),
   sel("responsavel_area", "Responsável (área)", ["Relacionamento", "Financeiro", "Obra/AT", "Jurídico"]),
+  // Dados da venda — auto-preenchidos pela busca do comprador (base de vendas);
+  // opcionais, editáveis. Não obrigatórios para novos chamados (decisão 21/07).
+  txt("profissao", "Profissão do cliente"),
+  txt("valor_venda", "Valor da venda"),
+  txt("imobiliaria", "Imobiliária"),
   { ...dat("proximo_contato", "Próximo contato"), hideOnCreate: true },
   area("observacoes", "Observações"),
   sel("vg_impacto_previsao", "VG · Impacto da nova previsão", [

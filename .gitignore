@@ -63,3 +63,9 @@ test-results/
 playwright-report/
 .vercel
 deskcommcrm-setup-kit.zip
+
+# Planilhas/exports de clientes (PII: CPF, telefone, e-mail) — NUNCA commitar.
+# Ex.: base de vendas da Itaville, exports do CVCRM.
+*.xlsx
+*.xls
+/*.csv

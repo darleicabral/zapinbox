@@ -16,6 +16,7 @@ export const EMPREENDIMENTO_PREFIX: Record<string, string> = {
   "Van Gogh": "VG",
   "Salvador Dalí": "SD",
   "Jardim Canaã": "JC",
+  "Parque Olímpico 4": "PO",
 };
 
 /** Prefixo do chamado p/ um empreendimento, ou null se não mapeado. */
