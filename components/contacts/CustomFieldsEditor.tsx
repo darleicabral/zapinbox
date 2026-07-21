@@ -38,6 +38,14 @@ export interface CustomFieldDef {
   type: CustomFieldType;
   required?: boolean;
   options?: Array<{ value: string; label: string }>;
+  /**
+   * Opções dependentes do valor de outro campo (ex.: subcategoria depende de
+   * categoria). Genérico p/ qualquer tenant: as opções vêm de `map[valorDoPai]`.
+   */
+  optionsBy?: {
+    field: string;
+    map: Record<string, Array<{ value: string; label: string }>>;
+  };
 }
 
 interface Props {
@@ -50,7 +58,17 @@ interface Props {
 
 export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props) {
   function set(key: string, v: unknown) {
-    onChange({ ...value, [key]: v });
+    const next: Record<string, unknown> = { ...value, [key]: v };
+    // Ao mudar um campo pai, limpa os filhos cujo valor ficou inválido
+    // (ex.: trocar a categoria zera a subcategoria que não pertence mais).
+    for (const child of fields) {
+      if (child.optionsBy?.field !== key) continue;
+      const stillValid = (child.optionsBy.map[String(v ?? "")] ?? []).some(
+        (o) => o.value === next[child.key],
+      );
+      if (!stillValid) next[child.key] = "";
+    }
+    onChange(next);
   }
 
   return (
@@ -107,20 +125,27 @@ export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props)
                 />
               </div>
             );
-          case "select":
+          case "select": {
+            const parentVal = f.optionsBy ? String(value[f.optionsBy.field] ?? "") : "";
+            const opts = f.optionsBy ? f.optionsBy.map[parentVal] ?? [] : f.options ?? [];
+            const waitingParent = !!f.optionsBy && !parentVal;
+            const parentLabel =
+              fields.find((pf) => pf.key === f.optionsBy?.field)?.label ?? "o campo anterior";
             return (
               <div key={f.key} className="space-y-2">
                 {labelEl}
                 <Select
                   value={typeof v === "string" ? v : ""}
                   onValueChange={(val) => set(f.key, val)}
-                  disabled={disabled}
+                  disabled={disabled || waitingParent}
                 >
                   <SelectTrigger id={id}>
-                    <SelectValue placeholder="Selecione…" />
+                    <SelectValue
+                      placeholder={waitingParent ? `Escolha ${parentLabel} primeiro` : "Selecione…"}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {f.options?.map((o) => (
+                    {opts.map((o) => (
                       <SelectItem key={o.value} value={o.value}>
                         {o.label}
                       </SelectItem>
@@ -129,6 +154,7 @@ export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props)
                 </Select>
               </div>
             );
+          }
           case "multiselect": {
             const current = Array.isArray(v) ? (v as string[]) : [];
             return (

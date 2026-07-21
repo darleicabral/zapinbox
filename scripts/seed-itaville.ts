@@ -71,9 +71,11 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
 });
 
 // ── Fields do pipeline de chamados (settings.fields) ────────────────────────
+type Opt = { value: string; label: string };
 type Field =
   | { key: string; label: string; type: "text" | "textarea" | "date" }
-  | { key: string; label: string; type: "select"; options: Array<{ value: string; label: string }> };
+  | { key: string; label: string; type: "select"; options: Opt[] }
+  | { key: string; label: string; type: "select"; optionsBy: { field: string; map: Record<string, Opt[]> } };
 
 /** helper: select cujo options tem value === label */
 const sel = (key: string, label: string, options: string[]): Field => ({
@@ -82,9 +84,39 @@ const sel = (key: string, label: string, options: string[]): Field => ({
   type: "select",
   options: options.map((o) => ({ value: o, label: o })),
 });
+/** select dependente: options vêm de map[valor do campo pai]. */
+const selDep = (
+  key: string,
+  label: string,
+  field: string,
+  map: Record<string, string[]>,
+): Field => ({
+  key,
+  label,
+  type: "select",
+  optionsBy: {
+    field,
+    map: Object.fromEntries(
+      Object.entries(map).map(([k, v]) => [k, v.map((o) => ({ value: o, label: o }))]),
+    ),
+  },
+});
 const txt = (key: string, label: string): Field => ({ key, label, type: "text" });
 const dat = (key: string, label: string): Field => ({ key, label, type: "date" });
 const area = (key: string, label: string): Field => ({ key, label, type: "textarea" });
+
+/** Categoria → subcategorias (§3 da spec 06). */
+const SUBCATEGORIAS: Record<string, string[]> = {
+  Financeiro: ["boleto", "2ª via de boleto", "vencimento", "comprovante", "negociação", "parcela", "reajuste", "multa por atraso"],
+  "Contrato e documentação": ["2ª via de contrato", "assinatura", "aditivo", "escritura", "documentos"],
+  "Obra e entrega": ["andamento", "cronograma", "motivo do atraso", "nova previsão de entrega", "visita à obra", "entrega de chaves"],
+  "Distrato e rescisão": ["intenção de distrato", "cálculo de multa/devolução", "condições de distrato"],
+  "Assistência técnica": ["vistoria", "reparo", "garantia", "infiltração", "elétrica", "hidráulica", "acabamento (AT)"],
+  "Personalização e unidade": ["alteração de planta", "acabamento (personalização)", "dúvidas de unidade", "medição"],
+  "Empreendimento e condomínio": ["áreas comuns", "vaga", "taxa condominial", "regulamento", "administração"],
+  Relacionamento: ["reclamação", "elogio", "sugestão", "solicitação especial", "retorno de contato"],
+  Jurídico: ["ameaça de ação judicial", "Procon", "advogado constituído", "notificação", "disputa contratual"],
+};
 
 const FIELDS: Field[] = [
   sel("empreendimento", "Empreendimento", ["Salvador Dalí", "Van Gogh", "Jardim Canaã"]),
@@ -111,56 +143,7 @@ const FIELDS: Field[] = [
     "Relacionamento",
     "Jurídico",
   ]),
-  sel("subcategoria", "Subcategoria", [
-    "boleto",
-    "2ª via de boleto",
-    "vencimento",
-    "comprovante",
-    "negociação",
-    "parcela",
-    "reajuste",
-    "multa por atraso",
-    "2ª via de contrato",
-    "assinatura",
-    "aditivo",
-    "escritura",
-    "documentos",
-    "andamento",
-    "cronograma",
-    "motivo do atraso",
-    "nova previsão de entrega",
-    "visita à obra",
-    "entrega de chaves",
-    "intenção de distrato",
-    "cálculo de multa/devolução",
-    "condições de distrato",
-    "vistoria",
-    "reparo",
-    "garantia",
-    "infiltração",
-    "elétrica",
-    "hidráulica",
-    "acabamento (AT)",
-    "alteração de planta",
-    "acabamento (personalização)",
-    "dúvidas de unidade",
-    "medição",
-    "áreas comuns",
-    "vaga",
-    "taxa condominial",
-    "regulamento",
-    "administração",
-    "reclamação",
-    "elogio",
-    "sugestão",
-    "solicitação especial",
-    "retorno de contato",
-    "ameaça de ação judicial",
-    "Procon",
-    "advogado constituído",
-    "notificação",
-    "disputa contratual",
-  ]),
+  selDep("subcategoria", "Subcategoria", "categoria", SUBCATEGORIAS),
   sel("nivel_acompanhamento", "Nível de acompanhamento", ["Verde", "Amarelo", "Vermelho"]),
   sel("responsavel_area", "Responsável (área)", ["Relacionamento", "Financeiro", "Obra/AT", "Jurídico"]),
   dat("proximo_contato", "Próximo contato"),
