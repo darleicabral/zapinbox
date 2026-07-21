@@ -47,6 +47,8 @@ interface Props {
   stages: Stage[];
   /** Campos customizados declarados em pipeline.settings.fields. Vazio ⇒ some. */
   fields?: CustomFieldDef[];
+  /** Vocabulário do pipeline (ex.: "Chamado"). Default "Lead". */
+  leadNoun?: string;
 }
 
 function defaultStageId(stages: Stage[]): string {
@@ -60,7 +62,9 @@ export function NewLeadDialog({
   pipelineId,
   stages,
   fields = [],
+  leadNoun = "Lead",
 }: Props) {
+  const nounLower = leadNoun.toLowerCase();
   const create = useCreateLead(pipelineId);
   const initialStage = useMemo(() => defaultStageId(stages), [stages]);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
@@ -125,7 +129,7 @@ export function NewLeadDialog({
 
     try {
       await create.mutateAsync(parsed.data as CreateLeadInput);
-      toast.success("Lead criado");
+      toast.success(`${leadNoun} criado`);
       form.reset({
         title: "",
         description: "",
@@ -148,9 +152,9 @@ export function NewLeadDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Novo Lead</DialogTitle>
+          <DialogTitle>Novo {leadNoun}</DialogTitle>
           <DialogDescription>
-            Crie um lead manualmente neste pipeline.
+            Crie um {nounLower} manualmente neste pipeline.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -158,7 +162,7 @@ export function NewLeadDialog({
             <Label htmlFor="title">Título</Label>
             <Input
               id="title"
-              placeholder="Ex: Pedido Maria — combo presente"
+              placeholder={`Resumo do ${nounLower}`}
               {...form.register("title", { required: true, minLength: 2 })}
             />
           </div>
@@ -250,7 +254,7 @@ export function NewLeadDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={create.isPending || !stageId}>
-              {create.isPending ? "Criando…" : "Criar lead"}
+              {create.isPending ? "Criando…" : `Criar ${nounLower}`}
             </Button>
           </DialogFooter>
         </form>

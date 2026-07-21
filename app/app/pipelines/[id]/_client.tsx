@@ -41,6 +41,7 @@ export function PipelinePageClient({
   const [newOpen, setNewOpen] = useState(false);
 
   const filteredLeads = data ? applyFilters(data.leads, filters) : [];
+  const leadNoun = data?.pipeline.vocabulary?.lead ?? "Lead";
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -49,7 +50,7 @@ export function PipelinePageClient({
           {data?.pipeline.name ?? initialName}
         </h1>
         <Button onClick={() => setNewOpen(true)} disabled={!data}>
-          <Plus size={16} className="mr-2" /> Novo Lead
+          <Plus size={16} className="mr-2" /> Novo {leadNoun}
         </Button>
       </header>
       {data && (
@@ -59,6 +60,7 @@ export function PipelinePageClient({
           pipelineId={pipelineId}
           stages={data.stages}
           fields={readCustomFields(data.pipeline.settings)}
+          leadNoun={leadNoun}
         />
       )}
       <FilterBar filters={filters} onChange={setFilters} leads={data?.leads ?? []} />
