@@ -2,11 +2,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTransition } from "react";
-import { Kanban, Users, UsersThree, Gear, CaretDoubleLeft, CaretDoubleRight, Inbox, ScalesSimple, Robot, PlugsConnected } from "@/lib/ui/icons";
+import { Kanban, Users, UsersThree, Gear, CaretDoubleLeft, CaretDoubleRight, Inbox, ScalesSimple, Robot, PlugsConnected, Gauge } from "@/lib/ui/icons";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
-import { usePermission } from "@/hooks/auth/AuthProvider";
+import { usePermission, useActiveOrg } from "@/hooks/auth/AuthProvider";
+import { hasPosvendaModule } from "@/lib/modules";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
 import { Logo } from "@/components/brand/Logo";
 
@@ -15,11 +16,14 @@ interface NavItem {
   label: string;
   icon: PhosphorIcon;
   permission?: string;
+  /** Item de módulo opcional por-org (ex.: "posvenda" só p/ Itaville). */
+  module?: "posvenda";
   healthDot?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/app/inbox", label: "Inbox", icon: Inbox },
+  { href: "/app/painel", label: "Painel", icon: Gauge, module: "posvenda" },
   { href: "/app/connections", label: "Conexões", icon: PlugsConnected, healthDot: true },
   { href: "/app/kanban", label: "Kanban", icon: Kanban },
   { href: "/app/contacts", label: "Contatos", icon: Users },
@@ -34,6 +38,8 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const [isPending, startTransition] = useTransition();
   const canLgpd = usePermission("lgpd.execute_redact");
   const canAiAgents = usePermission("ai.agents.view");
+  const activeOrg = useActiveOrg();
+  const canPosvenda = hasPosvendaModule(activeOrg?.orgId);
 
   return (
     <aside
@@ -47,6 +53,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       </div>
       <nav className="flex-1 space-y-1 p-2" aria-label="Navegação principal">
         {NAV_ITEMS.filter((item) => {
+          if (item.module === "posvenda") return canPosvenda;
           if (item.permission === "lgpd.execute_redact") return canLgpd;
           if (item.permission === "ai.agents.view") return canAiAgents;
           return true;
