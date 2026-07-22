@@ -120,12 +120,14 @@ async function main(): Promise<void> {
   }
   console.log(`[cred] ${PROVIDER} = ${cred!.id} ("${cred!.label}")`);
 
-  // 3) Sessão WAHA working.
+  // 3) Sessão WAHA conectada. ⚠️ O banco guarda o status do WAHA em MAIÚSCULAS
+  // (ex.: "WORKING" = "Conectado" na UI) — ver lib/waha/ingest.ts. Aceitamos as
+  // duas caixas por segurança.
   let sessionQuery = admin
     .from("channel_sessions")
     .select("id, waha_session_name, status")
     .eq("organization_id", orgId)
-    .eq("status", "working");
+    .in("status", ["WORKING", "working"]);
   if (env.ITAVILLE_WAHA_SESSION) {
     sessionQuery = sessionQuery.eq("waha_session_name", env.ITAVILLE_WAHA_SESSION);
   }
@@ -133,9 +135,9 @@ async function main(): Promise<void> {
   const sessionList = sessions ?? [];
   if (sessionList.length === 0) {
     die(
-      `nenhuma sessão WhatsApp com status 'working' na org itaville` +
+      `nenhuma sessão WhatsApp conectada (status WORKING) na org itaville` +
         (env.ITAVILLE_WAHA_SESSION ? ` (nome "${env.ITAVILLE_WAHA_SESSION}")` : "") +
-        `.\n   → Pareie o número no CRM: Conexões → conectar/QR. A sessão precisa ficar 'working'.`,
+        `.\n   → Pareie o número no CRM: Conexões → conectar/QR. Precisa ficar "Conectado".`,
     );
   }
   if (sessionList.length > 1 && !env.ITAVILLE_WAHA_SESSION) {
@@ -233,17 +235,50 @@ async function main(): Promise<void> {
   if (verErr || !versionRow) die(`criar versão: ${verErr?.message}`);
   console.log(`[version] draft v${versionRow!.version_number} = ${versionRow!.id}`);
 
-  // 7) Publica (atômico; supersede a anterior; valida credencial/sessão/modelo).
-  const { data: pub, error: pubErr } = await admin.rpc("fn_publish_ai_agent_version" as never, {
-    p_org_id: orgId,
-    p_agent_id: agentId,
-    p_version_id: versionRow!.id,
-  } as never);
-  if (pubErr) {
-    die(
-      `publish falhou: ${pubErr.message}\n` +
-        `   (motivos comuns: sessão não 'working', credencial não validada, modelo fora do catálogo).`,
-    );
+  // 7) Publica — "flip" manual, idempotente. NÃO usamos a RPC
+  // fn_publish_ai_agent_version de propósito: ela compara channel_sessions.status
+  // com 'working' MINÚSCULO, mas o banco guarda em MAIÚSCULAS ('WORKING'), então
+  // a fn rejeitaria toda sessão real (bug de caixa na fn). Fazemos a mesma
+  // sequência aqui: valida o modelo no catálogo → publica a nova → aponta o
+  // agente → supersede a anterior. Ordem escolhida pra nunca deixar o agente sem
+  // versão publicada.
+  const { data: modelRow } = await admin
+    .from("ai_models")
+    .select("model_id")
+    .eq("provider", PROVIDER)
+    .eq("model_id", MODEL)
+    .is("deprecated_at", null)
+    .maybeSingle<{ model_id: string }>();
+  if (!modelRow) die(`modelo ${PROVIDER}/${MODEL} não está no catálogo ai_models (ou está deprecated).`);
+
+  const nowIso = new Date().toISOString();
+  const { data: agentPub } = await admin
+    .from("ai_agents")
+    .select("published_version_id")
+    .eq("id", agentId)
+    .maybeSingle<{ published_version_id: string | null }>();
+  const prevVersionId = agentPub?.published_version_id ?? null;
+
+  // (a) nova versão → published
+  const { error: pubErr } = await admin
+    .from("ai_agent_versions")
+    .update({ status: "published", published_at: nowIso, superseded_at: null } as never)
+    .eq("id", versionRow!.id);
+  if (pubErr) die(`publicar versão: ${pubErr.message}`);
+
+  // (b) o agente passa a apontar pra nova versão (é isso que o dispatcher lê)
+  const { error: flipErr } = await admin
+    .from("ai_agents")
+    .update({ published_version_id: versionRow!.id, updated_at: nowIso } as never)
+    .eq("id", agentId);
+  if (flipErr) die(`apontar published_version_id: ${flipErr.message}`);
+
+  // (c) supersede a versão anterior (se houver e for diferente)
+  if (prevVersionId && prevVersionId !== versionRow!.id) {
+    await admin
+      .from("ai_agent_versions")
+      .update({ status: "superseded", superseded_at: nowIso } as never)
+      .eq("id", prevVersionId);
   }
 
   console.log("\n✅ Agente classificador da Itaville publicado.");
@@ -257,7 +292,9 @@ async function main(): Promise<void> {
   console.log("──────────────────────────────────────────────");
   console.log("  Teste: mande um WhatsApp pro número pareado → deve aparecer um chamado");
   console.log("  novo em 'Chamados Pós-venda' (etapa Novo), já classificado, SEM resposta ao cliente.");
-  console.log(JSON.stringify(pub));
+  if (prevVersionId && prevVersionId !== versionRow!.id) {
+    console.log(`  (versão anterior ${prevVersionId} → superseded)`);
+  }
 }
 
 main().catch((err) => {
