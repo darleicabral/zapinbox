@@ -86,6 +86,7 @@ interface VersionRow {
   credential_id: string | null;
   tool_ids: string[];
   channel_session_id: string;
+  trigger_config: Record<string, unknown> | null;
   max_steps: number;
   token_budget: number;
   cost_budget_cents: number;
@@ -210,7 +211,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     const { data: versionRaw } = await admin
       .from("ai_agent_versions")
       .select(
-        "id, organization_id, agent_id, system_prompt, provider, model, credential_id, tool_ids, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, created_by",
+        "id, organization_id, agent_id, system_prompt, provider, model, credential_id, tool_ids, channel_session_id, trigger_config, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, created_by",
       )
       .eq("id", run.agent_version_id)
       .eq("organization_id", run.organization_id)
@@ -219,6 +220,16 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     if (!version) {
       return await failRun(run, "version_not_found", "agent version missing", startedAt);
     }
+
+    // Modo silencioso (opt-in via trigger_config.reply_mode='silent'): o agente
+    // NUNCA envia mensagem ao cliente — usado pelo classificador de chamados da
+    // Itaville ("só classifica, sem responder"). Garantido por código, não pela
+    // obediência do modelo: mesmo que o LLM gere texto, ele não é enviado.
+    // Retrocompatível: sem a chave (Avant etc.) → 'normal', comportamento igual.
+    const replyMode =
+      (version.trigger_config as { reply_mode?: unknown } | null)?.reply_mode === "silent"
+        ? "silent"
+        : "normal";
 
     const { data: agentRaw } = await admin
       .from("ai_agents")
@@ -456,7 +467,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     // resposta nenhuma (a conversa é silenciada com bot_silenced_until=inf).
     if (handoffSignal.triggered) {
       const farewell = (result.text ?? "").trim();
-      if (!run.is_dry_run && farewell && run.conversation_id) {
+      if (!run.is_dry_run && farewell && run.conversation_id && replyMode !== "silent") {
         await sendFinalResponse({
           supabase: admin,
           organizationId: run.organization_id,
@@ -552,10 +563,10 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       };
     }
 
-    // 16) Happy path. Send WAHA reply when not dry-run.
+    // 16) Happy path. Send WAHA reply when not dry-run (nunca no modo silencioso).
     let outboundMessageId: string | null = null;
     const finalText = (result.text ?? "").trim();
-    if (!run.is_dry_run && finalText && run.conversation_id) {
+    if (!run.is_dry_run && finalText && run.conversation_id && replyMode !== "silent") {
       outboundMessageId = await sendFinalResponse({
         supabase: admin,
         organizationId: run.organization_id,
