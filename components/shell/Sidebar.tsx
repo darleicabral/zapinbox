@@ -19,17 +19,19 @@ interface NavItem {
   /** Item de módulo opcional por-org (ex.: "posvenda" só p/ Itaville). */
   module?: "posvenda";
   healthDot?: boolean;
+  /** Visível só para role=admin do tenant ativo (não platform_admin/manager). */
+  adminOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/app/inbox", label: "Inbox", icon: Inbox },
-  { href: "/app/painel", label: "Painel", icon: Gauge, module: "posvenda" },
-  { href: "/app/connections", label: "Conexões", icon: PlugsConnected, healthDot: true },
-  { href: "/app/kanban", label: "Kanban", icon: Kanban },
+  { href: "/app/painel", label: "Dash", icon: Gauge, module: "posvenda" },
+  { href: "/app/inbox", label: "WhatsApp", icon: Inbox },
+  { href: "/app/kanban", label: "Chamados", icon: Kanban },
   { href: "/app/contacts", label: "Contatos", icon: Users },
-  { href: "/app/team", label: "Equipe", icon: UsersThree },
+  { href: "/app/connections", label: "Conexões", icon: PlugsConnected, healthDot: true },
+  { href: "/app/team", label: "Equipe", icon: UsersThree, adminOnly: true },
   { href: "/app/lgpd/requests", label: "LGPD", icon: ScalesSimple, permission: "lgpd.execute_redact" },
-  { href: "/app/ai/agents", label: "Agentes IA", icon: Robot, permission: "ai.agents.view" },
+  { href: "/app/ai/agents", label: "Agentes IA", icon: Robot, adminOnly: true },
   { href: "/app/settings", label: "Configurações", icon: Gear },
 ];
 
@@ -37,8 +39,8 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const canLgpd = usePermission("lgpd.execute_redact");
-  const canAiAgents = usePermission("ai.agents.view");
   const activeOrg = useActiveOrg();
+  const isAdmin = activeOrg?.role === "admin";
   const canPosvenda = hasPosvendaModule(activeOrg?.orgId);
 
   return (
@@ -53,9 +55,9 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       </div>
       <nav className="flex-1 space-y-1 p-2" aria-label="Navegação principal">
         {NAV_ITEMS.filter((item) => {
+          if (item.adminOnly) return isAdmin;
           if (item.module === "posvenda") return canPosvenda;
           if (item.permission === "lgpd.execute_redact") return canLgpd;
-          if (item.permission === "ai.agents.view") return canAiAgents;
           return true;
         }).map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
