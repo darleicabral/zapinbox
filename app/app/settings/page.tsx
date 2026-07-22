@@ -45,6 +45,12 @@ const LINKS: SettingsLink[] = [
     adminOnly: true,
   },
   {
+    href: "/app/settings/campos",
+    title: "Opções dos campos",
+    description: "Cadastre opções de Categoria, Canal, Responsável, etc.",
+    adminOnly: true,
+  },
+  {
     href: "/app/settings/attendance",
     title: "Atendimento",
     description: "Expediente, rodízio da equipe, SLAs e reengajamento automático.",

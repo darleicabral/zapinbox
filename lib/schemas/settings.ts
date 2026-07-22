@@ -74,6 +74,11 @@ export const notificationPrefsSchema = z.object({
 });
 export type NotificationPrefsInput = z.infer<typeof notificationPrefsSchema>;
 
+const fieldOptionSchema = z.object({
+  value: z.string().min(1).max(120),
+  label: z.string().min(1).max(120),
+});
+
 const customFieldSchema = z.object({
   key: z
     .string()
@@ -94,9 +99,29 @@ const customFieldSchema = z.object({
     "url",
   ]),
   required: z.boolean().optional(),
-  options: z
-    .array(z.object({ value: z.string().min(1), label: z.string().min(1) }))
+  /** Campo de acompanhamento: some do diálogo de criação (só edição). */
+  hideOnCreate: z.boolean().optional(),
+  options: z.array(fieldOptionSchema).optional(),
+  /**
+   * Opções dependentes de outro campo (ex.: subcategoria depende de categoria).
+   * PRECISA estar no schema: sem ela o Zod descartaria a chave ao salvar os
+   * fields e quebraria a cascata (menus em cascata do CustomFieldsEditor).
+   */
+  optionsBy: z
+    .object({
+      field: z.string().min(1).max(40),
+      map: z.record(z.string(), z.array(fieldOptionSchema)),
+    })
     .optional(),
+  /** Visibilidade condicional (ex.: bloco Van Gogh). Idem: preservar ao salvar. */
+  showWhen: z
+    .object({
+      field: z.string().min(1).max(40),
+      in: z.array(z.string().min(1).max(120)),
+    })
+    .optional(),
+  /** Agrupa campos consecutivos num bloco realçado. Idem: preservar ao salvar. */
+  section: z.string().min(1).max(80).optional(),
 });
 
 export const pipelineConfigPatchSchema = z.object({
