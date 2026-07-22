@@ -27,7 +27,7 @@ import {
   type CustomFieldDef,
 } from "@/components/contacts/CustomFieldsEditor";
 import { ContactPicker, type ContactDisplay } from "@/components/kanban/ContactPicker";
-import { BuyerLookup } from "@/components/kanban/BuyerLookup";
+import { BuyerLookup, type BuyerAggregate } from "@/components/kanban/BuyerLookup";
 import { useCreateLead } from "@/hooks/kanban/useCreateLead";
 import { useCreateContact } from "@/hooks/contacts/useCreateContact";
 import type { Sale } from "@/hooks/sales/useSalesBase";
@@ -119,13 +119,15 @@ export function NewLeadDialog({
   }
 
   /** Auto-preenche o formulário a partir de uma venda escolhida na base. */
-  async function onSelectBuyer(sale: Sale) {
+  async function onSelectBuyer(sale: Sale, agg: BuyerAggregate) {
     const cf: Record<string, unknown> = {};
     if (sale.empreendimento) cf.empreendimento = sale.empreendimento;
     if (sale.unidade) cf.unidade = sale.unidade;
     if (sale.profissao) cf.profissao = sale.profissao;
     if (sale.imobiliaria) cf.imobiliaria = sale.imobiliaria;
-    if (sale.valor_cents != null) cf.valor_venda = formatBRL(sale.valor_cents);
+    // valor_venda = SOMA de todas as unidades do cliente; unidades_cliente = quantas (mostrado no card).
+    if (agg.totalCents > 0) cf.valor_venda = formatBRL(agg.totalCents);
+    if (agg.units > 0) cf.unidades_cliente = agg.units;
     setCustomValues((prev) => ({ ...prev, ...cf }));
 
     const local = [sale.empreendimento, sale.unidade].filter(Boolean).join(" ");

@@ -43,6 +43,14 @@ export function KanbanCard({
   const value = formatBRL(lead.value_cents, lead.currency);
   const contactName = lead.contact?.display_name?.trim() || lead.contact?.name?.trim() || null;
   const contactPhone = lead.contact?.phone_number ?? null;
+
+  // Potencial do cliente (base de vendas): nº de unidades adquiridas + valor total.
+  const cf = lead.custom_fields ?? {};
+  const unidadesNum = Number(cf["unidades_cliente"]);
+  const unidadesCliente = Number.isFinite(unidadesNum) && unidadesNum > 0 ? unidadesNum : null;
+  const valorVendaRaw = cf["valor_venda"];
+  const valorVenda =
+    typeof valorVendaRaw === "string" && valorVendaRaw.trim() ? valorVendaRaw.trim() : null;
   // Evita repetir o nome quando o título do lead já começa com ele.
   const showContactName =
     contactName != null && !lead.title.toLowerCase().startsWith(contactName.toLowerCase());
@@ -85,6 +93,16 @@ export function KanbanCard({
               {showContactName ? contactName : null}
               {showContactName && contactPhone ? " · " : null}
               {contactPhone ? <span className="tabular-nums">{contactPhone}</span> : null}
+            </p>
+          )}
+
+          {(unidadesCliente || valorVenda) && (
+            <p className="mt-1.5 truncate text-[11px] font-medium tabular-nums text-text-muted">
+              {unidadesCliente
+                ? `${unidadesCliente} ${unidadesCliente > 1 ? "unidades" : "unidade"}`
+                : null}
+              {unidadesCliente && valorVenda ? " · " : null}
+              {valorVenda ?? null}
             </p>
           )}
 

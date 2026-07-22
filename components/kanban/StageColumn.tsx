@@ -39,7 +39,7 @@ export function StageColumn({
     : undefined;
 
   return (
-    <div className="flex w-80 shrink-0 flex-col rounded-lg border border-border bg-surface-muted/40">
+    <div className="flex min-w-[150px] flex-1 flex-col rounded-lg border border-border bg-surface-muted/40">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         <span
           className={cn(

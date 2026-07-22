@@ -73,7 +73,7 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
 // ── Fields do pipeline de chamados (settings.fields) ────────────────────────
 type Opt = { value: string; label: string };
 type Field = (
-  | { key: string; label: string; type: "text" | "textarea" | "date" }
+  | { key: string; label: string; type: "text" | "textarea" | "date" | "number" }
   | { key: string; label: string; type: "select"; options: Opt[] }
   | { key: string; label: string; type: "select"; optionsBy: { field: string; map: Record<string, Opt[]> } }
 ) & {
@@ -108,6 +108,7 @@ const selDep = (
 const txt = (key: string, label: string): Field => ({ key, label, type: "text" });
 const dat = (key: string, label: string): Field => ({ key, label, type: "date" });
 const area = (key: string, label: string): Field => ({ key, label, type: "textarea" });
+const num = (key: string, label: string): Field => ({ key, label, type: "number" });
 
 /** Categoria → subcategorias (§3 da spec 06). */
 const SUBCATEGORIAS: Record<string, string[]> = {
@@ -153,7 +154,10 @@ const FIELDS: Field[] = [
   // Dados da venda — auto-preenchidos pela busca do comprador (base de vendas);
   // opcionais, editáveis. Não obrigatórios para novos chamados (decisão 21/07).
   txt("profissao", "Profissão do cliente"),
-  txt("valor_venda", "Valor da venda"),
+  // valor_venda = SOMA dos valores de todas as unidades do cliente (potencial);
+  // unidades_cliente = quantas unidades aquele CPF adquiriu (mostrado no card).
+  num("unidades_cliente", "Unidades adquiridas"),
+  txt("valor_venda", "Valor da venda (total)"),
   txt("imobiliaria", "Imobiliária"),
   { ...dat("proximo_contato", "Próximo contato"), hideOnCreate: true },
   area("observacoes", "Observações"),
@@ -180,19 +184,23 @@ const VOCABULARY = {
   lead_plural: "Chamados",
   deal: "Chamado",
   deal_plural: "Chamados",
-  won: "Concluído",
+  won: "Resolvido",
   lost: "Cancelado",
   stage: "Status",
   stage_plural: "Status",
 };
 
 // [name, slug, position, color, is_won, is_lost] — exatamente 1 won e 1 lost.
+// Fluxo pós-venda (decisão Darlei 21/07): Novo (bot + represados fora do horário) →
+// Em atendimento (equipe) → Pendência (depende de outra área) → Em espera (sem
+// resposta ainda, mas teremos) → Resolvido (won) / Cancelado (lost).
 const STAGES: Array<[string, string, number, string, boolean, boolean]> = [
-  ["Aberto", "aberto", 1000, "#3B82F6", false, false],
-  ["Em andamento", "em_andamento", 2000, "#F59E0B", false, false],
-  ["Aguardando cliente", "aguardando_cliente", 3000, "#A855F7", false, false],
-  ["Concluído", "concluido", 4000, "#22C55E", true, false],
-  ["Cancelado", "cancelado", 5000, "#EF4444", false, true],
+  ["Novo", "novo", 1000, "#3B82F6", false, false],
+  ["Em atendimento", "em_atendimento", 2000, "#F59E0B", false, false],
+  ["Pendência", "pendencia", 3000, "#A855F7", false, false],
+  ["Em espera", "em_espera", 4000, "#64748B", false, false],
+  ["Resolvido", "resolvido", 5000, "#22C55E", true, false],
+  ["Cancelado", "cancelado", 6000, "#EF4444", false, true],
 ];
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
