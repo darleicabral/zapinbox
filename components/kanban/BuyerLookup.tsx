@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { MagnifyingGlass } from "@/lib/ui/icons";
 import { useSalesBase, type Sale } from "@/hooks/sales/useSalesBase";
 
 /** Agregado do comprador (todas as unidades do mesmo CPF/nome). */
@@ -110,12 +111,20 @@ export function BuyerLookup({ enabled, onSelect, disabled = false }: Props) {
   }
 
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <div className="space-y-0.5">
-        <Label className="text-sm font-medium">Buscar comprador (base de vendas)</Label>
-        <p className="text-xs text-muted-foreground">
-          Busque por nome ou CPF, ou escolha por empreendimento e unidade.
-        </p>
+    <div className="space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-3.5">
+      <div className="flex items-start gap-2">
+        <span
+          className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/15 text-accent"
+          aria-hidden
+        >
+          <MagnifyingGlass size={14} weight="bold" />
+        </span>
+        <div className="space-y-0.5">
+          <Label className="text-sm font-medium">Buscar comprador (base de vendas)</Label>
+          <p className="text-xs text-muted-foreground">
+            Busque por nome ou CPF, ou escolha por empreendimento e unidade.
+          </p>
+        </div>
       </div>
 
       <div className="space-y-1.5">

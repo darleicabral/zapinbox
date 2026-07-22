@@ -246,34 +246,16 @@ export function NewLeadDialog({
             disabled={create.isPending}
           />
 
-          <div className="space-y-2">
-            <Label htmlFor="title">Título</Label>
-            <Input
-              id="title"
-              placeholder={`Resumo do ${nounLower}`}
-              {...form.register("title", { required: true, minLength: 2 })}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
-            <Textarea
-              id="description"
-              rows={3}
-              placeholder="Contexto, observações, links…"
-              {...form.register("description")}
-            />
-          </div>
-
-          <ContactPicker
-            value={contactId}
-            onChange={(id) => {
-              setContactId(id);
-              if (!id) setPickedContact(null);
-            }}
-            initialContact={pickedContact}
-            disabled={create.isPending}
-          />
+          {/* Divisor que separa a busca (acima) do preenchimento do chamado. */}
+          {buyerLookupEnabled && (
+            <div className="flex items-center gap-3 pt-1" aria-hidden>
+              <span className="h-px flex-1 bg-border" />
+              <span className="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                ou preencha manualmente
+              </span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Etapa</Label>
@@ -294,6 +276,45 @@ export function NewLeadDialog({
                   ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="title">Título</Label>
+            <Input
+              id="title"
+              placeholder={`Resumo do ${nounLower}`}
+              {...form.register("title", { required: true, minLength: 2 })}
+            />
+          </div>
+
+          <ContactPicker
+            value={contactId}
+            onChange={(id) => {
+              setContactId(id);
+              if (!id) setPickedContact(null);
+            }}
+            initialContact={pickedContact}
+            disabled={create.isPending}
+          />
+
+          {createFields.length > 0 && (
+            <CustomFieldsEditor
+              fields={createFields}
+              value={customValues}
+              onChange={setCustomValues}
+              mode="lead"
+              disabled={create.isPending}
+            />
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Descrição</Label>
+            <Textarea
+              id="description"
+              rows={3}
+              placeholder="Contexto, observações, links…"
+              {...form.register("description")}
+            />
           </div>
 
           {(!hide("value") || !hide("expected_close_date")) && (
@@ -336,16 +357,6 @@ export function NewLeadDialog({
                 {...form.register("tagsRaw")}
               />
             </div>
-          )}
-
-          {createFields.length > 0 && (
-            <CustomFieldsEditor
-              fields={createFields}
-              value={customValues}
-              onChange={setCustomValues}
-              mode="lead"
-              disabled={create.isPending}
-            />
           )}
           </div>
 

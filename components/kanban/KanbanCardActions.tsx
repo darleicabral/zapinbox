@@ -11,18 +11,19 @@ import { Button } from "@/components/ui/button";
 import { DotsThree, PencilSimple } from "@/lib/ui/icons";
 import { useWinLead } from "@/hooks/kanban/useUpdateLead";
 import { LoseLeadDialog } from "./LoseLeadDialog";
-import { EditLeadDialog } from "./EditLeadDialog";
 import type { Lead } from "@/lib/types/leads";
 import type { BoardData } from "@/lib/kanban/types";
 
 interface KanbanCardActionsProps {
   lead: Lead;
   pipelineId: string;
+  /** Abre o diálogo de edição (o EditLeadDialog vive no KanbanCard, que também
+   * responde ao duplo-clique). */
+  onEdit: () => void;
 }
 
-export function KanbanCardActions({ lead, pipelineId }: KanbanCardActionsProps) {
+export function KanbanCardActions({ lead, pipelineId, onEdit }: KanbanCardActionsProps) {
   const [loseOpen, setLoseOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
   const winMutation = useWinLead(pipelineId);
   const qc = useQueryClient();
   const vocab = qc.getQueryData<BoardData>(["board", pipelineId])?.pipeline.vocabulary;
@@ -47,11 +48,7 @@ export function KanbanCardActions({ lead, pipelineId }: KanbanCardActionsProps) 
           align="end"
           onClick={(e) => e.stopPropagation()}
         >
-          <DropdownMenuItem
-            onSelect={() => {
-              setEditOpen(true);
-            }}
-          >
+          <DropdownMenuItem onSelect={onEdit}>
             <PencilSimple size={14} className="mr-2" /> Editar
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -76,12 +73,6 @@ export function KanbanCardActions({ lead, pipelineId }: KanbanCardActionsProps) 
         open={loseOpen}
         onOpenChange={setLoseOpen}
         leadId={lead.id}
-        pipelineId={pipelineId}
-      />
-      <EditLeadDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        lead={lead}
         pipelineId={pipelineId}
       />
     </>

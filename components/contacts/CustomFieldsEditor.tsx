@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Warning } from "@/lib/ui/icons";
 
 export type CustomFieldType =
   | "text"
@@ -48,6 +49,17 @@ export interface CustomFieldDef {
     field: string;
     map: Record<string, Array<{ value: string; label: string }>>;
   };
+  /**
+   * Visibilidade condicional: o campo só aparece quando `value[field]` está em
+   * `in` (ex.: campos "Van Gogh" só quando empreendimento === "Van Gogh").
+   * Genérico p/ qualquer tenant.
+   */
+  showWhen?: { field: string; in: string[] };
+  /**
+   * Agrupa campos consecutivos (mesma string) numa seção realçada com título.
+   * Campos sem `section` ficam no fluxo normal.
+   */
+  section?: string;
 }
 
 interface Props {
@@ -73,188 +85,226 @@ export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props)
     onChange(next);
   }
 
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      {fields.map((f) => {
-        const v = value[f.key];
-        const id = `cf-${f.key}`;
+  /** Um campo condicional (showWhen) só aparece quando o campo-pai casa. */
+  function isVisible(f: CustomFieldDef): boolean {
+    if (!f.showWhen) return true;
+    return f.showWhen.in.includes(String(value[f.showWhen.field] ?? ""));
+  }
 
-        const labelEl = (
-          <Label htmlFor={id}>
-            {f.label}
-            {f.required && <span className="ml-1 text-error-fg">*</span>}
-          </Label>
+  function renderField(f: CustomFieldDef) {
+    const v = value[f.key];
+    const id = `cf-${f.key}`;
+
+    const labelEl = (
+      <Label htmlFor={id}>
+        {f.label}
+        {f.required && <span className="ml-1 text-error-fg">*</span>}
+      </Label>
+    );
+
+    switch (f.type) {
+      case "textarea":
+        return (
+          <div key={f.key} className="space-y-2 md:col-span-2">
+            {labelEl}
+            <Textarea
+              id={id}
+              value={typeof v === "string" ? v : ""}
+              onChange={(e) => set(f.key, e.target.value)}
+              disabled={disabled}
+            />
+          </div>
         );
-
-        switch (f.type) {
-          case "textarea":
-            return (
-              <div key={f.key} className="space-y-2 md:col-span-2">
-                {labelEl}
-                <Textarea
-                  id={id}
-                  value={typeof v === "string" ? v : ""}
-                  onChange={(e) => set(f.key, e.target.value)}
-                  disabled={disabled}
+      case "number":
+        return (
+          <div key={f.key} className="space-y-2">
+            {labelEl}
+            <Input
+              id={id}
+              type="number"
+              value={typeof v === "number" ? v : ""}
+              onChange={(e) =>
+                set(f.key, e.target.value === "" ? null : Number(e.target.value))
+              }
+              disabled={disabled}
+            />
+          </div>
+        );
+      case "date":
+        return (
+          <div key={f.key} className="space-y-2">
+            {labelEl}
+            <Input
+              id={id}
+              type="date"
+              value={typeof v === "string" ? v : ""}
+              onChange={(e) => set(f.key, e.target.value)}
+              disabled={disabled}
+            />
+          </div>
+        );
+      case "select": {
+        const parentVal = f.optionsBy ? String(value[f.optionsBy.field] ?? "") : "";
+        const opts = f.optionsBy ? f.optionsBy.map[parentVal] ?? [] : f.options ?? [];
+        const waitingParent = !!f.optionsBy && !parentVal;
+        const parentLabel =
+          fields.find((pf) => pf.key === f.optionsBy?.field)?.label ?? "o campo anterior";
+        return (
+          <div key={f.key} className="space-y-2">
+            {labelEl}
+            <Select
+              value={typeof v === "string" ? v : ""}
+              onValueChange={(val) => set(f.key, val)}
+              disabled={disabled || waitingParent}
+            >
+              <SelectTrigger id={id}>
+                <SelectValue
+                  placeholder={waitingParent ? `Escolha ${parentLabel} primeiro` : "Selecione…"}
                 />
-              </div>
-            );
-          case "number":
-            return (
-              <div key={f.key} className="space-y-2">
-                {labelEl}
-                <Input
-                  id={id}
-                  type="number"
-                  value={typeof v === "number" ? v : ""}
-                  onChange={(e) =>
-                    set(f.key, e.target.value === "" ? null : Number(e.target.value))
-                  }
-                  disabled={disabled}
-                />
-              </div>
-            );
-          case "date":
-            return (
-              <div key={f.key} className="space-y-2">
-                {labelEl}
-                <Input
-                  id={id}
-                  type="date"
-                  value={typeof v === "string" ? v : ""}
-                  onChange={(e) => set(f.key, e.target.value)}
-                  disabled={disabled}
-                />
-              </div>
-            );
-          case "select": {
-            const parentVal = f.optionsBy ? String(value[f.optionsBy.field] ?? "") : "";
-            const opts = f.optionsBy ? f.optionsBy.map[parentVal] ?? [] : f.options ?? [];
-            const waitingParent = !!f.optionsBy && !parentVal;
-            const parentLabel =
-              fields.find((pf) => pf.key === f.optionsBy?.field)?.label ?? "o campo anterior";
-            return (
-              <div key={f.key} className="space-y-2">
-                {labelEl}
-                <Select
-                  value={typeof v === "string" ? v : ""}
-                  onValueChange={(val) => set(f.key, val)}
-                  disabled={disabled || waitingParent}
-                >
-                  <SelectTrigger id={id}>
-                    <SelectValue
-                      placeholder={waitingParent ? `Escolha ${parentLabel} primeiro` : "Selecione…"}
+              </SelectTrigger>
+              <SelectContent>
+                {opts.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      }
+      case "multiselect": {
+        const current = Array.isArray(v) ? (v as string[]) : [];
+        return (
+          <div key={f.key} className="space-y-2">
+            {labelEl}
+            <div className="flex flex-col gap-1">
+              {f.options?.map((o) => {
+                const checked = current.includes(o.value);
+                return (
+                  <label key={o.value} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...current, o.value]
+                          : current.filter((x) => x !== o.value);
+                        set(f.key, next);
+                      }}
+                      disabled={disabled}
                     />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {opts.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            );
-          }
-          case "multiselect": {
-            const current = Array.isArray(v) ? (v as string[]) : [];
-            return (
-              <div key={f.key} className="space-y-2">
-                {labelEl}
-                <div className="flex flex-col gap-1">
-                  {f.options?.map((o) => {
-                    const checked = current.includes(o.value);
-                    return (
-                      <label key={o.value} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const next = e.target.checked
-                              ? [...current, o.value]
-                              : current.filter((x) => x !== o.value);
-                            set(f.key, next);
-                          }}
-                          disabled={disabled}
-                        />
-                        {o.label}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          }
-          case "boolean":
-            return (
-              <div key={f.key} className="flex items-center justify-between gap-4 md:col-span-2">
-                {labelEl}
-                <Switch
-                  id={id}
-                  checked={Boolean(v)}
-                  onCheckedChange={(c) => set(f.key, c)}
-                  disabled={disabled}
-                />
-              </div>
-            );
-          case "email":
-            return (
-              <div key={f.key} className="space-y-2">
-                {labelEl}
-                <Input
-                  id={id}
-                  type="email"
-                  value={typeof v === "string" ? v : ""}
-                  onChange={(e) => set(f.key, e.target.value)}
-                  disabled={disabled}
-                />
-              </div>
-            );
-          case "phone":
-            return (
-              <div key={f.key} className="space-y-2">
-                {labelEl}
-                <Input
-                  id={id}
-                  type="tel"
-                  placeholder="+5511999998888"
-                  value={typeof v === "string" ? v : ""}
-                  onChange={(e) => set(f.key, e.target.value)}
-                  disabled={disabled}
-                />
-                <p className="text-xs text-muted-foreground">Formato E.164</p>
-              </div>
-            );
-          case "url":
-            return (
-              <div key={f.key} className="space-y-2">
-                {labelEl}
-                <Input
-                  id={id}
-                  type="url"
-                  value={typeof v === "string" ? v : ""}
-                  onChange={(e) => set(f.key, e.target.value)}
-                  disabled={disabled}
-                />
-              </div>
-            );
-          case "text":
-          default:
-            return (
-              <div key={f.key} className="space-y-2">
-                {labelEl}
-                <Input
-                  id={id}
-                  type="text"
-                  value={typeof v === "string" ? v : ""}
-                  onChange={(e) => set(f.key, e.target.value)}
-                  disabled={disabled}
-                />
-              </div>
-            );
-        }
-      })}
+                    {o.label}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+      case "boolean":
+        return (
+          <div key={f.key} className="flex items-center justify-between gap-4 md:col-span-2">
+            {labelEl}
+            <Switch
+              id={id}
+              checked={Boolean(v)}
+              onCheckedChange={(c) => set(f.key, c)}
+              disabled={disabled}
+            />
+          </div>
+        );
+      case "email":
+        return (
+          <div key={f.key} className="space-y-2">
+            {labelEl}
+            <Input
+              id={id}
+              type="email"
+              value={typeof v === "string" ? v : ""}
+              onChange={(e) => set(f.key, e.target.value)}
+              disabled={disabled}
+            />
+          </div>
+        );
+      case "phone":
+        return (
+          <div key={f.key} className="space-y-2">
+            {labelEl}
+            <Input
+              id={id}
+              type="tel"
+              placeholder="+5511999998888"
+              value={typeof v === "string" ? v : ""}
+              onChange={(e) => set(f.key, e.target.value)}
+              disabled={disabled}
+            />
+            <p className="text-xs text-muted-foreground">Formato E.164</p>
+          </div>
+        );
+      case "url":
+        return (
+          <div key={f.key} className="space-y-2">
+            {labelEl}
+            <Input
+              id={id}
+              type="url"
+              value={typeof v === "string" ? v : ""}
+              onChange={(e) => set(f.key, e.target.value)}
+              disabled={disabled}
+            />
+          </div>
+        );
+      case "text":
+      default:
+        return (
+          <div key={f.key} className="space-y-2">
+            {labelEl}
+            <Input
+              id={id}
+              type="text"
+              value={typeof v === "string" ? v : ""}
+              onChange={(e) => set(f.key, e.target.value)}
+              disabled={disabled}
+            />
+          </div>
+        );
+    }
+  }
+
+  // Agrupa os campos visíveis em blocos: campos consecutivos com a mesma
+  // `section` viram um bloco realçado; os demais ficam no fluxo normal (2 cols).
+  const visible = fields.filter(isVisible);
+  const chunks: Array<{ section: string | null; items: CustomFieldDef[] }> = [];
+  for (const f of visible) {
+    const sec = f.section ?? null;
+    const last = chunks[chunks.length - 1];
+    if (last && last.section === sec) last.items.push(f);
+    else chunks.push({ section: sec, items: [f] });
+  }
+
+  return (
+    <div className="space-y-4">
+      {chunks.map((chunk, i) =>
+        chunk.section == null ? (
+          <div key={i} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {chunk.items.map(renderField)}
+          </div>
+        ) : (
+          <section
+            key={i}
+            className="space-y-3 rounded-lg border border-warning/40 bg-warning-bg p-3.5 duration-200 animate-in fade-in-0 slide-in-from-top-1"
+          >
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-warning-fg">
+              <Warning size={14} weight="fill" aria-hidden />
+              {chunk.section}
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {chunk.items.map(renderField)}
+            </div>
+          </section>
+        ),
+      )}
     </div>
   );
 }

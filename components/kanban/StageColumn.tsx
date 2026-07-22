@@ -1,4 +1,5 @@
 "use client";
+import { memo } from "react";
 import { Droppable } from "@hello-pangea/dnd";
 import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ function formatBRL(cents: number): string {
   }
 }
 
-export function StageColumn({
+export const StageColumn = memo(function StageColumn({
   stage,
   leads,
   pipelineId,
@@ -94,4 +95,4 @@ export function StageColumn({
       </Droppable>
     </div>
   );
-}
+});

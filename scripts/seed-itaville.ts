@@ -79,6 +79,10 @@ type Field = (
 ) & {
   /** Campo de acompanhamento: some do diálogo de criação (só edição). */
   hideOnCreate?: boolean;
+  /** Visível só quando value[field] ∈ in (ex.: campos VG só p/ empreendimento Van Gogh). */
+  showWhen?: { field: string; in: string[] };
+  /** Agrupa campos consecutivos num bloco realçado com este título. */
+  section?: string;
 };
 
 /** helper: select cujo options tem value === label */
@@ -123,9 +127,15 @@ const SUBCATEGORIAS: Record<string, string[]> = {
   Jurídico: ["ameaça de ação judicial", "Procon", "advogado constituído", "notificação", "disputa contratual"],
 };
 
+// Bloco Van Gogh: só aparece quando empreendimento === "Van Gogh", agrupado e
+// realçado no fim do formulário (decisão Darlei 22/07).
+const VG_SHOW: { field: string; in: string[] } = { field: "empreendimento", in: ["Van Gogh"] };
+const VG_SECTION = "Acompanhamento Van Gogh";
+
+// Ordem do formulário (decisão Darlei 22/07): os campos embutidos Etapa/Título/
+// Cliente vêm antes destes, nos diálogos. Aqui, os customizados começam por
+// interlocutor → relação → titular no exterior; o resto na ordem de trabalho.
 const FIELDS: Field[] = [
-  sel("empreendimento", "Empreendimento", ["Parque Olímpico 4", "Van Gogh", "Salvador Dalí", "Jardim Canaã"]),
-  txt("unidade", "Unidade"),
   txt("interlocutor", "Interlocutor (quem falou)"),
   sel("interlocutor_relacao", "Relação com o titular", [
     "Próprio titular",
@@ -136,7 +146,8 @@ const FIELDS: Field[] = [
   ]),
   // Todos os titulares no exterior são dos EUA — sem campo de país (decisão 21/07).
   sel("titular_exterior", "Titular no exterior?", ["Sim", "Não"]),
-  sel("canal", "Canal", ["WhatsApp", "Telefone", "E-mail", "Presencial"]),
+  sel("empreendimento", "Empreendimento", ["Parque Olímpico 4", "Van Gogh", "Salvador Dalí", "Jardim Canaã"]),
+  txt("unidade", "Unidade"),
   sel("categoria", "Categoria", [
     "Financeiro",
     "Contrato e documentação",
@@ -149,6 +160,7 @@ const FIELDS: Field[] = [
     "Jurídico",
   ]),
   selDep("subcategoria", "Subcategoria", "categoria", SUBCATEGORIAS),
+  sel("canal", "Canal", ["WhatsApp", "Telefone", "E-mail", "Presencial"]),
   sel("nivel_acompanhamento", "Nível de acompanhamento", ["Verde", "Amarelo", "Vermelho"]),
   sel("responsavel_area", "Responsável (área)", ["Relacionamento", "Financeiro", "Obra/AT", "Jurídico"]),
   // Dados da venda — auto-preenchidos pela busca do comprador (base de vendas);
@@ -161,22 +173,40 @@ const FIELDS: Field[] = [
   txt("imobiliaria", "Imobiliária"),
   { ...dat("proximo_contato", "Próximo contato"), hideOnCreate: true },
   area("observacoes", "Observações"),
-  sel("vg_impacto_previsao", "VG · Impacto da nova previsão", [
-    "Sem impacto",
-    "Leve",
-    "Relevante",
-    "Aguardando conversa",
-  ]),
-  sel("vg_tipo_impacto", "VG · Tipo de impacto", [
-    "Mudança",
-    "Aluguel",
-    "Viagem",
-    "Financiamento",
-    "Investimento",
-    "Outro",
-  ]),
-  { ...sel("vg_contrapartida", "VG · Contrapartida comunicada", ["Sim", "Não"]), hideOnCreate: true },
-  { ...sel("vg_material_enviado", "VG · Material enviado", ["Sim", "Não"]), hideOnCreate: true },
+  {
+    ...sel("vg_impacto_previsao", "Impacto da nova previsão", [
+      "Sem impacto",
+      "Leve",
+      "Relevante",
+      "Aguardando conversa",
+    ]),
+    showWhen: VG_SHOW,
+    section: VG_SECTION,
+  },
+  {
+    ...sel("vg_tipo_impacto", "Tipo de impacto", [
+      "Mudança",
+      "Aluguel",
+      "Viagem",
+      "Financiamento",
+      "Investimento",
+      "Outro",
+    ]),
+    showWhen: VG_SHOW,
+    section: VG_SECTION,
+  },
+  {
+    ...sel("vg_contrapartida", "Contrapartida comunicada", ["Sim", "Não"]),
+    hideOnCreate: true,
+    showWhen: VG_SHOW,
+    section: VG_SECTION,
+  },
+  {
+    ...sel("vg_material_enviado", "Material enviado", ["Sim", "Não"]),
+    hideOnCreate: true,
+    showWhen: VG_SHOW,
+    section: VG_SECTION,
+  },
 ];
 
 const VOCABULARY = {
