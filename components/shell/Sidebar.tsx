@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTransition } from "react";
-import { Kanban, Users, UsersThree, Gear, CaretDoubleLeft, CaretDoubleRight, Inbox, ScalesSimple, Robot, PlugsConnected, Gauge } from "@/lib/ui/icons";
+import { Kanban, Users, UsersThree, Gear, CaretDoubleLeft, CaretDoubleRight, Inbox, ScalesSimple, Robot, PlugsConnected, Gauge, ClipboardText } from "@/lib/ui/icons";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
@@ -27,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/app/painel", label: "Dash", icon: Gauge, module: "posvenda" },
   { href: "/app/inbox", label: "WhatsApp", icon: Inbox },
   { href: "/app/kanban", label: "Chamados", icon: Kanban },
+  { href: "/app/manual", label: "Manual", icon: ClipboardText, module: "posvenda" },
   { href: "/app/contacts", label: "Contatos", icon: Users },
   { href: "/app/connections", label: "Conexões", icon: PlugsConnected, healthDot: true },
   { href: "/app/team", label: "Equipe", icon: UsersThree, adminOnly: true },
