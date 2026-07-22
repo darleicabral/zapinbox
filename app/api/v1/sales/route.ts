@@ -44,6 +44,19 @@ interface ProductRow {
   attributes: SaleAttributes | null;
 }
 
+/**
+ * Remove casas decimais nulas do número da unidade (a planilha importa "701"
+ * como "701.0"). Só corta quando é um número puro terminando em .0/,0 — mantém
+ * "701-A", "Cobertura 3", "12.5" etc. intactos.
+ */
+function normalizeUnidade(u: string | number | null | undefined): string | null {
+  if (u == null) return null;
+  const s = String(u).trim();
+  if (!s) return null;
+  const m = s.match(/^(\d+)[.,]0+$/);
+  return m ? m[1]! : s;
+}
+
 export async function GET(_req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
 
@@ -79,7 +92,7 @@ export async function GET(_req: NextRequest): Promise<Response> {
     return {
       id: r.id,
       empreendimento: a.empreendimento ?? r.location ?? null,
-      unidade: a.unidade ?? null,
+      unidade: normalizeUnidade(a.unidade),
       cliente: a.cliente ?? r.title ?? null,
       phone_e164: a.phone_e164 ?? null,
       email: a.email ?? null,
