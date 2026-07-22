@@ -13,6 +13,9 @@ export const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/v1\/health$/,
   /^\/api\/v1\/webhooks\//,
   /^\/api\/v1\/cron\//,
+  // Dashboard da Diretoria (Itaville): rota pública de agregados, auth por token
+  // dentro do próprio handler (ver app/api/v1/public/itaville-dashboard/route.ts).
+  /^\/api\/v1\/public\//,
   /^\/api\/internal\//,
   /^\/api\/mcp(\/.*)?$/,
   /^\/_next\//,
