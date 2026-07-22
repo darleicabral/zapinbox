@@ -111,32 +111,41 @@ export function BuyerLookup({ enabled, onSelect, disabled = false }: Props) {
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-3.5">
-      <div className="flex items-start gap-2">
+    <div className="space-y-3.5 rounded-xl border-2 border-accent/40 bg-accent-soft/60 p-4 shadow-sm ring-1 ring-accent/10">
+      <div className="flex items-start gap-2.5">
         <span
-          className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/15 text-accent"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm"
           aria-hidden
         >
-          <MagnifyingGlass size={14} weight="bold" />
+          <MagnifyingGlass size={17} weight="bold" />
         </span>
         <div className="space-y-0.5">
-          <Label className="text-sm font-medium">Buscar comprador (base de vendas)</Label>
+          <Label className="text-sm font-semibold text-text">Buscar comprador na base de vendas</Label>
           <p className="text-xs text-muted-foreground">
-            Busque por nome ou CPF, ou escolha por empreendimento e unidade.
+            Comece por aqui: os dados do chamado são preenchidos automaticamente.
           </p>
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <Input
-          placeholder="Nome do cliente ou CPF…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          disabled={disabled || isLoading}
-          autoComplete="off"
-        />
+        <div className="relative">
+          <MagnifyingGlass
+            size={18}
+            weight="bold"
+            aria-hidden
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-accent"
+          />
+          <Input
+            placeholder="Nome do cliente ou CPF…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            disabled={disabled || isLoading}
+            autoComplete="off"
+            className="h-12 rounded-lg border-accent/40 bg-surface pl-11 text-[15px] shadow-sm placeholder:text-text-subtle hover:border-accent/60 focus-visible:border-accent focus-visible:ring-accent/25"
+          />
+        </div>
         {search.trim().length >= 2 && (
-          <div className="max-h-44 overflow-y-auto rounded-md border bg-background">
+          <div className="max-h-44 overflow-y-auto rounded-lg border border-border bg-surface shadow-md">
             {searchResults.length === 0 ? (
               <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum comprador encontrado.</p>
             ) : (
@@ -146,7 +155,7 @@ export function BuyerLookup({ enabled, onSelect, disabled = false }: Props) {
                   type="button"
                   onClick={() => pick(s)}
                   disabled={disabled}
-                  className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-accent"
+                  className="flex w-full flex-col items-start px-3 py-2 text-left transition-colors hover:bg-accent-soft"
                 >
                   <span className="text-sm font-medium">{s.cliente ?? "(sem nome)"}</span>
                   <span className="text-xs text-muted-foreground">
@@ -158,6 +167,12 @@ export function BuyerLookup({ enabled, onSelect, disabled = false }: Props) {
             )}
           </div>
         )}
+      </div>
+
+      <div className="flex items-center gap-2.5" aria-hidden>
+        <span className="h-px flex-1 bg-accent/20" />
+        <span className="text-[10px] font-medium uppercase tracking-wide text-accent/80">ou por unidade</span>
+        <span className="h-px flex-1 bg-accent/20" />
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

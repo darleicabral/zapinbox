@@ -14,10 +14,15 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* Surfaces (light) */
-  --color-bg: #f4f8f7;
+  /* Surfaces (light) — rampa de 5 níveis p/ dar profundidade e contraste:
+     bg (página) < surface-muted (colunas/trilhos) < surface-elevated (chips) ;
+     surface (cards/diálogos) = branco puro flutua acima ; field = fundo dos
+     campos (entre o branco do card e a página). */
+  --color-bg: #e7eeeb;
   --color-surface: #ffffff;
-  --color-surface-elevated: #eaf2ef;
+  --color-surface-muted: #eef3f1;
+  --color-surface-elevated: #dce8e2;
+  --color-field: #f2f7f5;
   --color-overlay: rgba(14, 44, 42, 0.42);
 
   /* Text (light) */
@@ -25,9 +30,9 @@
   --color-text-muted: #46605b;
   --color-text-subtle: #6c837e;
 
-  /* Borders (light) */
-  --color-border: #dde9e5;
-  --color-border-strong: #c6d8d1;
+  /* Borders (light) — mais firmes p/ separar cards/campos do fundo */
+  --color-border: #d3e1db;
+  --color-border-strong: #b2c9bf;
 
   /* Accent — ZapInbox green (11 stops) */
   --color-accent-50:  #eafaf5;
@@ -155,7 +160,9 @@
   /* Surfaces (dark — drawn, deep teal-ink) */
   --color-bg: #0c1a18;
   --color-surface: #11201e;
+  --color-surface-muted: #101e1c;
   --color-surface-elevated: #172b28;
+  --color-field: #0e1c1a;
   --color-overlay: rgba(0, 0, 0, 0.55);
 
   /* Text (dark) */
@@ -251,10 +258,12 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 [data-brand="avant"] {
-  /* Surfaces (light, mais clara) */
-  --color-bg: #f6f6f7;
+  /* Surfaces (light, mais clara) — mesma rampa de 5 níveis dos verdes */
+  --color-bg: #ececee;
   --color-surface: #ffffff;
-  --color-surface-elevated: #efeff1;
+  --color-surface-muted: #f3f3f5;
+  --color-surface-elevated: #e3e3e7;
+  --color-field: #f5f5f7;
   --color-overlay: rgba(28, 24, 24, 0.42);
 
   /* Text (light) */
@@ -262,9 +271,9 @@
   --color-text-muted: #5b5a60;
   --color-text-subtle: #86868c;
 
-  /* Borders (light) — cinzas do print */
-  --color-border: #e4e4e6;
-  --color-border-strong: #cdcdd0;
+  /* Borders (light) — cinzas do print, mais firmes */
+  --color-border: #dcdce1;
+  --color-border-strong: #c1c1c8;
 
   /* Accent — Avant wine (11 stops) */
   --color-accent-50:  #faf2f1;
@@ -341,7 +350,9 @@
   /* Surfaces (dark, warm) */
   --color-bg: #161211;
   --color-surface: #1f1917;
+  --color-surface-muted: #1a1513;
   --color-surface-elevated: #29211f;
+  --color-field: #141010;
   --color-overlay: rgba(0, 0, 0, 0.6);
 
   /* Text (dark) */

@@ -111,7 +111,6 @@ const selDep = (
 });
 const txt = (key: string, label: string): Field => ({ key, label, type: "text" });
 const dat = (key: string, label: string): Field => ({ key, label, type: "date" });
-const area = (key: string, label: string): Field => ({ key, label, type: "textarea" });
 const num = (key: string, label: string): Field => ({ key, label, type: "number" });
 
 /** Categoria → subcategorias (§3 da spec 06). */
@@ -172,7 +171,8 @@ const FIELDS: Field[] = [
   txt("valor_venda", "Valor da venda (total)"),
   txt("imobiliaria", "Imobiliária"),
   { ...dat("proximo_contato", "Próximo contato"), hideOnCreate: true },
-  area("observacoes", "Observações"),
+  // "Observações" saiu daqui: virou o campo embutido "Observações internas"
+  // (coluna description) nos diálogos — um único campo de anotações (decisão 22/07).
   {
     ...sel("vg_impacto_previsao", "Impacto da nova previsão", [
       "Sem impacto",

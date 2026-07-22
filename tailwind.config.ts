@@ -21,8 +21,10 @@ const config: Config = {
         bg: "var(--color-bg)",
         surface: {
           DEFAULT: "var(--color-surface)",
+          muted: "var(--color-surface-muted)",
           elevated: "var(--color-surface-elevated)",
         },
+        field: "var(--color-field)",
         overlay: "var(--color-overlay)",
         text: {
           DEFAULT: "var(--color-text)",
@@ -89,7 +91,7 @@ const config: Config = {
         // shadcn aliases (compat com componentes ainda não migrados)
         border: "var(--color-border)",
         "border-strong": "var(--color-border-strong)",
-        input: "var(--color-border)",
+        input: "var(--color-border-strong)",
         ring: "var(--color-accent-500)",
         background: "var(--color-bg)",
         foreground: "var(--color-text)",

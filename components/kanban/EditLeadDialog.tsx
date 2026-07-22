@@ -291,8 +291,13 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
-            <Textarea id="description" rows={3} {...form.register("description")} />
+            <Label htmlFor="description">Observações internas</Label>
+            <Textarea
+              id="description"
+              rows={3}
+              placeholder="Anotações da equipe sobre o chamado (não vão para o cliente)…"
+              {...form.register("description")}
+            />
           </div>
 
           {(!hide("value") || !hide("expected_close_date")) && (

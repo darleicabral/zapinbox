@@ -308,11 +308,11 @@ export function NewLeadDialog({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
+            <Label htmlFor="description">Observações internas</Label>
             <Textarea
               id="description"
               rows={3}
-              placeholder="Contexto, observações, links…"
+              placeholder="Anotações da equipe sobre o chamado (não vão para o cliente)…"
               {...form.register("description")}
             />
           </div>

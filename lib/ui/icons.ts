@@ -28,6 +28,9 @@ export {
   Gauge,
   WifiSlash,
   Clock,
+  CalendarDots as Calendar,
+  CalendarCheck,
+  CalendarBlank,
   // health dashboard
   WifiHigh,
   Brain,
