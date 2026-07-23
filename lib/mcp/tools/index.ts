@@ -27,6 +27,7 @@ import { crmSaveLeadProfile } from "./lead-profile";
 import { crmSearchCatalog, crmLinkLeadProduct } from "./products";
 import { crmSendWhatsappMessage } from "./messages";
 import { crmRequestHumanHandoff } from "./handoff";
+import { crmFlagConversationTopic } from "./triagem";
 
 // Cast via `unknown` porque McpToolDefinition<TInput> nao e covariante
 // em TInput (handler usa TInput em posicao contravariante). Coletar
@@ -52,6 +53,7 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmUpdateLead,
   crmMoveLeadStage,
   crmSendWhatsappMessage,
+  crmFlagConversationTopic,
   // handoff (special)
   crmRequestHumanHandoff,
 ] as unknown as ReadonlyArray<McpToolDefinition>;

@@ -10,6 +10,7 @@ import { type NextRequest } from "next/server";
 import { audit } from "@/lib/audit";
 import { ok, fail } from "@/lib/api/wrappers";
 import { createClient } from "@/lib/supabase/server";
+import { closeConversationsForResolvedLead } from "@/lib/attendance/close-on-resolve";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,11 @@ export async function POST(
     .maybeSingle();
 
   const finalLead = fresh ?? lead;
+
+  // Resolveu (won) → fecha a conversa vinculada no Inbox (decisão Itaville 22/07).
+  if (finalLead.status === "won") {
+    await closeConversationsForResolvedLead(supabase, lead.organization_id, lead.contact_id);
+  }
 
   await supabase
     .rpc("emit_event", {

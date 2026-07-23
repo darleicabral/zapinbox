@@ -35,6 +35,7 @@ export const TOOL_CATALOG: ReadonlyArray<McpToolCatalogEntry> = [
   { name: "crm_update_lead", category: "write", description: "Atualiza campos de um lead" },
   { name: "crm_move_lead_stage", category: "write", description: "Move lead para outro stage" },
   { name: "crm_send_whatsapp_message", category: "write", description: "Envia mensagem WhatsApp" },
+  { name: "crm_flag_conversation_topic", category: "write", description: "Sinaliza na conversa o assunto provável (triagem), sem criar atendimento nem responder ao cliente" },
   // handoff
   { name: "crm_request_human_handoff", category: "handoff", description: "Solicita handoff para atendente humano" },
 ] as const;

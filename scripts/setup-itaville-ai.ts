@@ -56,7 +56,9 @@ const ORG_SLUG = "itaville";
 const AGENT_NAME = "Triagem Pós-venda";
 const PROVIDER = "anthropic";
 const MODEL = "claude-haiku-4-5"; // catálogo ai_models (0023); cheap/fast p/ classificação
-const TOOL_IDS = ["crm_save_lead_profile"]; // handoff é auto-injetado por handoff_tool_enabled
+// A IA só SINALIZA o assunto na conversa (decisão 22/07) — não cria atendimento,
+// não faz handoff, não responde. A abertura do atendimento é manual (atendente).
+const TOOL_IDS = ["crm_flag_conversation_topic"];
 const PROMPT_FILE =
   env.ITAVILLE_PROMPT_FILE || path.join("scripts", "prompts", "itaville-triagem.md");
 
@@ -181,7 +183,7 @@ async function main(): Promise<void> {
       .insert({
         organization_id: orgId,
         name: AGENT_NAME,
-        description: "Classificador silencioso de chamados de pós-venda (WhatsApp → chamado).",
+        description: "Triador silencioso: sinaliza o assunto provável na conversa (não cria atendimento, não responde).",
         model: `${PROVIDER}/${MODEL}`,
         system_prompt: systemPrompt,
         is_active: true,
@@ -225,8 +227,8 @@ async function main(): Promise<void> {
       cost_budget_cents: 50,
       history_message_window: 20,
       history_token_window: 8000,
-      handoff_keywords: [], // vazio de propósito: sem short-circuit; queremos classificar ANTES do handoff
-      handoff_tool_enabled: true,
+      handoff_keywords: [],
+      handoff_tool_enabled: false, // só sinaliza; a atendente abre o atendimento manualmente
       status: "draft",
       created_by: createdBy,
     } as never)
@@ -288,10 +290,11 @@ async function main(): Promise<void> {
   console.log(`  version:    ${versionRow!.id} (v${versionRow!.version_number}, published)`);
   console.log(`  modelo:     ${PROVIDER}/${MODEL}`);
   console.log(`  sessão:     ${session.waha_session_name}`);
-  console.log(`  modo:       SILENCIOSO (não responde ao cliente) + classifica + handoff`);
+  console.log(`  modo:       SILENCIOSO (não responde ao cliente) — só SINALIZA o assunto`);
   console.log("──────────────────────────────────────────────");
-  console.log("  Teste: mande um WhatsApp pro número pareado → deve aparecer um chamado");
-  console.log("  novo em 'Chamados Pós-venda' (etapa Novo), já classificado, SEM resposta ao cliente.");
+  console.log("  Teste: mande um WhatsApp pro número pareado → a conversa deve mostrar a");
+  console.log("  sinalização de triagem da IA no Inbox, SEM criar atendimento e SEM resposta.");
+  console.log("  A atendente clica 'Abrir atendimento' pra criar (ou tag reincidente se já houver).");
   if (prevVersionId && prevVersionId !== versionRow!.id) {
     console.log(`  (versão anterior ${prevVersionId} → superseded)`);
   }

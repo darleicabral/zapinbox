@@ -15,6 +15,7 @@ import { ApiError } from "@/lib/api/types";
 import { ok, fail } from "@/lib/api/wrappers";
 import { moveLeadSchema, validateRequest } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
+import { closeConversationsForResolvedLead } from "@/lib/attendance/close-on-resolve";
 
 export const dynamic = "force-dynamic";
 
@@ -126,6 +127,11 @@ export async function POST(
     .maybeSingle();
 
   const finalLead = fresh ?? lead;
+
+  // Passou a Resolvido (won) agora → fecha a conversa vinculada (decisão Itaville 22/07).
+  if (finalLead.status === "won" && lead.status !== "won") {
+    await closeConversationsForResolvedLead(supabase, lead.organization_id, lead.contact_id);
+  }
 
   // Emit domain event (fire-and-forget; trigger NEVER does HTTP — workers do).
   await supabase
