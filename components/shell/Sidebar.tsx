@@ -26,7 +26,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/app/painel", label: "Dash", icon: Gauge, module: "posvenda" },
   { href: "/app/inbox", label: "WhatsApp", icon: Inbox },
-  { href: "/app/kanban", label: "Chamados", icon: Kanban },
+  { href: "/app/kanban", label: "Atendimentos", icon: Kanban },
   { href: "/app/agenda", label: "Agenda", icon: Calendar, module: "posvenda" },
   { href: "/app/manual", label: "Manual", icon: ClipboardText, module: "posvenda" },
   { href: "/app/contacts", label: "Contatos", icon: Users },

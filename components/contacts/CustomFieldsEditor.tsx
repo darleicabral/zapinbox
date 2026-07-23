@@ -342,6 +342,28 @@ export function readHiddenFormFields(
 }
 
 /**
+ * Retorna os RÓTULOS dos campos obrigatórios (required) ainda vazios, respeitando
+ * a visibilidade condicional (showWhen) — um campo escondido não é cobrado. Os
+ * diálogos chamam antes de salvar; se vier não-vazio, bloqueiam com um toast.
+ */
+export function missingRequiredFields(
+  fields: CustomFieldDef[],
+  values: Record<string, unknown>,
+): string[] {
+  const isVisible = (f: CustomFieldDef) =>
+    !f.showWhen || f.showWhen.in.includes(String(values[f.showWhen.field] ?? ""));
+  const missing: string[] = [];
+  for (const f of fields) {
+    if (!f.required || !isVisible(f)) continue;
+    const v = values[f.key];
+    const empty =
+      v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+    if (empty) missing.push(f.label);
+  }
+  return missing;
+}
+
+/**
  * Monta o payload `custom_fields` a partir do estado do formulário, restrito às
  * chaves declaradas no pipeline. Valores vazios viram `null` para permitir
  * limpar um campo (o handler faz merge, preservando chaves gravadas pela IA).

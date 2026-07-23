@@ -26,6 +26,7 @@ import {
 import {
   CustomFieldsEditor,
   buildCustomFields,
+  missingRequiredFields,
   readCustomFields,
   readHiddenFormFields,
   type CustomFieldDef,
@@ -206,7 +207,14 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
       contact_id: contactId,
     };
     // O handler faz merge (não replace), preservando chaves gravadas pela IA.
-    if (fields.length > 0) patch.custom_fields = buildCustomFields(fields, customValues);
+    if (fields.length > 0) {
+      const missing = missingRequiredFields(fields, customValues);
+      if (missing.length > 0) {
+        toast.error(`Preencha: ${missing.join(", ")}`);
+        return;
+      }
+      patch.custom_fields = buildCustomFields(fields, customValues);
+    }
 
     const parsed = updateLeadSchema.safeParse(patch);
     if (!parsed.success) {
@@ -295,7 +303,7 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
             <Textarea
               id="description"
               rows={3}
-              placeholder="Anotações da equipe sobre o chamado (não vão para o cliente)…"
+              placeholder="Anotações da equipe sobre o atendimento (não vão para o cliente)…"
               {...form.register("description")}
             />
           </div>

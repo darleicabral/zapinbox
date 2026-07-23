@@ -24,6 +24,7 @@ import {
 import {
   CustomFieldsEditor,
   buildCustomFields,
+  missingRequiredFields,
   type CustomFieldDef,
 } from "@/components/contacts/CustomFieldsEditor";
 import { ContactPicker, type ContactDisplay } from "@/components/kanban/ContactPicker";
@@ -198,7 +199,14 @@ export function NewLeadDialog({
     if (contactId) payload.contact_id = contactId;
     if (valueCents !== null) payload.value_cents = valueCents;
     if (values.expected_close_date) payload.expected_close_date = values.expected_close_date;
-    if (createFields.length > 0) payload.custom_fields = buildCustomFields(createFields, customValues);
+    if (createFields.length > 0) {
+      const missing = missingRequiredFields(createFields, customValues);
+      if (missing.length > 0) {
+        toast.error(`Preencha: ${missing.join(", ")}`);
+        return;
+      }
+      payload.custom_fields = buildCustomFields(createFields, customValues);
+    }
 
     const parsed = createLeadSchema.safeParse(payload);
     if (!parsed.success) {
@@ -312,7 +320,7 @@ export function NewLeadDialog({
             <Textarea
               id="description"
               rows={3}
-              placeholder="Anotações da equipe sobre o chamado (não vão para o cliente)…"
+              placeholder="Anotações da equipe sobre o atendimento (não vão para o cliente)…"
               {...form.register("description")}
             />
           </div>

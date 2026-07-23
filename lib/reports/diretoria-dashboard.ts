@@ -157,7 +157,7 @@ export function computeDiretoriaDashboard(rows: DiretoriaLeadRow[], now: Date): 
     updatedAt: now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }),
     kpis: [
       {
-        label: "Chamados abertos",
+        label: "Atendimentos abertos",
         value: String(abertos),
         foot: "em atendimento agora",
         tile: "t1",
@@ -178,7 +178,7 @@ export function computeDiretoriaDashboard(rows: DiretoriaLeadRow[], now: Date): 
         chip: "agenda",
       },
       {
-        label: "Chamados em risco",
+        label: "Atendimentos em risco",
         value: String(emRisco),
         foot: "nível vermelho",
         tile: "t4",

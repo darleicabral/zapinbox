@@ -74,7 +74,7 @@ export function AgendaClient({ pipelineId }: { pipelineId: string }) {
   const [scope, setScope] = useState<"todos" | "meus">("todos");
   const [selected, setSelected] = useState<Lead | null>(null);
 
-  const leadNoun = data?.pipeline.vocabulary?.lead ?? "Chamado";
+  const leadNoun = data?.pipeline.vocabulary?.lead ?? "Atendimento";
 
   const stageById = useMemo(() => {
     const m = new Map<string, Stage>();
@@ -116,7 +116,7 @@ export function AgendaClient({ pipelineId }: { pipelineId: string }) {
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Agenda</h1>
             <p className="text-sm text-muted-foreground">
-              Chamados com próximo contato agendado — as tarefas do dia.
+              Atendimentos com próximo contato agendado — as tarefas do dia.
             </p>
           </div>
         </div>

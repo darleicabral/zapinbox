@@ -74,6 +74,16 @@ export const KanbanCard = memo(function KanbanCard({
   // Nível de acompanhamento (Verde/Amarelo/Vermelho) — vira cor na borda inferior.
   const nivelRaw = cf["nivel_acompanhamento"];
   const nivelBorder = typeof nivelRaw === "string" ? NIVEL_BORDER[nivelRaw] : undefined;
+  // Empreendimento — visível na prévia (sem abrir o card).
+  const empreendimentoRaw = cf["empreendimento"];
+  const empreendimento =
+    typeof empreendimentoRaw === "string" && empreendimentoRaw.trim() ? empreendimentoRaw.trim() : null;
+  // Idade do atendimento (dias desde a abertura) — pra bater o olho e priorizar.
+  const diasAberto = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(lead.created_at).getTime()) / 86_400_000),
+  );
+  const ageLabel = diasAberto === 0 ? "hoje" : `há ${diasAberto}d`;
   // Evita repetir o nome quando o título do lead já começa com ele.
   const showContactName =
     contactName != null && !lead.title.toLowerCase().startsWith(contactName.toLowerCase());
@@ -125,14 +135,29 @@ export const KanbanCard = memo(function KanbanCard({
                 />
               )}
 
-              {(lead.external_id || categoria) && (
-                <div className="mb-1 flex items-baseline gap-2">
-                  <span className="flex-1 truncate text-[10px] font-medium uppercase tracking-wide tabular-nums text-text-muted">
-                    {lead.external_id}
-                  </span>
+              <div className="mb-1 flex items-baseline gap-2">
+                <span className="flex-1 truncate text-[10px] font-medium uppercase tracking-wide tabular-nums text-text-muted">
+                  {lead.external_id}
+                </span>
+                <span
+                  className="shrink-0 text-[10px] font-medium tabular-nums text-text-subtle"
+                  title={`Aberto há ${diasAberto} dia${diasAberto === 1 ? "" : "s"}`}
+                >
+                  {ageLabel}
+                </span>
+              </div>
+              {(empreendimento || categoria) && (
+                <div className="mb-1 flex items-baseline justify-between gap-2">
+                  {empreendimento ? (
+                    <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-text" title={empreendimento}>
+                      {empreendimento}
+                    </span>
+                  ) : (
+                    <span aria-hidden />
+                  )}
                   {categoria && (
                     <span
-                      className="max-w-[50%] shrink-0 truncate text-[10px] font-medium text-text-muted"
+                      className="max-w-[55%] shrink-0 truncate text-[10px] font-medium text-text-muted"
                       title={categoria}
                     >
                       {categoria}

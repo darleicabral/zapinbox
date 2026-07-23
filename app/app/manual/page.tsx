@@ -33,7 +33,7 @@ export default async function ManualPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Manual de atendimento</h1>
           <p className="text-sm text-muted-foreground">
-            Guia de consulta para o atendimento de chamados de pós-venda.
+            Guia de consulta para os atendimentos de pós-venda.
           </p>
         </div>
         <Button asChild variant="secondary" size="sm">

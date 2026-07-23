@@ -43,7 +43,7 @@ export default async function FieldOptionsPage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Opções dos campos</h1>
         <p className="text-sm text-muted-foreground">
-          Cadastre as opções que aparecem nos menus do chamado — {pipeline.name}.
+          Cadastre as opções que aparecem nos menus do atendimento — {pipeline.name}.
         </p>
       </header>
       <FieldOptionsClient pipelineId={pipeline.id} initialFields={fields} />

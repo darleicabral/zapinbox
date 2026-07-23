@@ -122,7 +122,7 @@ export function BuyerLookup({ enabled, onSelect, disabled = false }: Props) {
         <div className="space-y-0.5">
           <Label className="text-sm font-semibold text-text">Buscar comprador na base de vendas</Label>
           <p className="text-xs text-muted-foreground">
-            Comece por aqui: os dados do chamado são preenchidos automaticamente.
+            Comece por aqui: os dados do atendimento são preenchidos automaticamente.
           </p>
         </div>
       </div>

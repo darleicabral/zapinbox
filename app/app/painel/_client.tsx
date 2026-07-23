@@ -100,8 +100,8 @@ export function PosvendaClient({ orgName }: { orgName: string }) {
       {data && data.total === 0 && (
         <Card className="p-6">
           <p className="text-sm text-muted-foreground">
-            Nenhum chamado registrado ainda. Assim que a equipe abrir chamados no Kanban
-            &quot;Chamados Pós-venda&quot;, os números da onda aparecem aqui.
+            Nenhum atendimento registrado ainda. Assim que a equipe abrir atendimentos no Kanban
+            &quot;Atendimentos Pós-venda&quot;, os números da onda aparecem aqui.
           </p>
         </Card>
       )}
@@ -135,7 +135,7 @@ export function PosvendaClient({ orgName }: { orgName: string }) {
           </section>
 
           <section>
-            <h2 className="mb-3 text-sm font-medium text-muted-foreground">Volume de chamados</h2>
+            <h2 className="mb-3 text-sm font-medium text-muted-foreground">Volume de atendimentos</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Tile label="Total" value={data.total} />
               <Tile label="Abertos" value={data.abertos} />
@@ -149,7 +149,7 @@ export function PosvendaClient({ orgName }: { orgName: string }) {
               <p className="mb-3 text-sm font-medium">Curva da onda — Van Gogh por dia</p>
               {data.onda_vangogh.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Nenhum chamado do Van Gogh ainda.
+                  Nenhum atendimento do Van Gogh ainda.
                 </p>
               ) : (
                 <ul className="space-y-2">

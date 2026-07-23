@@ -83,6 +83,8 @@ type Field = (
   showWhen?: { field: string; in: string[] };
   /** Agrupa campos consecutivos num bloco realçado com este título. */
   section?: string;
+  /** Preenchimento obrigatório (bloqueia salvar se vazio). */
+  required?: boolean;
 };
 
 /** helper: select cujo options tem value === label */
@@ -144,7 +146,8 @@ const FIELDS: Field[] = [
     "Advogado",
   ]),
   // Todos os titulares no exterior são dos EUA — sem campo de país (decisão 21/07).
-  sel("titular_exterior", "Titular no exterior?", ["Sim", "Não"]),
+  // Obrigatório (decisão 22/07): impacta a operação da crise (maioria mora nos EUA).
+  { ...sel("titular_exterior", "Titular no exterior?", ["Sim", "Não"]), required: true },
   sel("empreendimento", "Empreendimento", ["Parque Olímpico 4", "Van Gogh", "Salvador Dalí", "Jardim Canaã"]),
   txt("unidade", "Unidade"),
   sel("categoria", "Categoria", [
@@ -210,10 +213,10 @@ const FIELDS: Field[] = [
 ];
 
 const VOCABULARY = {
-  lead: "Chamado",
-  lead_plural: "Chamados",
-  deal: "Chamado",
-  deal_plural: "Chamados",
+  lead: "Atendimento",
+  lead_plural: "Atendimentos",
+  deal: "Atendimento",
+  deal_plural: "Atendimentos",
   won: "Resolvido",
   lost: "Cancelado",
   stage: "Status",
@@ -391,14 +394,14 @@ async function remodelPipeline(orgId: string): Promise<string> {
   const { error: upErr } = await admin
     .from("crm_pipelines")
     .update({
-      name: "Chamados Pós-venda",
+      name: "Atendimentos Pós-venda",
       slug: "chamados-pos-venda",
       vocabulary: VOCABULARY,
       settings: newSettings,
     } as never)
     .eq("id", pipelineId);
   if (upErr) throw new Error(`atualizar pipeline: ${upErr.message}`);
-  console.log(`[pipeline] ${pipelineId} → "Chamados Pós-venda" (vocabulary + ${FIELDS.length} fields)`);
+  console.log(`[pipeline] ${pipelineId} → "Atendimentos Pós-venda" (vocabulary + ${FIELDS.length} fields)`);
 
   // Só recria as stages se ainda não houver chamados no pipeline.
   const { count, error: cErr } = await admin
@@ -449,7 +452,7 @@ async function main(): Promise<void> {
   console.log("\n✅ Tenant Itaville pronto.");
   console.log("──────────────────────────────────────────────");
   console.log(`  org:        ${orgId} (slug=${ORG_SLUG})`);
-  console.log(`  pipeline:   ${pipelineId} (Chamados Pós-venda)`);
+  console.log(`  pipeline:   ${pipelineId} (Atendimentos Pós-venda)`);
   console.log(`  admin:      ${DARLEI_EMAIL}  → ${darlei.id}`);
   console.log(
     `              senha: ${darlei.password ?? "(inalterada — usuário já existia; use 'esqueci a senha')"}`,
