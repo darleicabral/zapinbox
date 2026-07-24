@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Kanban } from "@/lib/ui/icons";
 import { Badge } from "@/components/ui/badge";
 import { EmptyPipeline } from "@/components/empty";
@@ -15,6 +16,12 @@ export default async function KanbanPickerPage() {
     .order("position");
 
   const list = pipelines ?? [];
+
+  // Pipeline único (ex.: Itaville só tem "Atendimentos Pós-venda"): a lista de
+  // escolha é desnecessária — vai direto pro board. A lista só aparece com 2+.
+  if (list.length === 1) {
+    redirect(`/app/pipelines/${list[0]!.id}`);
+  }
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">
