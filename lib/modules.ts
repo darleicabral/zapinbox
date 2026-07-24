@@ -28,3 +28,17 @@ const POSVENDA_MANUAL_DOC_IDS: Record<string, string> = {
 export function posvendaManualDocId(orgId: string | null | undefined): string | null {
   return (orgId && POSVENDA_MANUAL_DOC_IDS[orgId]) || null;
 }
+
+/**
+ * Manual do SISTEMA (playbook de como operar o CRM) embedado na mesma página
+ * /app/manual, numa aba separada do manual de atendimento. É um HTML próprio
+ * (não Google Doc). Mesmo padrão de piloto por org id.
+ */
+const POSVENDA_PLAYBOOK_URLS: Record<string, string> = {
+  // Itaville — playbook do atendimento (como usar o sistema)
+  "bd014ed4-f62f-42f3-b092-3182cef3ef0b": "https://itaville.zapinbox.com.br/playbook.html",
+};
+
+export function posvendaPlaybookUrl(orgId: string | null | undefined): string | null {
+  return (orgId && POSVENDA_PLAYBOOK_URLS[orgId]) || null;
+}

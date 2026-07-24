@@ -28,7 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/app/inbox", label: "WhatsApp", icon: Inbox },
   { href: "/app/kanban", label: "Atendimentos", icon: Kanban },
   { href: "/app/agenda", label: "Agenda", icon: Calendar, module: "posvenda" },
-  { href: "/app/manual", label: "Manual", icon: ClipboardText, module: "posvenda" },
+  { href: "/app/manual", label: "Manuais", icon: ClipboardText, module: "posvenda" },
   { href: "/app/contacts", label: "Contatos", icon: Users },
   { href: "/app/connections", label: "Conexões", icon: PlugsConnected, healthDot: true },
   { href: "/app/team", label: "Equipe", icon: UsersThree, adminOnly: true },
