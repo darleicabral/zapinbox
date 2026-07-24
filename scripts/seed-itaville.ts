@@ -164,7 +164,7 @@ const FIELDS: Field[] = [
   selDep("subcategoria", "Subcategoria", "categoria", SUBCATEGORIAS),
   sel("canal", "Canal", ["WhatsApp", "Telefone", "E-mail", "Presencial"]),
   sel("nivel_acompanhamento", "Nível de acompanhamento", ["Verde", "Amarelo", "Vermelho"]),
-  sel("responsavel_area", "Responsável (área)", ["Relacionamento", "Financeiro", "Obra/AT", "Jurídico"]),
+  sel("responsavel_area", "Responsável (área)", ["Relacionamento", "Financeiro", "Obra", "Jurídico"]),
   // Dados da venda — auto-preenchidos pela busca do comprador (base de vendas);
   // opcionais, editáveis. Não obrigatórios para novos chamados (decisão 21/07).
   txt("profissao", "Profissão do cliente"),

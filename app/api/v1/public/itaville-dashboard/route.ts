@@ -53,7 +53,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("crm_leads")
-    .select("contact_id, status, created_at, closed_at, custom_fields, stage:crm_stages(name)")
+    .select("status, created_at, closed_at, custom_fields, tags, stage:crm_stages(name)")
     .eq("organization_id", ITAVILLE_ORG_ID)
     .eq("pipeline_id", ITAVILLE_PIPELINE_ID)
     .limit(10000);

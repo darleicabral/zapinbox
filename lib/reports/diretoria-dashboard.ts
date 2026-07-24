@@ -9,11 +9,11 @@
  */
 
 export interface DiretoriaLeadRow {
-  contact_id: string | null;
   status: "open" | "won" | "lost";
   created_at: string;
   closed_at: string | null;
   custom_fields: Record<string, unknown> | null;
+  tags: string[] | null;
   stage: { name: string | null } | { name: string | null }[] | null;
 }
 
@@ -43,7 +43,7 @@ export interface Crise {
   multa: number;
   so_previsao: number;
   exterior: number;
-  via_terceiro: number;
+  via_advogado: number;
   reincidentes: number;
   semaforo: { verde: number; amarelo: number; vermelho: number };
   total: number;
@@ -74,7 +74,7 @@ const SUBS_JURIDICO = new Set([
   "Procon",
 ]);
 const SUBS_MULTA = new Set(["multa por atraso", "cálculo de multa/devolução"]);
-const RELACAO_TERCEIRO = new Set(["Representante", "Parente", "Advogado"]);
+const REINCIDENTE_TAG = "reincidente";
 
 const STAGE_ORDER: Array<{ label: string; color: string }> = [
   { label: "Novo", color: "#3B82F6" },
@@ -122,11 +122,35 @@ function formatDuration(minutes: number): string {
   return m > 0 ? `${h}h ${m}min` : `${h}h`;
 }
 
+const BR_OFFSET_MS = 3 * 60 * 60 * 1000; // America/Sao_Paulo = UTC-3 (sem DST desde 2019)
+
+/**
+ * Minutos ÚTEIS (seg-sex, fuso Brasil) entre dois instantes: desconta sábados e
+ * domingos inteiros. A atendente não trabalha fim de semana, então contar o
+ * tempo corrido inflaria a média de 1ª resposta (decisão Darlei).
+ */
+function businessMinutes(startMs: number, endMs: number): number {
+  if (endMs <= startMs) return 0;
+  let weekendMs = 0;
+  // Varre dia a dia (resposta típica é curta → poucas iterações).
+  const dayStart = new Date(startMs);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  for (let t = dayStart.getTime(); t < endMs; t += 86_400_000) {
+    const dowBr = new Date(t - BR_OFFSET_MS).getUTCDay(); // 0=Dom, 6=Sáb (hora Brasil)
+    if (dowBr === 0 || dowBr === 6) {
+      const s = Math.max(t, startMs);
+      const e = Math.min(t + 86_400_000, endMs);
+      if (e > s) weekendMs += e - s;
+    }
+  }
+  return Math.max(0, endMs - startMs - weekendMs) / 60_000;
+}
+
 /**
  * Tempo médio de PRIMEIRA RESPOSTA HUMANA por conversa: do 1º inbound do cliente
  * até o 1º outbound enviado por um usuário (sent_by_user_id não-nulo = humano; o
- * bot manda sem user). Média em minutos sobre conversas que tiveram resposta.
- * PURA (sem I/O) — a rota busca as mensagens e passa aqui.
+ * bot manda sem user). Conta só minutos úteis (seg-sex). Média sobre conversas
+ * que tiveram resposta. PURA — a rota busca as mensagens e passa aqui.
  */
 export function computeFirstResponse(msgs: FirstResponseMsgRow[]): FirstResponse {
   const firstIn = new Map<string, number>();
@@ -146,7 +170,7 @@ export function computeFirstResponse(msgs: FirstResponseMsgRow[]): FirstResponse
   const deltas: number[] = [];
   for (const [conv, inTs] of firstIn) {
     const outTs = firstHuman.get(conv);
-    if (outTs !== undefined && outTs > inTs) deltas.push((outTs - inTs) / 60_000);
+    if (outTs !== undefined && outTs > inTs) deltas.push(businessMinutes(inTs, outTs));
   }
   if (deltas.length === 0) return { avgMinutes: null, label: "—", amostra: 0 };
   const avg = deltas.reduce((a, b) => a + b, 0) / deltas.length;
@@ -188,11 +212,11 @@ export function computeDiretoriaDashboard(
   let multa = 0;
   let so_previsao = 0;
   let exterior = 0;
-  let via_terceiro = 0;
+  let via_advogado = 0;
+  let reincidentes = 0;
   let verde = 0;
   let amarelo = 0;
   let vermelho = 0;
-  const chamadosPorContato = new Map<string, number>();
 
   const trendMap = new Map<string, { abertos: number; resolvidos: number }>();
   for (let i = 5; i >= 0; i--) {
@@ -206,7 +230,9 @@ export function computeDiretoriaDashboard(
     bump(nivelMap, field(cf, "nivel_acompanhamento"));
     bump(empMap, field(cf, "empreendimento"));
     bump(catMap, field(cf, "categoria"));
-    bump(respMap, field(cf, "responsavel_area"));
+    // Responsável: "Obra/AT" é exibido como "Obra" (decisão Darlei).
+    const resp = field(cf, "responsavel_area");
+    bump(respMap, resp === "Obra/AT" ? "Obra" : resp);
     bump(canalMap, field(cf, "canal"));
 
     // Termômetro da crise
@@ -219,13 +245,12 @@ export function computeDiretoriaDashboard(
     if (SUBS_MULTA.has(sub)) multa++;
     if (sub === "nova previsão de entrega") so_previsao++;
     if (field(cf, "titular_exterior") === "Sim") exterior++;
-    if (RELACAO_TERCEIRO.has(relacao)) via_terceiro++;
+    if (relacao === "Advogado") via_advogado++;
     if (nivel === "Verde") verde++;
     else if (nivel === "Amarelo") amarelo++;
     else if (nivel === "Vermelho") vermelho++;
-    if (row.contact_id) {
-      chamadosPorContato.set(row.contact_id, (chamadosPorContato.get(row.contact_id) ?? 0) + 1);
-    }
+    // Reincidente = atendimento com a tag "reincidente" (fluxo do open-lead).
+    if ((row.tags ?? []).includes(REINCIDENTE_TAG)) reincidentes++;
 
     if (row.status === "open") {
       abertos++;
@@ -261,8 +286,6 @@ export function computeDiretoriaDashboard(
 
   const total = rows.length;
   const mediaDias = resolvidosMes > 0 ? resolvidosMesSomaDias / resolvidosMes : 0;
-  let reincidentes = 0;
-  for (const n of chamadosPorContato.values()) if (n >= 2) reincidentes++;
 
   const trend = [...trendMap.entries()].map(([key, v]) => {
     const monthIdx = Number(key.split("-")[1]);
@@ -320,7 +343,7 @@ export function computeDiretoriaDashboard(
       multa,
       so_previsao,
       exterior,
-      via_terceiro,
+      via_advogado,
       reincidentes,
       semaforo: { verde, amarelo, vermelho },
       total,
