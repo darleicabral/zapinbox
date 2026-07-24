@@ -298,7 +298,7 @@ export async function updateLeadHandler(
 ): Promise<Record<string, unknown>> {
   const { data: existing, error: selErr } = await supabase
     .from("crm_leads")
-    .select("id, organization_id, custom_fields, external_id, source")
+    .select("id, organization_id, custom_fields, external_id, source, stage_id, status, pipeline_id")
     .eq("id", leadId)
     .maybeSingle();
 
@@ -341,6 +341,28 @@ export async function updateLeadHandler(
     (patch.custom_fields as Record<string, unknown> | undefined) ??
     (existing.custom_fields as Record<string, unknown> | null) ??
     {};
+
+  // Preencher "próximo contato" → mover o atendimento p/ a etapa "Em espera"
+  // (decisão Itaville 22/07). Só quando ESTE update setou proximo_contato com
+  // valor, o lead está aberto (não won/lost) e o pipeline tem a etapa em_espera.
+  // Data-driven (slug em_espera): inócuo p/ tenants sem essa etapa.
+  const touchedProx =
+    input.custom_fields !== undefined && "proximo_contato" in (input.custom_fields ?? {});
+  const proxNow = mergedCf["proximo_contato"];
+  const proxSet = typeof proxNow === "string" && proxNow.trim().length > 0;
+  if (touchedProx && proxSet && existing.status === "open") {
+    const { data: espera } = await supabase
+      .from("crm_stages")
+      .select("id")
+      .eq("pipeline_id", existing.pipeline_id)
+      .eq("slug", "em_espera")
+      .eq("is_archived", false)
+      .limit(1)
+      .maybeSingle();
+    if (espera?.id && espera.id !== existing.stage_id) {
+      patch.stage_id = espera.id;
+    }
+  }
   const alreadyHasNumber =
     typeof existing.external_id === "string" && existing.external_id.length > 0;
   const updPrefix = alreadyHasNumber ? null : chamadoPrefix(mergedCf["empreendimento"]);
