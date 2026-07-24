@@ -40,7 +40,7 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   // Conversa (RLS) + contato embutido.
   const { data: conv, error: convErr } = await supabase
     .from("conversations")
-    .select("id, organization_id, contact_id, contacts:contact_id(display_name, name, phone_number)")
+    .select("id, organization_id, contact_id, metadata, contacts:contact_id(display_name, name, phone_number)")
     .eq("id", conversationId)
     .maybeSingle();
   if (convErr) return fail("internal_error", convErr.message, 500, { requestId });
@@ -56,6 +56,17 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   }).contacts;
   const title =
     contact?.display_name?.trim() || contact?.name?.trim() || contact?.phone_number?.trim() || "Atendimento WhatsApp";
+
+  // Pré-preenchimento a partir da sinalização da IA (metadata.triagem) — editável
+  // depois pela atendente. Só entra no atendimento NOVO (o reincidente não é tocado).
+  const triagem = ((conv as { metadata: Record<string, unknown> | null }).metadata?.triagem ?? null) as {
+    categoria_sugerida?: string;
+    nivel_sugerido?: string;
+    resumo?: string;
+  } | null;
+  const prefillCustom: Record<string, unknown> = { canal: "WhatsApp" };
+  if (triagem?.categoria_sugerida) prefillCustom.categoria = triagem.categoria_sugerida;
+  if (triagem?.nivel_sugerido) prefillCustom.nivel_acompanhamento = triagem.nivel_sugerido;
 
   // Pipeline default da org + 1ª etapa aberta.
   const { data: pipeline } = await supabase
@@ -101,7 +112,7 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
       metadata: { conversation_id: conversationId, reincidente: true },
     });
     return ok(
-      { lead_id: ex.id, title: ex.title, external_id: ex.external_id, created: false, reincidente: true },
+      { lead_id: ex.id, pipeline_id: pipelineId, title: ex.title, external_id: ex.external_id, created: false, reincidente: true },
       { requestId },
     );
   }
@@ -130,7 +141,8 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
       title,
       status: "open",
       source: "manual",
-      custom_fields: {},
+      custom_fields: prefillCustom,
+      ...(triagem?.resumo ? { description: triagem.resumo } : {}),
     })
     .select("id, title, external_id")
     .single();
@@ -162,7 +174,7 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   });
 
   return ok(
-    { lead_id: lead.id, title: lead.title, external_id: lead.external_id, created: true, reincidente: false },
+    { lead_id: lead.id, pipeline_id: pipelineId, title: lead.title, external_id: lead.external_id, created: true, reincidente: false },
     { requestId },
   );
 }

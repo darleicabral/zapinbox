@@ -13,6 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useChannelSessions } from "@/hooks/channels/useChannelSessions";
+import { useActiveOrg } from "@/hooks/auth/AuthProvider";
+import { hasPosvendaModule } from "@/lib/modules";
+import { cn } from "@/lib/utils";
 
 export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "ai";
 
@@ -33,6 +36,29 @@ export function InboxFilters({ value, onChange }: Props) {
   const { data: channels } = useChannelSessions({ refetchInterval: 30_000 });
   // Alternador só aparece com 2+ números — com um só não há o que alternar.
   const showChannelSwitch = (channels?.length ?? 0) >= 2;
+
+  // Tenant de atendente único (pós-venda): as abas "Não atribuídos" e "Meus" não
+  // fazem sentido — tudo é do mesmo atendente. Some, e o default cai em "Todos".
+  const isPosvenda = hasPosvendaModule(useActiveOrg()?.orgId);
+  const TABS: Array<{ v: InboxTab; label: string }> = isPosvenda
+    ? [
+        { v: "all", label: "Todos" },
+        { v: "closed", label: "Fechados" },
+        { v: "ai", label: "IA" },
+      ]
+    : [
+        { v: "unassigned", label: "Não atribuídos" },
+        { v: "mine", label: "Meus" },
+        { v: "all", label: "Todos" },
+        { v: "closed", label: "Fechados" },
+        { v: "ai", label: "IA" },
+      ];
+  useEffect(() => {
+    if (isPosvenda && (value.tab === "unassigned" || value.tab === "mine")) {
+      onChange({ ...value, tab: "all" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPosvenda, value.tab]);
 
   // Debounce search input → propagate to parent.
   useEffect(() => {
@@ -88,22 +114,12 @@ export function InboxFilters({ value, onChange }: Props) {
         value={value.tab}
         onValueChange={(v) => onChange({ ...value, tab: v as InboxTab })}
       >
-        <TabsList className="grid h-8 w-full grid-cols-5">
-          <TabsTrigger value="unassigned" className="text-[11px]">
-            Não atribuídos
-          </TabsTrigger>
-          <TabsTrigger value="mine" className="text-[11px]">
-            Meus
-          </TabsTrigger>
-          <TabsTrigger value="all" className="text-[11px]">
-            Todos
-          </TabsTrigger>
-          <TabsTrigger value="closed" className="text-[11px]">
-            Fechados
-          </TabsTrigger>
-          <TabsTrigger value="ai" className="text-[11px]">
-            IA
-          </TabsTrigger>
+        <TabsList className={cn("grid h-8 w-full", isPosvenda ? "grid-cols-3" : "grid-cols-5")}>
+          {TABS.map((t) => (
+            <TabsTrigger key={t.v} value={t.v} className="text-[11px]">
+              {t.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
       </Tabs>
 

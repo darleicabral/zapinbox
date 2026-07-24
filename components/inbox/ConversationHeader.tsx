@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,7 @@ export function ConversationHeader({ conversation }: Props) {
   const { user } = useAuth();
   const activeOrg = useActiveOrg();
   const isPosvenda = hasPosvendaModule(activeOrg?.orgId);
+  const router = useRouter();
   const claim = useClaimConversation();
   const release = useReleaseConversation();
   const close = useCloseConversation();
@@ -62,11 +64,13 @@ export function ConversationHeader({ conversation }: Props) {
       const info = res.data;
       if (info.reincidente) {
         toast.warning(
-          `Cliente reincidente — tag adicionada ao atendimento já aberto${info.external_id ? ` (${info.external_id})` : ""}.`,
+          `Cliente reincidente — abrindo o atendimento já existente${info.external_id ? ` (${info.external_id})` : ""}.`,
         );
       } else {
-        toast.success("Atendimento aberto. Classifique em Atendimentos (Kanban).");
+        toast.success("Atendimento aberto — confira a classificação sugerida.");
       }
+      // Abre o card do atendimento direto no board (triagem pré-preenchida, editável).
+      router.push(`/app/pipelines/${info.pipeline_id}?open=${info.lead_id}`);
     } catch {
       // erro já mostrado pelo hook
     }
@@ -100,7 +104,9 @@ export function ConversationHeader({ conversation }: Props) {
               {openLead.isPending ? "Abrindo…" : "Abrir atendimento"}
             </Button>
           )}
-          {isOpen && (
+          {/* Assumir/Liberar só fazem sentido com vários atendentes disputando a
+              fila. Em tenant de atendente único (pós-venda Itaville) some. */}
+          {!isPosvenda && isOpen && (
             <Button
               size="sm"
               variant="outline"
@@ -115,7 +121,7 @@ export function ConversationHeader({ conversation }: Props) {
               Assumir
             </Button>
           )}
-          {isMineAssigned && (
+          {!isPosvenda && isMineAssigned && (
             <Button
               size="sm"
               variant="outline"

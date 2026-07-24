@@ -9,6 +9,7 @@ interface OpenLeadArgs {
 
 export interface OpenLeadResult {
   lead_id: string;
+  pipeline_id: string;
   title: string;
   external_id: string | null;
   created: boolean;

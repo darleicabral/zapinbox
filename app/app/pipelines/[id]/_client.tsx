@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useBoard } from "@/hooks/kanban/useBoard";
 
 function formatError(err: unknown): string {
@@ -22,6 +23,7 @@ import { KanbanBoard } from "@/components/kanban/KanbanBoard";
 import { FilterBar } from "@/components/kanban/FilterBar";
 import { BulkActionBar } from "@/components/kanban/BulkActionBar";
 import { NewLeadDialog } from "@/components/kanban/NewLeadDialog";
+import { EditLeadDialog } from "@/components/kanban/EditLeadDialog";
 import { readCustomFields, readHiddenFormFields } from "@/components/contacts/CustomFieldsEditor";
 import { Button } from "@/components/ui/button";
 import { Plus } from "@/lib/ui/icons";
@@ -36,12 +38,20 @@ export function PipelinePageClient({
   initialName: string;
 }) {
   const { data, isLoading, error } = useBoard(pipelineId);
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [filters, setFilters] = useState<LeadFilters>({ status: "all" });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [newOpen, setNewOpen] = useState(false);
 
   const filteredLeads = data ? applyFilters(data.leads, filters) : [];
   const leadNoun = data?.pipeline.vocabulary?.lead ?? "Lead";
+
+  // Abertura direta de um atendimento via ?open=<leadId> (vindo do Inbox, botão
+  // "Abrir atendimento"): o board já tem os campos/etapas em cache, então o
+  // EditLeadDialog abre com a triagem pré-preenchida. Fechar limpa o parâmetro.
+  const openId = searchParams.get("open");
+  const openLead = openId && data ? (data.leads.find((l) => l.id === openId) ?? null) : null;
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -90,6 +100,16 @@ export function PipelinePageClient({
         pipelineId={pipelineId}
         onClear={() => setSelectedIds([])}
       />
+      {openLead && (
+        <EditLeadDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) router.replace(`/app/pipelines/${pipelineId}`);
+          }}
+          lead={openLead}
+          pipelineId={pipelineId}
+        />
+      )}
     </div>
   );
 }

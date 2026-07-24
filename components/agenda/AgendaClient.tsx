@@ -3,7 +3,8 @@ import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 
 import { useBoard } from "@/hooks/kanban/useBoard";
-import { useUser } from "@/hooks/auth/AuthProvider";
+import { useUser, useActiveOrg } from "@/hooks/auth/AuthProvider";
+import { hasPosvendaModule } from "@/lib/modules";
 import { EditLeadDialog } from "@/components/kanban/EditLeadDialog";
 import { Calendar, CaretRight } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
@@ -72,6 +73,8 @@ export function AgendaClient({ pipelineId }: { pipelineId: string }) {
   const { data, isLoading, error } = useBoard(pipelineId);
   const user = useUser();
   const [scope, setScope] = useState<"todos" | "meus">("todos");
+  // Atendente único (pós-venda): "Meus" == "Todos", então o alternador some.
+  const isPosvenda = hasPosvendaModule(useActiveOrg()?.orgId);
   const [selected, setSelected] = useState<Lead | null>(null);
 
   const leadNoun = data?.pipeline.vocabulary?.lead ?? "Atendimento";
@@ -121,23 +124,25 @@ export function AgendaClient({ pipelineId }: { pipelineId: string }) {
           </div>
         </div>
 
-        <div className="inline-flex rounded-lg border border-border bg-surface-muted p-0.5 text-sm">
-          {(["todos", "meus"] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setScope(s)}
-              className={cn(
-                "rounded-md px-3 py-1 transition-colors duration-fast ease-out",
-                scope === s
-                  ? "bg-surface font-medium text-text shadow-xs"
-                  : "text-text-muted hover:text-text",
-              )}
-            >
-              {s === "todos" ? "Todos" : "Meus"}
-            </button>
-          ))}
-        </div>
+        {!isPosvenda && (
+          <div className="inline-flex rounded-lg border border-border bg-surface-muted p-0.5 text-sm">
+            {(["todos", "meus"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setScope(s)}
+                className={cn(
+                  "rounded-md px-3 py-1 transition-colors duration-fast ease-out",
+                  scope === s
+                    ? "bg-surface font-medium text-text shadow-xs"
+                    : "text-text-muted hover:text-text",
+                )}
+              >
+                {s === "todos" ? "Todos" : "Meus"}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
       {error ? (
