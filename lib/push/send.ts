@@ -44,6 +44,30 @@ interface SubscriptionRow {
   auth: string;
 }
 
+/**
+ * Envia para TODOS os usuários da org que tenham algum aparelho assinado.
+ * Útil em tenant de atendente único (não há "dono" específico a notificar).
+ * Retorna o total de envios ok.
+ */
+export async function sendPushToOrg(
+  admin: SupabaseClient,
+  organizationId: string,
+  payload: PushPayload,
+): Promise<number> {
+  if (!ensureConfigured()) return 0;
+  const { data, error } = await admin
+    .from("push_subscriptions")
+    .select("user_id")
+    .eq("organization_id", organizationId);
+  if (error || !data?.length) return 0;
+  const userIds = [...new Set((data as { user_id: string }[]).map((r) => r.user_id))];
+  let total = 0;
+  for (const uid of userIds) {
+    total += await sendPushToUser(admin, organizationId, uid, payload);
+  }
+  return total;
+}
+
 /** Envia para TODOS os aparelhos assinados do usuário na org. Retorna nº de envios ok. */
 export async function sendPushToUser(
   admin: SupabaseClient,

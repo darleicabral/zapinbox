@@ -15,6 +15,8 @@ import { after } from "next/server";
 
 import { audit } from "@/lib/audit";
 import { dispatchAgents } from "@/lib/ai/dispatcher";
+import { hasPosvendaModule } from "@/lib/modules";
+import { sendPushToOrg } from "@/lib/push/send";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ackToStatus } from "@/lib/types/messaging";
 
@@ -298,6 +300,14 @@ async function handleInbound(
   }
   if (insertErr?.code === "23505") return;
 
+  // Última entrada ANTES de marcar — usado no limitador do push (abaixo).
+  const { data: convBefore } = await admin
+    .from("conversations")
+    .select("last_inbound_at")
+    .eq("id", conversationId)
+    .maybeSingle();
+  const prevInboundAt = (convBefore as { last_inbound_at: string | null } | null)?.last_inbound_at ?? null;
+
   await markConversation(admin, conversationId, "inbound", previewFromMessage(p), now);
 
   if (p.body && STOP_RX.test(p.body)) {
@@ -321,6 +331,26 @@ async function handleInbound(
     requestId,
     metadata: { conversation_id: conversationId, type: p.type, external_id: p.id },
   });
+
+  // Aviso de "mensagem nova de cliente" (push nativo) — tenant de atendente único
+  // (pós-venda). Limitador: só notifica quando a conversa ficou 3+ min sem entrada
+  // do cliente (uma chegada nova), pra não tocar a cada mensagem de uma rajada.
+  if (hasPosvendaModule(session.organization_id)) {
+    const THROTTLE_MS = 3 * 60 * 1000;
+    const gap = prevInboundAt ? Date.parse(now) - Date.parse(prevInboundAt) : Number.POSITIVE_INFINITY;
+    if (gap >= THROTTLE_MS) {
+      const who = notifyNameOf(p) || "Cliente";
+      const preview = (previewFromMessage(p) || "Nova mensagem").slice(0, 140);
+      after(async () => {
+        await sendPushToOrg(admin, session.organization_id, {
+          title: `Nova mensagem — ${who}`,
+          body: preview,
+          url: "/app/inbox",
+          tag: `conv-${conversationId}`,
+        });
+      });
+    }
+  }
 
   // Enfileira o dispatch e drena o dispatcher na sequência via after() — roda
   // depois do 200 pro WAHA, então não atrasa o webhook. Sem isso a resposta do
