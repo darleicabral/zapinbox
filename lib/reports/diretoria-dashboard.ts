@@ -9,6 +9,7 @@
  */
 
 export interface DiretoriaLeadRow {
+  contact_id: string | null;
   status: "open" | "won" | "lost";
   created_at: string;
   closed_at: string | null;
@@ -16,9 +17,36 @@ export interface DiretoriaLeadRow {
   stage: { name: string | null } | { name: string | null }[] | null;
 }
 
+/** Linha de mensagem (mínima) p/ o tempo de 1ª resposta humana. */
+export interface FirstResponseMsgRow {
+  conversation_id: string | null;
+  direction: string | null;
+  sent_by_user_id: string | null;
+  sent_at: string | null;
+  created_at: string;
+}
+
 interface Slice {
   label: string;
   value: number;
+}
+
+export interface FirstResponse {
+  avgMinutes: number | null;
+  label: string;
+  amostra: number;
+}
+
+export interface Crise {
+  distrato: number;
+  juridico: number;
+  multa: number;
+  so_previsao: number;
+  exterior: number;
+  via_terceiro: number;
+  reincidentes: number;
+  semaforo: { verde: number; amarelo: number; vermelho: number };
+  total: number;
 }
 
 export interface DiretoriaDashboard {
@@ -33,7 +61,20 @@ export interface DiretoriaDashboard {
   resolucaoPct: number;
   agenda: Slice[];
   trend: Array<{ mes: string; abertos: number; resolvidos: number }>;
+  crise: Crise;
+  primeiraResposta: FirstResponse;
 }
+
+// Regras da crise — batem 1:1 com lib/reports/posvenda.ts (mesma taxonomia do seed).
+const SUBS_JURIDICO = new Set([
+  "ameaça de ação judicial",
+  "advogado constituído",
+  "notificação",
+  "disputa contratual",
+  "Procon",
+]);
+const SUBS_MULTA = new Set(["multa por atraso", "cálculo de multa/devolução"]);
+const RELACAO_TERCEIRO = new Set(["Representante", "Parente", "Advogado"]);
 
 const STAGE_ORDER: Array<{ label: string; color: string }> = [
   { label: "Novo", color: "#3B82F6" },
@@ -73,8 +114,51 @@ function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+function formatDuration(minutes: number): string {
+  if (minutes < 1) return "menos de 1 min";
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+}
+
+/**
+ * Tempo médio de PRIMEIRA RESPOSTA HUMANA por conversa: do 1º inbound do cliente
+ * até o 1º outbound enviado por um usuário (sent_by_user_id não-nulo = humano; o
+ * bot manda sem user). Média em minutos sobre conversas que tiveram resposta.
+ * PURA (sem I/O) — a rota busca as mensagens e passa aqui.
+ */
+export function computeFirstResponse(msgs: FirstResponseMsgRow[]): FirstResponse {
+  const firstIn = new Map<string, number>();
+  const firstHuman = new Map<string, number>();
+  for (const m of msgs) {
+    if (!m.conversation_id) continue;
+    const ts = Date.parse(m.sent_at ?? m.created_at);
+    if (!Number.isFinite(ts)) continue;
+    if (m.direction === "inbound") {
+      const cur = firstIn.get(m.conversation_id);
+      if (cur === undefined || ts < cur) firstIn.set(m.conversation_id, ts);
+    } else if (m.direction === "outbound" && m.sent_by_user_id) {
+      const cur = firstHuman.get(m.conversation_id);
+      if (cur === undefined || ts < cur) firstHuman.set(m.conversation_id, ts);
+    }
+  }
+  const deltas: number[] = [];
+  for (const [conv, inTs] of firstIn) {
+    const outTs = firstHuman.get(conv);
+    if (outTs !== undefined && outTs > inTs) deltas.push((outTs - inTs) / 60_000);
+  }
+  if (deltas.length === 0) return { avgMinutes: null, label: "—", amostra: 0 };
+  const avg = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+  return { avgMinutes: avg, label: formatDuration(avg), amostra: deltas.length };
+}
+
 /** `now` é injetado (não `new Date()` interno) — mantém a função pura/testável. */
-export function computeDiretoriaDashboard(rows: DiretoriaLeadRow[], now: Date): DiretoriaDashboard {
+export function computeDiretoriaDashboard(
+  rows: DiretoriaLeadRow[],
+  now: Date,
+  firstResponse: FirstResponse,
+): DiretoriaDashboard {
   const today = ymd(now);
   const weekAheadStr = ymd(new Date(now.getTime() + 7 * 86_400_000));
   const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
@@ -98,6 +182,18 @@ export function computeDiretoriaDashboard(rows: DiretoriaLeadRow[], now: Date): 
   let estaSemana = 0;
   let emRisco = 0;
 
+  // Termômetro da crise (mesma lógica do painel interno).
+  let distrato = 0;
+  let juridico = 0;
+  let multa = 0;
+  let so_previsao = 0;
+  let exterior = 0;
+  let via_terceiro = 0;
+  let verde = 0;
+  let amarelo = 0;
+  let vermelho = 0;
+  const chamadosPorContato = new Map<string, number>();
+
   const trendMap = new Map<string, { abertos: number; resolvidos: number }>();
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -112,6 +208,24 @@ export function computeDiretoriaDashboard(rows: DiretoriaLeadRow[], now: Date): 
     bump(catMap, field(cf, "categoria"));
     bump(respMap, field(cf, "responsavel_area"));
     bump(canalMap, field(cf, "canal"));
+
+    // Termômetro da crise
+    const cat = field(cf, "categoria");
+    const sub = field(cf, "subcategoria");
+    const nivel = field(cf, "nivel_acompanhamento");
+    const relacao = field(cf, "interlocutor_relacao");
+    if (cat === "Distrato e rescisão" || sub === "intenção de distrato") distrato++;
+    if (cat === "Jurídico" || SUBS_JURIDICO.has(sub) || relacao === "Advogado") juridico++;
+    if (SUBS_MULTA.has(sub)) multa++;
+    if (sub === "nova previsão de entrega") so_previsao++;
+    if (field(cf, "titular_exterior") === "Sim") exterior++;
+    if (RELACAO_TERCEIRO.has(relacao)) via_terceiro++;
+    if (nivel === "Verde") verde++;
+    else if (nivel === "Amarelo") amarelo++;
+    else if (nivel === "Vermelho") vermelho++;
+    if (row.contact_id) {
+      chamadosPorContato.set(row.contact_id, (chamadosPorContato.get(row.contact_id) ?? 0) + 1);
+    }
 
     if (row.status === "open") {
       abertos++;
@@ -147,6 +261,8 @@ export function computeDiretoriaDashboard(rows: DiretoriaLeadRow[], now: Date): 
 
   const total = rows.length;
   const mediaDias = resolvidosMes > 0 ? resolvidosMesSomaDias / resolvidosMes : 0;
+  let reincidentes = 0;
+  for (const n of chamadosPorContato.values()) if (n >= 2) reincidentes++;
 
   const trend = [...trendMap.entries()].map(([key, v]) => {
     const monthIdx = Number(key.split("-")[1]);
@@ -198,5 +314,17 @@ export function computeDiretoriaDashboard(rows: DiretoriaLeadRow[], now: Date): 
       { label: "Esta semana", value: estaSemana },
     ],
     trend,
+    crise: {
+      distrato,
+      juridico,
+      multa,
+      so_previsao,
+      exterior,
+      via_terceiro,
+      reincidentes,
+      semaforo: { verde, amarelo, vermelho },
+      total,
+    },
+    primeiraResposta: firstResponse,
   };
 }

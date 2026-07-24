@@ -14,7 +14,12 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { computeDiretoriaDashboard, type DiretoriaLeadRow } from "@/lib/reports/diretoria-dashboard";
+import {
+  computeDiretoriaDashboard,
+  computeFirstResponse,
+  type DiretoriaLeadRow,
+  type FirstResponseMsgRow,
+} from "@/lib/reports/diretoria-dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +53,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("crm_leads")
-    .select("status, created_at, closed_at, custom_fields, stage:crm_stages(name)")
+    .select("contact_id, status, created_at, closed_at, custom_fields, stage:crm_stages(name)")
     .eq("organization_id", ITAVILLE_ORG_ID)
     .eq("pipeline_id", ITAVILLE_PIPELINE_ID)
     .limit(10000);
@@ -57,6 +62,21 @@ export async function GET(req: NextRequest): Promise<Response> {
     return Response.json({ ok: false, error: error.message, requestId }, { status: 500, headers: CORS_HEADERS });
   }
 
-  const dashboard = computeDiretoriaDashboard((data ?? []) as unknown as DiretoriaLeadRow[], new Date());
+  // Mensagens (inbound + outbound) p/ o tempo médio de 1ª resposta humana.
+  // Ordenadas ASC + cap: guardamos as MAIS ANTIGAS, que é o que a métrica usa.
+  const { data: msgs } = await supabase
+    .from("messages")
+    .select("conversation_id, direction, sent_by_user_id, sent_at, created_at")
+    .eq("organization_id", ITAVILLE_ORG_ID)
+    .in("direction", ["inbound", "outbound"])
+    .order("created_at", { ascending: true })
+    .limit(20000);
+
+  const firstResponse = computeFirstResponse((msgs ?? []) as unknown as FirstResponseMsgRow[]);
+  const dashboard = computeDiretoriaDashboard(
+    (data ?? []) as unknown as DiretoriaLeadRow[],
+    new Date(),
+    firstResponse,
+  );
   return Response.json({ ok: true, data: dashboard, requestId }, { status: 200, headers: CORS_HEADERS });
 }
