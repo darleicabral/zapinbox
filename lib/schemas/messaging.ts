@@ -65,8 +65,24 @@ export const updateConversationStatusSchema = z.object({
 
 export type UpdateConversationStatusInput = z.infer<typeof updateConversationStatusSchema>;
 
+/** Lista CSV de status ("closed,archived") → array validado. */
+const conversationStatusCsvSchema = z
+  .string()
+  .transform((raw) =>
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  )
+  .pipe(z.array(conversationStatusSchema).min(1));
+
 export const listConversationsQuerySchema = z.object({
   status: conversationStatusSchema.optional(),
+  /**
+   * Remove status do resultado. A aba "Mensagens" do Inbox (tenant de atendente
+   * único) é "tudo que não está fechado", e `status` sozinho só faz igualdade.
+   */
+  exclude_status: conversationStatusCsvSchema.optional(),
   assigned_to: z.union([z.string().uuid(), z.literal("me"), z.literal("unassigned")]).optional(),
   channel_session_id: z.string().uuid().optional(),
   search: z.string().optional(),

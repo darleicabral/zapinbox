@@ -4201,3 +4201,12 @@ revoke all on function public.fn_mark_conversation_message(uuid, text, text, tim
 grant execute on function public.fn_upsert_wa_contact(uuid, text, text, text, text, text) to service_role;
 grant execute on function public.fn_upsert_wa_conversation(uuid, uuid, uuid) to service_role;
 grant execute on function public.fn_mark_conversation_message(uuid, text, text, timestamptz) to service_role;
+
+-- ---- contacts.custom_fields (migration 0028) ----
+-- Campos custom por contato (Empreendimento / Liguei / Status da abordagem no
+-- pós-venda). Definição dos campos na aplicação; aqui só o balde jsonb.
+alter table public.contacts
+  add column if not exists custom_fields jsonb default '{}'::jsonb not null;
+
+comment on column public.contacts.custom_fields is
+  'Campos custom por-tenant do contato (jsonb chave→valor). Renderização/validação na aplicação (lib/contacts/fields.ts). Mesmo padrão de crm_leads.custom_fields.';

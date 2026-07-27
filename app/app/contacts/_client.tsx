@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, MagnifyingGlass } from "@/lib/ui/icons";
+import { Plus, MagnifyingGlass, UploadSimple } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import {
 import { useContactList } from "@/hooks/contacts/useContactList";
 import { ContactsTable } from "@/components/contacts/ContactsTable";
 import { NewContactDialog } from "@/components/contacts/NewContactDialog";
+import { ImportContactsDialog } from "@/components/contacts/ImportContactsDialog";
 import { EmptyContacts } from "@/components/empty";
 
 const SOURCE_OPTIONS = [
@@ -25,12 +26,18 @@ const SOURCE_OPTIONS = [
   { value: "nuvemshop", label: "Nuvemshop" },
 ];
 
-export function ContactsListClient() {
+interface Props {
+  /** Opções de "Empreendimento" (pipeline default), carregadas no servidor. */
+  empreendimentos?: string[];
+}
+
+export function ContactsListClient({ empreendimentos = [] }: Props) {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [tag, setTag] = useState<string | undefined>(undefined);
   const [source, setSource] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Debounce search 250ms
   useEffect(() => {
@@ -41,10 +48,7 @@ export function ContactsListClient() {
   const filters = useMemo(() => ({ search, tag, source }), [search, tag, source]);
   const q = useContactList(filters);
 
-  const allContacts = useMemo(
-    () => q.data?.pages.flatMap((p) => p.data) ?? [],
-    [q.data],
-  );
+  const allContacts = useMemo(() => q.data?.pages.flatMap((p) => p.data) ?? [], [q.data]);
 
   const tagOptions = useMemo(() => {
     const set = new Set<string>();
@@ -61,10 +65,16 @@ export function ContactsListClient() {
             Customer 360 — busque, filtre e gerencie contatos.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus size={16} weight="bold" aria-hidden />
-          <span>Novo contato</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <UploadSimple size={16} weight="bold" aria-hidden />
+            <span>Importar</span>
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus size={16} weight="bold" aria-hidden />
+            <span>Novo contato</span>
+          </Button>
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-2">
@@ -141,12 +151,7 @@ export function ContactsListClient() {
       ) : q.isError ? (
         <Card className="p-6 text-center">
           <p className="text-sm text-error-fg">Erro ao carregar contatos.</p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="mt-2"
-            onClick={() => q.refetch()}
-          >
+          <Button size="sm" variant="outline" className="mt-2" onClick={() => q.refetch()}>
             Tentar novamente
           </Button>
         </Card>
@@ -157,7 +162,7 @@ export function ContactsListClient() {
       ) : (
         <>
           <Card className="overflow-hidden">
-            <ContactsTable contacts={allContacts} />
+            <ContactsTable contacts={allContacts} empreendimentos={empreendimentos} />
           </Card>
           {q.hasNextPage && (
             <div className="flex justify-center">
@@ -174,7 +179,16 @@ export function ContactsListClient() {
         </>
       )}
 
-      <NewContactDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <NewContactDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        empreendimentos={empreendimentos}
+      />
+      <ImportContactsDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        empreendimentos={empreendimentos}
+      />
     </div>
   );
 }

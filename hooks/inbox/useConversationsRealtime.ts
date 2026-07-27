@@ -20,8 +20,12 @@ export type ConversationWithContact = Conversation & {
   contacts?: ContactSummary | null;
 };
 
+export type ConversationStatus = "open" | "claimed" | "ai_handling" | "closed" | "archived";
+
 export interface ConversationsFilters {
-  status?: "open" | "claimed" | "ai_handling" | "closed" | "archived";
+  status?: ConversationStatus;
+  /** Nega os status listados (aba "Mensagens" = tudo que não está fechado). */
+  exclude_status?: ConversationStatus[];
   assigned_to?: "me" | "unassigned" | string;
   search?: string;
   channel_session_id?: string;
@@ -32,10 +36,7 @@ interface ListResponse {
   meta?: { cursor?: string | null; has_more?: boolean };
 }
 
-export function useConversationsRealtime(
-  filters: ConversationsFilters,
-  orgId: string | null,
-) {
+export function useConversationsRealtime(filters: ConversationsFilters, orgId: string | null) {
   const qc = useQueryClient();
   const queryKey = ["conversations", filters] as const;
 
@@ -45,6 +46,9 @@ export function useConversationsRealtime(
     queryFn: async ({ pageParam }) => {
       const qs = new URLSearchParams();
       if (filters.status) qs.set("status", filters.status);
+      if (filters.exclude_status?.length) {
+        qs.set("exclude_status", filters.exclude_status.join(","));
+      }
       if (filters.assigned_to) qs.set("assigned_to", filters.assigned_to);
       if (filters.search) qs.set("search", filters.search);
       if (filters.channel_session_id) qs.set("channel_session_id", filters.channel_session_id);

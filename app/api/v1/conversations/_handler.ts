@@ -8,10 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api/types";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
-import type {
-  ListConversationsQuery,
-  UpdateConversationStatusInput,
-} from "@/lib/schemas";
+import type { ListConversationsQuery, UpdateConversationStatusInput } from "@/lib/schemas";
 import type { Conversation } from "@/lib/types/messaging";
 
 type SB = SupabaseClient;
@@ -85,6 +82,9 @@ export async function listConversationsHandler(
     .limit(q.limit + 1);
 
   if (q.status) query = query.eq("status", q.status);
+  if (q.exclude_status?.length) {
+    query = query.not("status", "in", `(${q.exclude_status.join(",")})`);
+  }
   if (q.channel_session_id) query = query.eq("channel_session_id", q.channel_session_id);
 
   if (q.assigned_to === "me") {
@@ -133,9 +133,7 @@ export async function listConversationsHandler(
   const page = hasMore ? rows.slice(0, q.limit) : rows;
   const last = page[page.length - 1];
   const cursor =
-    hasMore && last
-      ? encodeCursor({ last_message_at: last.last_message_at, id: last.id })
-      : null;
+    hasMore && last ? encodeCursor({ last_message_at: last.last_message_at, id: last.id }) : null;
 
   return { conversations: page, cursor, has_more: hasMore };
 }

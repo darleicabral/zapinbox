@@ -35,6 +35,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const url = new URL(req.url);
   const qsParsed = listConversationsQuerySchema.safeParse({
     status: url.searchParams.get("status") ?? undefined,
+    exclude_status: url.searchParams.get("exclude_status") ?? undefined,
     assigned_to: url.searchParams.get("assigned_to") ?? undefined,
     channel_session_id: url.searchParams.get("channel_session_id") ?? undefined,
     search: url.searchParams.get("search") ?? undefined,

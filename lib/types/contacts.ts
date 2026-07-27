@@ -22,6 +22,8 @@ export interface Contact {
   tags: string[];
   source: string;
   source_metadata: Record<string, unknown>;
+  /** Campos custom por-tenant (migration 0028). Ver lib/contacts/fields.ts. */
+  custom_fields: Record<string, unknown>;
   created_at: string;
   updated_at: string;
   last_activity_at: string | null;

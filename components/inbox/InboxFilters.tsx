@@ -17,7 +17,7 @@ import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { hasPosvendaModule } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 
-export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "ai";
+export type InboxTab = "unassigned" | "mine" | "all" | "open" | "closed" | "ai";
 
 export interface InboxFiltersValue {
   tab: InboxTab;
@@ -37,13 +37,15 @@ export function InboxFilters({ value, onChange }: Props) {
   // Alternador só aparece com 2+ números — com um só não há o que alternar.
   const showChannelSwitch = (channels?.length ?? 0) >= 2;
 
-  // Tenant de atendente único (pós-venda): as abas "Não atribuídos" e "Meus" não
-  // fazem sentido — tudo é do mesmo atendente. Some, e o default cai em "Todos".
+  // Tenant de atendente único (pós-venda): "Não atribuídos"/"Meus" não fazem
+  // sentido (tudo é do mesmo atendente) e "Todos" misturava conversa fechada na
+  // fila de trabalho. Sobram 3 abas: Mensagens (em aberto), Fechadas e IA.
   const isPosvenda = hasPosvendaModule(useActiveOrg()?.orgId);
+  const POSVENDA_TABS: InboxTab[] = ["open", "closed", "ai"];
   const TABS: Array<{ v: InboxTab; label: string }> = isPosvenda
     ? [
-        { v: "all", label: "Todos" },
-        { v: "closed", label: "Fechados" },
+        { v: "open", label: "Mensagens" },
+        { v: "closed", label: "Fechadas" },
         { v: "ai", label: "IA" },
       ]
     : [
@@ -54,8 +56,8 @@ export function InboxFilters({ value, onChange }: Props) {
         { v: "ai", label: "IA" },
       ];
   useEffect(() => {
-    if (isPosvenda && (value.tab === "unassigned" || value.tab === "mine")) {
-      onChange({ ...value, tab: "all" });
+    if (isPosvenda && !POSVENDA_TABS.includes(value.tab)) {
+      onChange({ ...value, tab: "open" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPosvenda, value.tab]);
@@ -110,10 +112,7 @@ export function InboxFilters({ value, onChange }: Props) {
         </Select>
       )}
 
-      <Tabs
-        value={value.tab}
-        onValueChange={(v) => onChange({ ...value, tab: v as InboxTab })}
-      >
+      <Tabs value={value.tab} onValueChange={(v) => onChange({ ...value, tab: v as InboxTab })}>
         <TabsList className={cn("grid h-8 w-full", isPosvenda ? "grid-cols-3" : "grid-cols-5")}>
           {TABS.map((t) => (
             <TabsTrigger key={t.v} value={t.v} className="text-[11px]">

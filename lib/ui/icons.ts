@@ -66,7 +66,9 @@ export {
   MonitorPlay,
   // conversation
   ChatCircle,
+  WhatsappLogo,
   Phone,
+  PhoneCall,
   Paperclip,
   Image as ImageIcon,
   MusicNote,
@@ -76,6 +78,8 @@ export {
   Tag,
   Question,
   Keyboard,
+  // import / export
+  UploadSimple,
   // misc
   DotsThree,
   CaretDown,

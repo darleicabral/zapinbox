@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { contactCreateSchema, type ContactCreate } from "@/lib/schemas/contacts";
 import { useCreateContact } from "@/hooks/contacts/useCreateContact";
+import { CONTACT_FIELD } from "@/lib/contacts/fields";
+import { EmpreendimentoField } from "./EmpreendimentoField";
 
 interface FormShape {
   name?: string;
@@ -27,11 +29,14 @@ interface FormShape {
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /** Opções cadastradas; vazio esconde o campo (org sem empreendimentos). */
+  empreendimentos?: string[];
 }
 
-export function NewContactDialog({ open, onOpenChange }: Props) {
+export function NewContactDialog({ open, onOpenChange, empreendimentos = [] }: Props) {
   const create = useCreateContact();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [empreendimento, setEmpreendimento] = useState("");
 
   const form = useForm<FormShape>({
     defaultValues: { name: "", email: "", phone_number: "", cpf: "", tagsRaw: "" },
@@ -50,6 +55,7 @@ export function NewContactDialog({ open, onOpenChange }: Props) {
     if (values.phone_number?.trim()) payload.phone_number = values.phone_number.trim();
     if (values.cpf?.trim()) payload.cpf = values.cpf.trim();
     if (tags.length) payload.tags = tags;
+    if (empreendimento) payload.custom_fields = { [CONTACT_FIELD.empreendimento]: empreendimento };
 
     const parsed = contactCreateSchema.safeParse(payload);
     if (!parsed.success) {
@@ -62,6 +68,7 @@ export function NewContactDialog({ open, onOpenChange }: Props) {
       await create.mutateAsync(parsed.data as ContactCreate);
       toast.success("Contato criado");
       form.reset();
+      setEmpreendimento("");
       onOpenChange(false);
     } catch {
       // error toast already handled by hook
@@ -98,13 +105,17 @@ export function NewContactDialog({ open, onOpenChange }: Props) {
             <Label htmlFor="cpf">CPF (opcional)</Label>
             <Input id="cpf" placeholder="00000000000" {...form.register("cpf")} />
           </div>
+          <EmpreendimentoField
+            id="nc-empreendimento"
+            options={empreendimentos}
+            value={empreendimento}
+            onChange={setEmpreendimento}
+          />
           <div className="space-y-2">
             <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
             <Input id="tagsRaw" placeholder="vip, recompra" {...form.register("tagsRaw")} />
           </div>
-          {serverError && (
-            <p className="text-sm text-error-fg">{serverError}</p>
-          )}
+          {serverError && <p className="text-sm text-error-fg">{serverError}</p>}
           <DialogFooter>
             <Button
               type="button"

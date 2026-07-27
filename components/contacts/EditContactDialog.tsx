@@ -15,7 +15,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { contactPatchSchema, type ContactPatch } from "@/lib/schemas/contacts";
 import { useUpdateContact } from "@/hooks/contacts/useUpdateContact";
+import { CONTACT_FIELD, contactFieldText } from "@/lib/contacts/fields";
 import type { Contact } from "@/lib/types/contacts";
+import { EmpreendimentoField } from "./EmpreendimentoField";
 
 interface FormShape {
   name?: string;
@@ -28,11 +30,16 @@ interface Props {
   contact: Contact;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /** Opções cadastradas; vazio esconde o campo. */
+  empreendimentos?: string[];
 }
 
-export function EditContactDialog({ contact, open, onOpenChange }: Props) {
+export function EditContactDialog({ contact, open, onOpenChange, empreendimentos = [] }: Props) {
   const update = useUpdateContact(contact.id);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [empreendimento, setEmpreendimento] = useState(() =>
+    contactFieldText(contact.custom_fields, CONTACT_FIELD.empreendimento),
+  );
 
   const form = useForm<FormShape>({
     defaultValues: {
@@ -51,6 +58,7 @@ export function EditContactDialog({ contact, open, onOpenChange }: Props) {
         phone_number: contact.phone_number ?? "",
         tagsRaw: contact.tags.join(", "),
       });
+      setEmpreendimento(contactFieldText(contact.custom_fields, CONTACT_FIELD.empreendimento));
     }
   }, [open, contact, form]);
 
@@ -66,6 +74,8 @@ export function EditContactDialog({ contact, open, onOpenChange }: Props) {
     if (values.email?.trim()) payload.email = values.email.trim();
     if (values.phone_number?.trim()) payload.phone_number = values.phone_number.trim();
     payload.tags = tags;
+    // O handler faz merge raso em custom_fields — mandar só esta chave é seguro.
+    payload.custom_fields = { [CONTACT_FIELD.empreendimento]: empreendimento || null };
 
     const parsed = contactPatchSchema.safeParse(payload);
     if (!parsed.success) {
@@ -101,6 +111,12 @@ export function EditContactDialog({ contact, open, onOpenChange }: Props) {
             <Label htmlFor="ec-phone">Telefone (E.164)</Label>
             <Input id="ec-phone" {...form.register("phone_number")} />
           </div>
+          <EmpreendimentoField
+            id="ec-empreendimento"
+            options={empreendimentos}
+            value={empreendimento}
+            onChange={setEmpreendimento}
+          />
           <div className="space-y-2">
             <Label htmlFor="ec-tags">Tags</Label>
             <Input id="ec-tags" {...form.register("tagsRaw")} />

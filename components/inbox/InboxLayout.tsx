@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/hooks/auth/AuthProvider";
+import { hasPosvendaModule } from "@/lib/modules";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
 import { useCloseConversation } from "@/hooks/inbox/useCloseConversation";
 import {
@@ -23,6 +24,9 @@ function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilter
       return { assigned_to: "unassigned", status: "open" };
     case "mine":
       return { assigned_to: "me" };
+    case "open":
+      // "Mensagens" = fila de trabalho: tudo que não foi fechado/arquivado.
+      return { exclude_status: ["closed", "archived"] };
     case "closed":
       return { status: "closed" };
     case "ai":
@@ -41,8 +45,11 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   const { activeOrg } = useAuth();
   const orgId = activeOrg?.orgId ?? null;
 
+  // Pós-venda (atendente único) abre direto em "Mensagens"; os demais tenants
+  // seguem em "Não atribuídos". Sem isto o primeiro fetch seria de uma aba que
+  // nem existe pro pós-venda (o InboxFilters corrige depois, com 1 ida à toa).
   const [filterValue, setFilterValue] = useState<InboxFiltersValue>({
-    tab: "unassigned",
+    tab: hasPosvendaModule(activeOrg?.orgId) ? "open" : "unassigned",
     search: "",
     onlyUnread: false,
   });

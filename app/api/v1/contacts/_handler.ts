@@ -13,16 +13,12 @@ import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
 import { hashCpf, encryptCpfSql } from "@/lib/contacts/cpf";
 import type { Contact } from "@/lib/types/contacts";
-import type {
-  ContactCreate,
-  ContactPatch,
-  ContactListQuery,
-} from "@/lib/schemas";
+import type { ContactCreate, ContactPatch, ContactListQuery } from "@/lib/schemas";
 
 type SB = SupabaseClient;
 
 const SELECT_COLS =
-  "id, organization_id, name, display_name, email, email_normalized, phone_number, cpf_hash, birthdate, is_blocked, blocked_reason, is_anonymized, anonymized_at, is_merged_into, merged_at, consent, tags, source, source_metadata, created_at, updated_at, last_activity_at";
+  "id, organization_id, name, display_name, email, email_normalized, phone_number, cpf_hash, birthdate, is_blocked, blocked_reason, is_anonymized, anonymized_at, is_merged_into, merged_at, consent, tags, source, source_metadata, custom_fields, created_at, updated_at, last_activity_at";
 
 const ROLE_RANK: Record<string, number> = {
   viewer: 1,
@@ -95,11 +91,7 @@ export async function listContactsHandler(
   if (q.search) {
     const s = q.search.trim();
     const digits = s.replace(/\D/g, "");
-    const orParts = [
-      `name.ilike.%${s}%`,
-      `email.ilike.%${s}%`,
-      `phone_number.ilike.%${s}%`,
-    ];
+    const orParts = [`name.ilike.%${s}%`, `email.ilike.%${s}%`, `phone_number.ilike.%${s}%`];
     if (digits.length === 11) {
       orParts.push(`cpf_hash.eq.${hashCpf(digits)}`);
     }
@@ -251,6 +243,7 @@ export async function createContactHandler(
     source: input.source,
     source_metadata: input.source_metadata ?? {},
     consent: input.consent ?? {},
+    custom_fields: input.custom_fields ?? {},
   };
 
   if (input.cpf) {
@@ -314,7 +307,7 @@ export async function patchContactHandler(
 ): Promise<Contact> {
   const { data: existing, error: selErr } = await supabase
     .from("contacts")
-    .select("id, organization_id, is_anonymized")
+    .select("id, organization_id, is_anonymized, custom_fields")
     .eq("id", contactId)
     .maybeSingle();
 
@@ -337,16 +330,25 @@ export async function patchContactHandler(
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.display_name !== undefined) patch.display_name = input.display_name;
-  if (input.email !== undefined) {
-    patch.email = input.email;
-    patch.email_normalized = input.email ? input.email.trim().toLowerCase() : null;
-  }
+  // `email_normalized` é GENERATED ALWAYS AS (lower(trim(email))) STORED: gravar
+  // nela faz o Postgres recusar o UPDATE inteiro ("can only be updated to DEFAULT").
+  if (input.email !== undefined) patch.email = input.email;
   if (input.phone_number !== undefined) patch.phone_number = input.phone_number;
   if (input.birthdate !== undefined) patch.birthdate = input.birthdate;
   if (input.tags !== undefined) patch.tags = input.tags;
   if (input.source !== undefined) patch.source = input.source;
   if (input.source_metadata !== undefined) patch.source_metadata = input.source_metadata;
   if (input.consent !== undefined) patch.consent = input.consent;
+  if (input.custom_fields !== undefined) {
+    // Merge (não replace), mesmo padrão de crm_leads: a lista de contatos salva
+    // UM campo por vez (Liguei, Status, Empreendimento) e não pode apagar os
+    // outros. Valor `null` limpa a chave.
+    const current =
+      existing.custom_fields && typeof existing.custom_fields === "object"
+        ? (existing.custom_fields as Record<string, unknown>)
+        : {};
+    patch.custom_fields = { ...current, ...input.custom_fields };
+  }
   if (input.cpf !== undefined) {
     patch.cpf_hash = hashCpf(input.cpf);
     const enc = await encryptCpfSql(supabase, input.cpf);
