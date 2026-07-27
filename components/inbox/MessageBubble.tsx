@@ -21,20 +21,73 @@ interface Props {
   debugCitations?: boolean;
 }
 
-function MediaPlaceholder({ type }: { type: string }) {
-  const map: Record<string, { Icon: typeof ImageIcon; label: string }> = {
-    image: { Icon: ImageIcon, label: "Imagem" },
-    audio: { Icon: MusicNote, label: "Áudio" },
-    video: { Icon: ImageIcon, label: "Vídeo" },
-    document: { Icon: FileText, label: "Documento" },
-    sticker: { Icon: ImageIcon, label: "Figurinha" },
-  };
-  const entry = map[type] ?? map.document!;
+const MEDIA_LABEL: Record<string, { Icon: typeof ImageIcon; label: string }> = {
+  image: { Icon: ImageIcon, label: "Imagem" },
+  audio: { Icon: MusicNote, label: "Áudio" },
+  video: { Icon: ImageIcon, label: "Vídeo" },
+  document: { Icon: FileText, label: "Documento" },
+  sticker: { Icon: ImageIcon, label: "Figurinha" },
+};
+
+/**
+ * Mídia da mensagem.
+ *
+ * RECEBIDA: o arquivo vive no WAHA e a rota /api/v1/messages/[id]/media faz a
+ * ponte (a chave de API não pode ir pro browser). ENVIADA: não guardamos cópia
+ * — mostra o nome do arquivo, que é o que dá pra prometer.
+ */
+function MediaContent({ message }: { message: Message }) {
+  const mime = message.media_mime ?? "";
+  const filename =
+    typeof message.metadata?.filename === "string" ? message.metadata.filename : null;
+  const entry = MEDIA_LABEL[message.type] ?? MEDIA_LABEL.document!;
   const Icon = entry.Icon;
+
+  if (!message.media_url) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs">
+        <Icon size={13} weight="duotone" aria-hidden />
+        <span className="truncate">{filename ?? entry.label}</span>
+      </span>
+    );
+  }
+
+  const src = `/api/v1/messages/${message.id}/media`;
+
+  if (mime.startsWith("image/") || message.type === "image" || message.type === "sticker") {
+    return (
+      <a href={src} target="_blank" rel="noopener noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={filename ?? "Imagem recebida"}
+          loading="lazy"
+          className="max-h-72 w-auto max-w-full rounded-lg"
+        />
+      </a>
+    );
+  }
+
+  if (mime.startsWith("audio/") || message.type === "audio") {
+    return <audio controls preload="none" src={src} className="w-56 max-w-full" />;
+  }
+
+  if (mime.startsWith("video/") || message.type === "video") {
+    return (
+      <video controls preload="metadata" src={src} className="max-h-72 max-w-full rounded-lg" />
+    );
+  }
+
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs">
-      <Icon size={12} weight="duotone" aria-hidden /> {entry.label}
-    </span>
+    <a
+      href={src}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 text-xs underline underline-offset-2"
+    >
+      <Icon size={13} weight="duotone" aria-hidden />
+      <span className="truncate">{filename ?? entry.label}</span>
+    </a>
   );
 }
 
@@ -85,11 +138,16 @@ export function MessageBubble({ message, debugCitations }: Props) {
           </div>
         )}
 
+        {/* Mídia primeiro, texto embaixo como legenda — igual ao WhatsApp. */}
+        {message.type !== "text" && (
+          <div className={cn(message.body && "mb-1.5")}>
+            <MediaContent message={message} />
+          </div>
+        )}
+
         {message.body && (
           <p className="whitespace-pre-wrap break-words leading-snug">{message.body}</p>
         )}
-
-        {!message.body && message.media_url && <MediaPlaceholder type={message.type} />}
 
         <div
           className={cn(

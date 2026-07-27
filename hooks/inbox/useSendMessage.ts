@@ -9,6 +9,10 @@ interface SendArgs {
   body?: string;
   media_url?: string;
   media_mime?: string;
+  /** Anexo em base64: vai pro WhatsApp e não é guardado (não vira media_url). */
+  media_base64?: string;
+  media_filename?: string;
+  metadata?: Record<string, unknown>;
   type?: string;
 }
 
@@ -51,7 +55,7 @@ export function useSendMessage() {
         sent_at: new Date().toISOString(),
         delivered_at: null,
         read_at: null,
-        metadata: { _optimistic: true },
+        metadata: { _optimistic: true, ...(args.metadata ?? {}) },
         created_at: new Date().toISOString(),
       };
 

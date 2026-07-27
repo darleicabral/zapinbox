@@ -44,10 +44,17 @@ export const sendMessageSchema = z
     body: z.string().min(1).max(4096).optional(),
     media_url: z.string().url().optional(),
     media_mime: z.string().optional(),
+    /**
+     * Anexo em base64 (decisão Darlei 26/07: envia sem guardar cópia). Não vai
+     * pro banco — só é repassado ao WhatsApp. O teto real é o limite de corpo
+     * da função serverless; quem chama valida antes.
+     */
+    media_base64: z.string().optional(),
+    media_filename: z.string().max(200).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })
-  .refine((d) => !!d.body || !!d.media_url, {
-    message: "body or media_url required",
+  .refine((d) => !!d.body || !!d.media_url || !!d.media_base64, {
+    message: "body, media_url or media_base64 required",
     path: ["body"],
   });
 

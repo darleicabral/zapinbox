@@ -1,8 +1,14 @@
 "use client";
 import { forwardRef, useImperativeHandle, useRef, useState, type KeyboardEvent } from "react";
-import { PaperPlaneTilt, Paperclip } from "@/lib/ui/icons";
+import { toast } from "sonner";
+import { PaperPlaneTilt, Paperclip, X, FileText, CircleNotch } from "@/lib/ui/icons";
 import { Button } from "@/components/ui/button";
 import { useSendMessage } from "@/hooks/inbox/useSendMessage";
+import {
+  messageTypeForMime,
+  prepareAttachment,
+  type PreparedAttachment,
+} from "@/lib/inbox/attachment";
 import { cn } from "@/lib/utils";
 
 export interface ComposerHandle {
@@ -22,7 +28,36 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 ) {
   const [text, setText] = useState("");
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [attachment, setAttachment] = useState<PreparedAttachment | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const send = useSendMessage();
+
+  function clearAttachment() {
+    setAttachment((prev) => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function onPickFile(file: File | undefined) {
+    if (!file) return;
+    setPreparing(true);
+    try {
+      const result = await prepareAttachment(file);
+      if (!result.ok) {
+        toast.error(result.error);
+        if (fileRef.current) fileRef.current.value = "";
+        return;
+      }
+      clearAttachment();
+      setAttachment(result.attachment);
+      taRef.current?.focus();
+    } finally {
+      setPreparing(false);
+    }
+  }
 
   useImperativeHandle(ref, () => ({
     focus: () => taRef.current?.focus(),
@@ -39,12 +74,26 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
   function handleSubmit() {
     const body = text.trim();
-    if (!body || isDisabled) return;
+    if (isDisabled || preparing) return;
+    if (!body && !attachment) return;
+
     send.mutate(
-      { conversation_id: conversationId, body, type: "text" },
+      attachment
+        ? {
+            conversation_id: conversationId,
+            // Com anexo o texto vira legenda (o WhatsApp manda os dois juntos).
+            ...(body ? { body } : {}),
+            type: messageTypeForMime(attachment.mime),
+            media_mime: attachment.mime,
+            media_filename: attachment.filename,
+            media_base64: attachment.base64,
+            metadata: { filename: attachment.filename, bytes: attachment.bytes },
+          }
+        : { conversation_id: conversationId, body, type: "text" },
       {
         onSuccess: () => {
           setText("");
+          clearAttachment();
           requestAnimationFrame(() => autoresize());
         },
       },
@@ -68,17 +117,59 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
   return (
     <div className="border-t border-border bg-surface px-3 py-2.5">
+      {attachment && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-field p-2">
+          {attachment.previewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={attachment.previewUrl} alt="" className="size-10 rounded-md object-cover" />
+          ) : (
+            <span className="flex size-10 items-center justify-center rounded-md bg-surface-muted text-text-subtle">
+              <FileText size={18} weight="duotone" aria-hidden />
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium text-text">{attachment.filename}</p>
+            <p className="text-[11px] text-text-subtle">
+              {(attachment.bytes / 1000).toFixed(0)} KB · vai junto com o texto
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-7 shrink-0"
+            onClick={clearAttachment}
+            aria-label="Remover anexo"
+            disabled={send.isPending}
+          >
+            <X size={14} weight="bold" aria-hidden />
+          </Button>
+        </div>
+      )}
+
       <div className="flex items-end gap-2">
+        <input
+          ref={fileRef}
+          type="file"
+          className="hidden"
+          accept="image/*,application/pdf,audio/*,video/*,.doc,.docx,.xls,.xlsx"
+          onChange={(e) => void onPickFile(e.target.files?.[0])}
+        />
         <Button
           type="button"
           size="icon"
           variant="ghost"
           className="h-9 w-9 shrink-0"
-          aria-label="Anexar"
-          disabled
-          title="Em breve"
+          aria-label="Anexar arquivo"
+          title="Anexar imagem, PDF ou documento (até 2,8 MB)"
+          onClick={() => fileRef.current?.click()}
+          disabled={isDisabled || preparing}
         >
-          <Paperclip size={16} weight="regular" aria-hidden />
+          {preparing ? (
+            <CircleNotch size={16} weight="bold" className="animate-spin" aria-hidden />
+          ) : (
+            <Paperclip size={16} weight="regular" aria-hidden />
+          )}
         </Button>
         <textarea
           ref={taRef}
@@ -103,7 +194,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           size="icon"
           className="h-9 w-9 shrink-0"
           onClick={handleSubmit}
-          disabled={isDisabled || !text.trim()}
+          disabled={isDisabled || preparing || (!text.trim() && !attachment)}
           aria-label="Enviar"
         >
           <PaperPlaneTilt size={16} weight="fill" aria-hidden />

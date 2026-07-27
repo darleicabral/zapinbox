@@ -33,14 +33,11 @@ export class WahaClient {
     }
 
     // 2) Start session
-    const startRes = await fetch(
-      `${this.baseUrl}/api/sessions/${encodeURIComponent(name)}/start`,
-      {
-        method: "POST",
-        headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      },
-    );
+    const startRes = await fetch(`${this.baseUrl}/api/sessions/${encodeURIComponent(name)}/start`, {
+      method: "POST",
+      headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
     if (!startRes.ok && startRes.status !== 422 && startRes.status !== 409) {
       const body = await startRes.text().catch(() => "");
       throw new Error(`waha_start_${startRes.status}: ${body.slice(0, 200)}`);
@@ -57,14 +54,11 @@ export class WahaClient {
    * are treated as success so callers can compose reconnect = stop + start.
    */
   async stopSession(name: string): Promise<void> {
-    const res = await fetch(
-      `${this.baseUrl}/api/sessions/${encodeURIComponent(name)}/stop`,
-      {
-        method: "POST",
-        headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      },
-    );
+    const res = await fetch(`${this.baseUrl}/api/sessions/${encodeURIComponent(name)}/stop`, {
+      method: "POST",
+      headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
     if (!res.ok && ![404, 422, 409].includes(res.status)) {
       const body = await res.text().catch(() => "");
       throw new Error(`waha_stop_${res.status}: ${body.slice(0, 200)}`);
@@ -90,6 +84,49 @@ export class WahaClient {
     });
     if (!res.ok) throw new Error(`waha_${res.status}`);
     return res.json();
+  }
+
+  /**
+   * Envia arquivo em base64 (decisão Darlei 26/07: sem guardar cópia no nosso
+   * storage). O endpoint muda com o mime porque o WhatsApp trata cada um de um
+   * jeito: imagem vira foto no chat, áudio ogg/opus vira mensagem de voz, o
+   * resto vai como documento.
+   */
+  async sendMedia(
+    session: string,
+    chatId: string,
+    file: { mimetype: string; filename: string; base64: string },
+    caption?: string,
+  ): Promise<unknown> {
+    const isImage = file.mimetype.startsWith("image/");
+    const isVoice = /^audio\/(ogg|opus)/.test(file.mimetype);
+    const endpoint = isImage ? "sendImage" : isVoice ? "sendVoice" : "sendFile";
+
+    const res = await fetch(`${this.baseUrl}/api/${endpoint}`, {
+      method: "POST",
+      headers: {
+        "X-Api-Key": this.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        session,
+        chatId,
+        file: { mimetype: file.mimetype, filename: file.filename, data: file.base64 },
+        ...(caption && !isVoice ? { caption } : {}),
+      }),
+    });
+    if (!res.ok) throw new Error(`waha_${res.status}`);
+    return res.json();
+  }
+
+  /** Baixa a mídia recebida (a URL vem do webhook e exige a API key). */
+  async fetchMedia(url: string): Promise<Response> {
+    return fetch(url, { headers: { "X-Api-Key": this.apiKey } });
+  }
+
+  /** Base do WAHA — usada para provar que uma URL de mídia é mesmo dele. */
+  get origin(): string {
+    return this.baseUrl;
   }
 }
 

@@ -98,8 +98,7 @@ export async function listMessagesHandler(
   const hasMore = rows.length > q.limit;
   const page = hasMore ? rows.slice(0, q.limit) : rows;
   const last = page[page.length - 1];
-  const cursor =
-    hasMore && last ? encodeMsgCursor({ sent_at: last.sent_at, id: last.id }) : null;
+  const cursor = hasMore && last ? encodeMsgCursor({ sent_at: last.sent_at, id: last.id }) : null;
 
   return { messages: page, cursor, has_more: hasMore };
 }
@@ -141,7 +140,11 @@ export async function sendMessageHandler(
     channel_session_id: string;
     is_group: boolean;
     group_chat_id: string | null;
-    contacts: { phone_number: string | null; wa_identity: string | null; is_blocked: boolean } | null;
+    contacts: {
+      phone_number: string | null;
+      wa_identity: string | null;
+      is_blocked: boolean;
+    } | null;
     channel_sessions: { waha_session_name: string; status: string } | null;
   };
   const c = conv as unknown as Joined;
@@ -239,11 +242,23 @@ export async function sendMessageHandler(
     if (updated) message = updated as unknown as Message;
   } else {
     try {
-      const wahaRes = (await waha.sendMessage(
-        c.channel_sessions.waha_session_name,
-        chatId,
-        input.body ?? "",
-      )) as { id?: string | { _serialized?: string } };
+      // Com anexo vai pelo endpoint de mídia (base64, sem passar por storage);
+      // sem anexo, texto puro. O resto do caminho (ack, erro, external_id) é o
+      // mesmo pros dois.
+      const wahaRes = (await (input.media_base64
+        ? waha.sendMedia(
+            c.channel_sessions.waha_session_name,
+            chatId,
+            {
+              mimetype: input.media_mime ?? "application/octet-stream",
+              filename: input.media_filename ?? "arquivo",
+              base64: input.media_base64,
+            },
+            input.body ?? undefined,
+          )
+        : waha.sendMessage(c.channel_sessions.waha_session_name, chatId, input.body ?? ""))) as {
+        id?: string | { _serialized?: string };
+      };
       // WAHA/NOWEB returns `id` as a WAMessageKey object ({fromMe, remote, id,
       // _serialized}), not a plain string — storing it raw got JSON-stringified
       // into external_id, which never matched the plain-string id the WAHA

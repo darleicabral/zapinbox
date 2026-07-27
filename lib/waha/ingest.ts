@@ -43,6 +43,8 @@ export interface WahaPayload {
   timestamp?: number;
   mediaUrl?: string;
   mimetype?: string;
+  /** WAHA novo aninha a mídia; o antigo mandava mediaUrl/mimetype soltos. */
+  media?: { url?: string; mimetype?: string; filename?: string } | null;
   _data?: {
     notifyName?: string;
     pushName?: string;
@@ -55,6 +57,21 @@ export interface WahaPayload {
       participantAlt?: string;
     } & Record<string, unknown>;
   } & Record<string, unknown>;
+}
+
+/**
+ * Mídia recebida: as duas formas do WAHA num só lugar. Sem isto o `media_url`
+ * ficava null nas versões novas e a foto do cliente virava só o rótulo
+ * "Imagem" no chat.
+ */
+export function mediaUrlOf(p: WahaPayload): string | null {
+  return p.media?.url ?? p.mediaUrl ?? null;
+}
+export function mediaMimeOf(p: WahaPayload): string | null {
+  return p.media?.mimetype ?? p.mimetype ?? null;
+}
+export function mediaNameOf(p: WahaPayload): string | null {
+  return p.media?.filename ?? null;
 }
 
 export interface WahaEnvelope {
@@ -173,14 +190,17 @@ async function upsertContact(
   phoneHint: string | null = null,
 ): Promise<string | null> {
   if (parsed.kind === "group") return null;
-  const { data, error } = await admin.rpc("fn_upsert_wa_contact" as never, {
-    p_org: orgId,
-    p_kind: parsed.kind,
-    p_phone: parsed.kind === "phone" ? parsed.phone : null,
-    p_lid: parsed.kind === "lid" ? parsed.lid : null,
-    p_chat_id: chatId,
-    p_notify: notifyName,
-  } as never);
+  const { data, error } = await admin.rpc(
+    "fn_upsert_wa_contact" as never,
+    {
+      p_org: orgId,
+      p_kind: parsed.kind,
+      p_phone: parsed.kind === "phone" ? parsed.phone : null,
+      p_lid: parsed.kind === "lid" ? parsed.lid : null,
+      p_chat_id: chatId,
+      p_notify: notifyName,
+    } as never,
+  );
   if (error) {
     console.error("[waha.ingest] fn_upsert_wa_contact failed", error.message);
     return null;
@@ -207,11 +227,14 @@ async function upsertConversation(
   contactId: string,
   sessionId: string,
 ): Promise<string | null> {
-  const { data, error } = await admin.rpc("fn_upsert_wa_conversation" as never, {
-    p_org: orgId,
-    p_contact: contactId,
-    p_session: sessionId,
-  } as never);
+  const { data, error } = await admin.rpc(
+    "fn_upsert_wa_conversation" as never,
+    {
+      p_org: orgId,
+      p_contact: contactId,
+      p_session: sessionId,
+    } as never,
+  );
   if (error) {
     console.error("[waha.ingest] fn_upsert_wa_conversation failed", error.message);
     return null;
@@ -226,12 +249,15 @@ async function markConversation(
   preview: string,
   at: string,
 ): Promise<void> {
-  const { error } = await admin.rpc("fn_mark_conversation_message" as never, {
-    p_conv: convId,
-    p_direction: direction,
-    p_preview: preview,
-    p_at: at,
-  } as never);
+  const { error } = await admin.rpc(
+    "fn_mark_conversation_message" as never,
+    {
+      p_conv: convId,
+      p_direction: direction,
+      p_preview: preview,
+      p_at: at,
+    } as never,
+  );
   if (error) console.error("[waha.ingest] fn_mark_conversation_message failed", error.message);
 }
 
@@ -260,7 +286,12 @@ async function handleInbound(
     phoneHintOf(p),
   );
   if (!contactId) return;
-  const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
+  const conversationId = await upsertConversation(
+    admin,
+    session.organization_id,
+    contactId,
+    session.id,
+  );
   if (!conversationId) return;
 
   const now = new Date().toISOString();
@@ -277,8 +308,8 @@ async function handleInbound(
       status: "delivered",
       ack: p.ack ?? null,
       body: p.body ?? null,
-      media_url: p.mediaUrl ?? null,
-      media_mime: p.mimetype ?? null,
+      media_url: mediaUrlOf(p),
+      media_mime: mediaMimeOf(p),
       sent_via: "external_device",
       sent_at: p.timestamp ? new Date(p.timestamp * 1000).toISOString() : now,
       delivered_at: now,
@@ -306,7 +337,8 @@ async function handleInbound(
     .select("last_inbound_at")
     .eq("id", conversationId)
     .maybeSingle();
-  const prevInboundAt = (convBefore as { last_inbound_at: string | null } | null)?.last_inbound_at ?? null;
+  const prevInboundAt =
+    (convBefore as { last_inbound_at: string | null } | null)?.last_inbound_at ?? null;
 
   await markConversation(admin, conversationId, "inbound", previewFromMessage(p), now);
 
@@ -337,7 +369,9 @@ async function handleInbound(
   // do cliente (uma chegada nova), pra não tocar a cada mensagem de uma rajada.
   if (hasPosvendaModule(session.organization_id)) {
     const THROTTLE_MS = 3 * 60 * 1000;
-    const gap = prevInboundAt ? Date.parse(now) - Date.parse(prevInboundAt) : Number.POSITIVE_INFINITY;
+    const gap = prevInboundAt
+      ? Date.parse(now) - Date.parse(prevInboundAt)
+      : Number.POSITIVE_INFINITY;
     if (gap >= THROTTLE_MS) {
       const who = notifyNameOf(p) || "Cliente";
       const preview = (previewFromMessage(p) || "Nova mensagem").slice(0, 140);
@@ -360,20 +394,23 @@ async function handleInbound(
   if (insertedMessage?.id) {
     const inboundMessageId = insertedMessage.id;
     after(async () => {
-      const { error } = await admin.rpc("emit_event" as never, {
-        p_event_type: "ai_agent.dispatch_requested",
-        p_entity_kind: "message",
-        p_entity_id: inboundMessageId,
-        p_payload: {
-          organization_id: session.organization_id,
-          conversation_id: conversationId,
-          contact_id: contactId,
-          channel_session_id: session.id,
-          inbound_message_id: inboundMessageId,
-        },
-        p_metadata: { source: "waha_webhook", request_id: requestId },
-        p_organization_id: session.organization_id,
-      } as never);
+      const { error } = await admin.rpc(
+        "emit_event" as never,
+        {
+          p_event_type: "ai_agent.dispatch_requested",
+          p_entity_kind: "message",
+          p_entity_id: inboundMessageId,
+          p_payload: {
+            organization_id: session.organization_id,
+            conversation_id: conversationId,
+            contact_id: contactId,
+            channel_session_id: session.id,
+            inbound_message_id: inboundMessageId,
+          },
+          p_metadata: { source: "waha_webhook", request_id: requestId },
+          p_organization_id: session.organization_id,
+        } as never,
+      );
       if (error) {
         console.error("[waha.ingest] emit dispatch_requested failed", error.message);
         return;
@@ -407,9 +444,20 @@ async function handleOutboundFromUserPhone(
   if (!p.id || !chatId) return;
   if (!p.body && !p.mediaUrl && !p.hasMedia) return;
 
-  const contactId = await upsertContact(admin, session.organization_id, parsed, chatId, notifyNameOf(p));
+  const contactId = await upsertContact(
+    admin,
+    session.organization_id,
+    parsed,
+    chatId,
+    notifyNameOf(p),
+  );
   if (!contactId) return;
-  const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
+  const conversationId = await upsertConversation(
+    admin,
+    session.organization_id,
+    contactId,
+    session.id,
+  );
   if (!conversationId) return;
 
   const now = new Date().toISOString();
@@ -424,11 +472,15 @@ async function handleOutboundFromUserPhone(
     status: "sent",
     ack: p.ack ?? null,
     body: p.body ?? null,
-    media_url: p.mediaUrl ?? null,
-    media_mime: p.mimetype ?? null,
+    media_url: mediaUrlOf(p),
+    media_mime: mediaMimeOf(p),
     sent_via: "external_device",
     sent_at: p.timestamp ? new Date(p.timestamp * 1000).toISOString() : now,
-    metadata: { raw_type: p.type, fromMe: true },
+    metadata: {
+      raw_type: p.type,
+      fromMe: true,
+      ...(mediaNameOf(p) ? { filename: mediaNameOf(p) } : {}),
+    },
   });
   if (insertErr && insertErr.code !== "23505") {
     console.error("[waha.ingest] outbound insert failed", insertErr.message);
@@ -443,7 +495,12 @@ async function handleOutboundFromUserPhone(
     organizationId: session.organization_id,
     resourceType: "message",
     requestId,
-    metadata: { conversation_id: conversationId, type: p.type, external_id: p.id, from_user_phone: true },
+    metadata: {
+      conversation_id: conversationId,
+      type: p.type,
+      external_id: p.id,
+      from_user_phone: true,
+    },
   });
 }
 
