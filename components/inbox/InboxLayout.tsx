@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/hooks/auth/AuthProvider";
+import { ChatCircle } from "@/lib/ui/icons";
 import { hasPosvendaModule } from "@/lib/modules";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
 import { useCloseConversation } from "@/hooks/inbox/useCloseConversation";
@@ -111,8 +112,10 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   // (p-6 em cima e embaixo = 3rem). Sem descontar o padding, o composer ficava
   // 48px abaixo da dobra e só aparecia rolando a página.
   return (
-    <div className="grid h-[calc(100vh-6.5rem)] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_320px]">
-      <div className="flex h-full min-h-0 flex-col border-r border-border">
+    <div className="grid h-[calc(100vh-6.5rem)] w-full grid-cols-1 overflow-hidden rounded-xl border border-border bg-bg shadow-sm md:grid-cols-[320px_1fr] xl:grid-cols-[320px_1fr_320px]">
+      {/* Três zonas com tons distintos: lista (branco), conversa (canvas
+          rebaixado, p/ os balões virarem objetos) e ficha (trilho). */}
+      <div className="flex h-full min-h-0 flex-col border-r border-border bg-surface">
         <InboxFilters value={filterValue} onChange={setFilterValue} />
         <div className="min-h-0 flex-1 overflow-hidden">
           <ConversationList
@@ -126,7 +129,7 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
         </div>
       </div>
 
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-full min-h-0 flex-col bg-bg">
         {selectedConversation ? (
           <>
             <ConversationHeader conversation={selectedConversation} />
@@ -141,8 +144,16 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
             />
           </>
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Selecione uma conversa
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+            <span className="flex size-12 items-center justify-center rounded-full bg-surface text-text-subtle shadow-xs">
+              <ChatCircle size={22} weight="duotone" aria-hidden />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-text">Nenhuma conversa selecionada</p>
+              <p className="mt-0.5 text-xs text-text-subtle">
+                Escolha alguém na lista ao lado para ler e responder.
+              </p>
+            </div>
           </div>
         )}
       </div>

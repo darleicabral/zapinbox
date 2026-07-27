@@ -1,15 +1,20 @@
 "use client";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Check, Checks, ImageIcon, MusicNote, FileText, Robot, WarningOctagon } from "@/lib/ui/icons";
+import {
+  Check,
+  Checks,
+  ImageIcon,
+  MusicNote,
+  FileText,
+  Robot,
+  WarningOctagon,
+} from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Message } from "@/lib/types/messaging";
 import { CitationButton } from "@/components/ai/CitationButton";
-import {
-  extractCitations,
-  isAiGeneratedMessage,
-} from "@/lib/ai/citations/types";
+import { extractCitations, isAiGeneratedMessage } from "@/lib/ai/citations/types";
 
 interface Props {
   message: Message;
@@ -52,8 +57,7 @@ export function MessageBubble({ message, debugCitations }: Props) {
   const isFailed = message.status === "failed";
   const aiGenerated = isAiGeneratedMessage(message.metadata);
   const citations = extractCitations(message.metadata);
-  const showCitationButton =
-    isOutbound && aiGenerated && (debugCitations ?? false);
+  const showCitationButton = isOutbound && aiGenerated && (debugCitations ?? false);
   const senderLabel = (() => {
     if (!isOutbound) return null;
     if (message.sent_via === "ai") return "IA";
@@ -64,18 +68,19 @@ export function MessageBubble({ message, debugCitations }: Props) {
     <div className={cn("flex w-full px-4 py-1", isOutbound ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow-sm",
+          // Balão = objeto sobre o canvas: recebida em branco com fio e sombra
+          // rasa, enviada no verde cheio. Cada uma se separa da outra e as duas
+          // se separam do fundo rebaixado da conversa.
+          "max-w-[75%] rounded-2xl px-3.5 py-2 text-sm",
           isOutbound
-            ? "rounded-br-sm bg-primary text-primary-foreground"
-            : "rounded-bl-sm bg-muted text-foreground",
-          isFailed && "border border-destructive",
+            ? "text-accent-fg rounded-br-md bg-accent shadow-sm"
+            : "rounded-bl-md border border-border bg-surface text-text shadow-xs",
+          isFailed && "border border-error",
         )}
       >
         {senderLabel && (
           <div className="mb-0.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
-            {senderLabel === "IA" ? (
-              <Robot size={10} weight="duotone" aria-hidden />
-            ) : null}
+            {senderLabel === "IA" ? <Robot size={10} weight="duotone" aria-hidden /> : null}
             {senderLabel}
           </div>
         )}
@@ -89,13 +94,11 @@ export function MessageBubble({ message, debugCitations }: Props) {
         <div
           className={cn(
             "mt-1 flex items-center justify-end gap-1 text-[10px]",
-            isOutbound ? "text-primary-foreground/70" : "text-muted-foreground",
+            isOutbound ? "text-accent-fg/75" : "text-text-subtle",
           )}
         >
           <span>{time}</span>
-          {showCitationButton && (
-            <CitationButton citations={citations} messageId={message.id} />
-          )}
+          {showCitationButton && <CitationButton citations={citations} messageId={message.id} />}
           {isOutbound && !isFailed && <AckIndicator status={message.status} />}
           {isFailed && (
             <Tooltip>

@@ -59,12 +59,7 @@ export function ConversationList({
     return (
       <div className="p-4 text-center text-sm text-muted-foreground">
         <p>Erro ao carregar conversas.</p>
-        <Button
-          size="sm"
-          variant="outline"
-          className="mt-2"
-          onClick={() => q.refetch()}
-        >
+        <Button size="sm" variant="outline" className="mt-2" onClick={() => q.refetch()}>
           Tentar novamente
         </Button>
       </div>

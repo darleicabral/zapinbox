@@ -76,7 +76,7 @@ export function ConversationHeader({ conversation }: Props) {
   }
 
   return (
-    <div className="flex flex-col border-b border-border bg-background">
+    <div className="flex flex-col border-b border-border bg-surface">
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

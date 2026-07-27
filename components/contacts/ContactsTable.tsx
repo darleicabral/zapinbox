@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { formatRelative } from "date-fns";
+import { format, formatRelative } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 
@@ -23,14 +23,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Check, WhatsappLogo, ArrowRight } from "@/lib/ui/icons";
+import { Check, WhatsappLogo, ArrowRight, PhoneCall } from "@/lib/ui/icons";
 import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { useUpdateContact } from "@/hooks/contacts/useUpdateContact";
 import { useContactConversation, useOpenContactLead } from "@/hooks/contacts/useContactActions";
 import {
   CONTACT_FIELD,
   CONTACT_STATUS_OPTIONS,
-  contactFieldFlag,
+  contactCallLog,
   contactFieldText,
 } from "@/lib/contacts/fields";
 import { newLeadRouteFor } from "@/lib/kanban/new-lead-handoff";
@@ -133,37 +133,70 @@ function StatusCell({ contact }: { contact: Contact }) {
   );
 }
 
-/** "Liguei": clique alterna; marcado vira um check verde preenchido. */
+/**
+ * "Liguei": marca com data e hora da ligação (fica o registro, não só o "sim").
+ * Clique marca com o horário atual; clique de novo desmarca.
+ */
 function LigueiCell({ contact }: { contact: Contact }) {
   const update = useUpdateContact(contact.id);
-  const server = contactFieldFlag(contact.custom_fields, CONTACT_FIELD.liguei);
-  const [pending, setPending] = useState<boolean | null>(null);
+  const server = contactCallLog(contact.custom_fields);
+  const [pending, setPending] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
-    if (pending !== null && server === pending) setPending(null);
-  }, [server, pending]);
+    if (pending === undefined) return;
+    const serverRaw = (contact.custom_fields?.[CONTACT_FIELD.liguei] ?? null) as unknown;
+    const serverValue = typeof serverRaw === "string" ? serverRaw : serverRaw === true ? "" : null;
+    if (serverValue === pending || (pending === null && serverValue === null))
+      setPending(undefined);
+  }, [contact.custom_fields, pending]);
 
-  const checked = pending ?? server;
+  const value =
+    pending === undefined ? (server.marked ? (server.at?.toISOString() ?? "") : null) : pending;
+  const marked = value !== null;
+  const at = value ? new Date(value) : null;
 
   return (
     <button
       type="button"
-      role="checkbox"
-      aria-checked={checked}
-      aria-label={`Liguei para ${displayName(contact)}`}
+      aria-pressed={marked}
+      aria-label={
+        marked
+          ? `Desmarcar ligação para ${displayName(contact)}`
+          : `Registrar ligação para ${displayName(contact)}`
+      }
+      title={
+        marked
+          ? at
+            ? `Ligação registrada em ${format(at, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}. Clique para desmarcar.`
+            : "Marcado sem horário. Clique para desmarcar."
+          : "Registrar que você ligou agora"
+      }
       onClick={() => {
-        const next = !checked;
+        const next = marked ? null : new Date().toISOString();
         setPending(next);
         update.mutate({ custom_fields: { [CONTACT_FIELD.liguei]: next } });
       }}
       className={cn(
-        "flex size-6 items-center justify-center rounded-md border transition-colors duration-fast ease-out",
-        checked
-          ? "border-success bg-success text-success-fg"
-          : "border-border bg-field text-transparent hover:border-border-strong hover:text-muted-foreground",
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-1 text-xs",
+        "transition-colors duration-fast ease-out",
+        marked
+          ? "border-success/40 bg-success-bg font-medium text-success-fg"
+          : "border-border bg-field text-text-subtle hover:border-border-strong hover:text-text-muted",
       )}
     >
-      <Check size={14} weight="bold" aria-hidden />
+      {marked ? (
+        <>
+          <Check size={13} weight="bold" aria-hidden />
+          <span className="tabular-nums">
+            {at ? format(at, "dd/MM HH:mm", { locale: ptBR }) : "marcado"}
+          </span>
+        </>
+      ) : (
+        <>
+          <PhoneCall size={13} weight="regular" aria-hidden />
+          <span>Registrar</span>
+        </>
+      )}
     </button>
   );
 }
@@ -257,7 +290,7 @@ export function ContactsTable({ contacts, empreendimentos = [] }: Props) {
                 <TableHead>Empreendimento</TableHead>
                 <TableHead>Abrir atendimento</TableHead>
                 <TableHead>WhatsApp</TableHead>
-                <TableHead>Liguei</TableHead>
+                <TableHead>Liguei (data e hora)</TableHead>
                 <TableHead>Status</TableHead>
               </>
             ) : (

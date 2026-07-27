@@ -4,6 +4,7 @@ import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PaperPlaneTilt } from "@/lib/ui/icons";
 import { MessageBubble } from "./MessageBubble";
 import { useMessagesRealtime } from "@/hooks/inbox/useMessagesRealtime";
 import { useDebugToggle } from "@/hooks/ai/useDebugToggle";
@@ -26,10 +27,7 @@ export function ChatThread({ conversationId }: Props) {
   const activeOrg = useActiveOrg();
   const { enabled: debugCitations } = useDebugToggle(activeOrg?.role ?? null);
 
-  const messages: Message[] = useMemo(
-    () => q.data?.pages.flatMap((p) => p.data) ?? [],
-    [q.data],
-  );
+  const messages: Message[] = useMemo(() => q.data?.pages.flatMap((p) => p.data) ?? [], [q.data]);
 
   // Scroll to bottom on first load + new message arrival.
   useEffect(() => {
@@ -68,8 +66,16 @@ export function ChatThread({ conversationId }: Props) {
 
   if (messages.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Nenhuma mensagem nesta conversa.
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <span className="flex size-12 items-center justify-center rounded-full bg-surface text-text-subtle shadow-xs">
+          <PaperPlaneTilt size={20} weight="duotone" aria-hidden />
+        </span>
+        <div>
+          <p className="text-sm font-medium text-text">Conversa ainda sem mensagens</p>
+          <p className="mt-0.5 text-xs text-text-subtle">
+            Escreva abaixo para começar. O cliente recebe pelo WhatsApp.
+          </p>
+        </div>
       </div>
     );
   }
@@ -103,16 +109,12 @@ export function ChatThread({ conversationId }: Props) {
         {groups.map((g) => (
           <div key={g.key} className="space-y-1">
             <div className="sticky top-0 z-10 flex justify-center py-1">
-              <span className="rounded-full bg-background/80 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur">
+              <span className="bg-surface/90 rounded-full border border-border px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted shadow-xs backdrop-blur">
                 {dayLabel(g.date)}
               </span>
             </div>
             {g.items.map((m) => (
-              <MessageBubble
-                key={m.id}
-                message={m}
-                debugCitations={debugCitations}
-              />
+              <MessageBubble key={m.id} message={m} debugCitations={debugCitations} />
             ))}
           </div>
         ))}

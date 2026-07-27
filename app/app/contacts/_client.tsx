@@ -26,6 +26,14 @@ const SOURCE_OPTIONS = [
   { value: "nuvemshop", label: "Nuvemshop" },
 ];
 
+const SORT_OPTIONS = [
+  { value: "recent", label: "Atividade recente" },
+  { value: "name", label: "Nome (A→Z)" },
+  { value: "liguei", label: "Liguei (mais recente)" },
+  { value: "status", label: "Status" },
+  { value: "empreendimento", label: "Empreendimento" },
+];
+
 interface Props {
   /** Opções de "Empreendimento" (pipeline default), carregadas no servidor. */
   empreendimentos?: string[];
@@ -38,6 +46,7 @@ export function ContactsListClient({ empreendimentos = [] }: Props) {
   const [source, setSource] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [sort, setSort] = useState("recent");
 
   // Debounce search 250ms
   useEffect(() => {
@@ -45,7 +54,7 @@ export function ContactsListClient({ empreendimentos = [] }: Props) {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const filters = useMemo(() => ({ search, tag, source }), [search, tag, source]);
+  const filters = useMemo(() => ({ search, tag, source, sort }), [search, tag, source, sort]);
   const q = useContactList(filters);
 
   const allContacts = useMemo(() => q.data?.pages.flatMap((p) => p.data) ?? [], [q.data]);
@@ -126,7 +135,24 @@ export function ContactsListClient({ empreendimentos = [] }: Props) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {(search || tag || source) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              Ordenar: {SORT_OPTIONS.find((s) => s.value === sort)?.label ?? "Atividade recente"}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel>Ordenar por</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {SORT_OPTIONS.map((s) => (
+              <DropdownMenuItem key={s.value} onClick={() => setSort(s.value)}>
+                {s.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {(search || tag || source || sort !== "recent") && (
           <Button
             variant="ghost"
             size="sm"
@@ -135,6 +161,7 @@ export function ContactsListClient({ empreendimentos = [] }: Props) {
               setSearch("");
               setTag(undefined);
               setSource(undefined);
+              setSort("recent");
             }}
           >
             Limpar filtros

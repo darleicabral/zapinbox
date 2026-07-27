@@ -13,6 +13,8 @@ export interface ContactListFilters {
   search?: string;
   tag?: string;
   source?: string;
+  /** recent (default) | name | liguei | status | empreendimento */
+  sort?: string;
 }
 
 export function useContactList(filters: ContactListFilters) {
@@ -24,6 +26,7 @@ export function useContactList(filters: ContactListFilters) {
       if (filters.search) qs.set("search", filters.search);
       if (filters.tag) qs.set("tag", filters.tag);
       if (filters.source) qs.set("source", filters.source);
+      if (filters.sort && filters.sort !== "recent") qs.set("sort", filters.sort);
       if (pageParam) qs.set("cursor", pageParam);
       qs.set("limit", "50");
       try {

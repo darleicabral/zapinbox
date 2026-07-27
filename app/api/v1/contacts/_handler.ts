@@ -74,19 +74,45 @@ export interface ListContactsResult {
   has_more: boolean;
 }
 
+/**
+ * Ordenações da lista de trabalho (pós-venda). `recent` mantém o keyset por
+ * atividade; as outras ordenam por coluna/jsonb e paginam por deslocamento —
+ * keyset em `custom_fields->>x` não compensa a complexidade numa base de
+ * algumas centenas de contatos, e o offset é exato enquanto ninguém edita.
+ */
+const SORT_COLUMNS: Record<string, string> = {
+  name: "display_name",
+  liguei: "custom_fields->>liguei",
+  status: "custom_fields->>status_contato",
+  empreendimento: "custom_fields->>empreendimento",
+};
+
 export async function listContactsHandler(
   supabase: SB,
   ctx: HandlerCtx,
   q: ContactListQuery,
 ): Promise<ListContactsResult> {
+  const sort = q.sort ?? "recent";
+  const sortColumn = SORT_COLUMNS[sort];
+
   let query = supabase
     .from("contacts")
     .select(SELECT_COLS)
     .eq("organization_id", ctx.organization_id)
-    .order("last_activity_at", { ascending: false, nullsFirst: false })
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
     .limit(q.limit + 1);
+
+  if (sortColumn) {
+    // "Liguei" desc: quem foi contatado por último vem primeiro; os demais A→Z.
+    // Vazios sempre no fim — a lista existe pra achar o que falta fazer.
+    query = query
+      .order(sortColumn, { ascending: sort !== "liguei", nullsFirst: false })
+      .order("id", { ascending: true });
+  } else {
+    query = query
+      .order("last_activity_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+  }
 
   if (q.search) {
     const s = q.search.trim();
@@ -100,14 +126,25 @@ export async function listContactsHandler(
   if (q.tag) query = query.contains("tags", [q.tag]);
   if (q.source) query = query.eq("source", q.source);
 
+  // Paginação: keyset no modo `recent`, deslocamento nos modos ordenados.
+  let offset = 0;
   if (q.cursor) {
-    const c = decodeCursor(q.cursor);
-    if (!c) {
-      throw new ApiError(400, "invalid_cursor", undefined, ctx.requestId, "Cursor inválido.");
+    if (sortColumn) {
+      const parsed = Number.parseInt(q.cursor, 10);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new ApiError(400, "invalid_cursor", undefined, ctx.requestId, "Cursor inválido.");
+      }
+      offset = parsed;
+      query = query.range(offset, offset + q.limit);
+    } else {
+      const c = decodeCursor(q.cursor);
+      if (!c) {
+        throw new ApiError(400, "invalid_cursor", undefined, ctx.requestId, "Cursor inválido.");
+      }
+      query = query.or(
+        `created_at.lt.${c.created_at},and(created_at.eq.${c.created_at},id.lt.${c.id})`,
+      );
     }
-    query = query.or(
-      `created_at.lt.${c.created_at},and(created_at.eq.${c.created_at},id.lt.${c.id})`,
-    );
   }
 
   const { data, error } = await query;
@@ -119,14 +156,17 @@ export async function listContactsHandler(
   const hasMore = rows.length > q.limit;
   const page = hasMore ? rows.slice(0, q.limit) : rows;
   const last = page[page.length - 1];
-  const nextCursor =
-    hasMore && last
-      ? encodeCursor({
+
+  let nextCursor: string | null = null;
+  if (hasMore && last) {
+    nextCursor = sortColumn
+      ? String(offset + q.limit)
+      : encodeCursor({
           last_activity_at: last.last_activity_at,
           created_at: last.created_at,
           id: last.id,
-        })
-      : null;
+        });
+  }
 
   return { contacts: page, cursor: nextCursor, has_more: hasMore };
 }

@@ -14,28 +14,31 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* Surfaces (light) — rampa de 5 níveis p/ dar profundidade e contraste:
-     bg (página) < surface-muted (colunas/trilhos) < surface-elevated (chips) ;
-     surface (cards/diálogos) = branco puro flutua acima ; field = fundo dos
-     campos (entre o branco do card e a página). */
-  --color-bg: #e7eeeb;
+  /* Surfaces (light) — neutro de tinta com um sussurro de teal (chroma ~0.006),
+     e NÃO o verde da marca. Quando a tela inteira é verde, o verde da marca não
+     tem contra o que se destacar e tudo vira um borrão monocromático; com a
+     base neutra, cor passa a significar algo (ação, seleção, estado).
+     Escada: bg (página/canvas) < surface-muted (trilhos) < surface (branco:
+     painéis, cards, balões). surface-elevated é REBAIXADO (chips/preenchimentos)
+     e field é o fundo dos campos. */
+  --color-bg: #e5eaea;
   --color-surface: #ffffff;
-  --color-surface-muted: #eef3f1;
-  --color-surface-elevated: #dce8e2;
-  --color-field: #f2f7f5;
-  --color-overlay: rgba(14, 44, 42, 0.42);
+  --color-surface-muted: #f1f4f4;
+  --color-surface-elevated: #dfe5e5;
+  --color-field: #f8fafa;
+  --color-overlay: rgba(14, 32, 32, 0.45);
 
-  /* Text (light) */
-  --color-text: #0e2c2a;
-  --color-text-muted: #46605b;
-  --color-text-subtle: #6c837e;
+  /* Text (light) — medidos contra surface E bg (AA 4.5:1 nos dois) */
+  --color-text: #101d1d;
+  --color-text-muted: #4d5a59;
+  --color-text-subtle: #5d6a68;
 
-  /* Borders (light) — mais firmes p/ separar cards/campos do fundo */
-  --color-border: #d3e1db;
-  --color-border-strong: #b2c9bf;
+  /* Borders (light) — separam sem virar grade */
+  --color-border: #d6dedd;
+  --color-border-strong: #b3bfbe;
 
   /* Accent — ZapInbox green (11 stops) */
-  --color-accent-50:  #eafaf5;
+  --color-accent-50: #eafaf5;
   --color-accent-100: #cbf1e7;
   --color-accent-200: #99e3d1;
   --color-accent-300: #5fceb6;
@@ -46,13 +49,15 @@
   --color-accent-800: #0d5b52;
   --color-accent-900: #114741;
   --color-accent-950: #0e2c2a;
-  --color-accent: var(--color-accent-600);
+  /* 700, não 600: branco sobre o 600 dá 4.17:1 (reprova AA); sobre o 700 dá
+     5.82:1. De quebra o verde ganha corpo contra a base neutra. */
+  --color-accent: var(--color-accent-700);
   --color-accent-fg: #ffffff;
   --color-accent-soft: var(--color-accent-100);
-  --color-accent-hover: var(--color-accent-700);
+  --color-accent-hover: var(--color-accent-800);
 
   /* Neutrals — cool green-gray (11 stops, light) */
-  --color-neutral-50:  #f4f8f7;
+  --color-neutral-50: #f4f8f7;
   --color-neutral-100: #e8f1ee;
   --color-neutral-200: #d7e6e1;
   --color-neutral-300: #bcd2cb;
@@ -175,7 +180,7 @@
   --color-border-strong: #2b4440;
 
   /* Accent stays same hex stops; default shifts up for dark contrast */
-  --color-accent-50:  #eafaf5;
+  --color-accent-50: #eafaf5;
   --color-accent-100: #cbf1e7;
   --color-accent-200: #99e3d1;
   --color-accent-300: #5fceb6;
@@ -192,7 +197,7 @@
   --color-accent-hover: var(--color-accent-300);
 
   /* Neutrals — cool green-gray (11 stops, dark) */
-  --color-neutral-50:  #eaf3f0;
+  --color-neutral-50: #eaf3f0;
   --color-neutral-100: #cfe0db;
   --color-neutral-200: #9db8b1;
   --color-neutral-300: #6e8781;
@@ -222,11 +227,11 @@
   --brand-grad: linear-gradient(135deg, #038c7b 0%, #29bd99 55%, #4fc79a 100%);
 
   /* Shadows — heavier in dark */
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.30);
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.40), 0 1px 1px 0 rgba(0, 0, 0, 0.20);
-  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 2px 4px -1px rgba(0, 0, 0, 0.30);
-  --shadow-lg: 0 12px 32px -6px rgba(0, 0, 0, 0.55), 0 4px 12px -2px rgba(0, 0, 0, 0.40);
-  --shadow-xl: 0 24px 48px -12px rgba(0, 0, 0, 0.65), 0 8px 16px -4px rgba(0, 0, 0, 0.50);
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4), 0 1px 1px 0 rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 32px -6px rgba(0, 0, 0, 0.55), 0 4px 12px -2px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 24px 48px -12px rgba(0, 0, 0, 0.65), 0 8px 16px -4px rgba(0, 0, 0, 0.5);
 
   /* shadcn-compat aliases */
   --background: var(--color-bg);
@@ -276,7 +281,7 @@
   --color-border-strong: #c1c1c8;
 
   /* Accent — Avant wine (11 stops) */
-  --color-accent-50:  #faf2f1;
+  --color-accent-50: #faf2f1;
   --color-accent-100: #f4dedc;
   --color-accent-200: #e8bdb9;
   --color-accent-300: #d8938d;
@@ -293,7 +298,7 @@
   --color-accent-hover: var(--color-accent-800);
 
   /* Neutrals — cinzas neutros do print (E0E0E0 / B7B7B7 / 49494A) */
-  --color-neutral-50:  #f7f7f8;
+  --color-neutral-50: #f7f7f8;
   --color-neutral-100: #efeff0;
   --color-neutral-200: #e4e4e6;
   --color-neutral-300: #d0d0d3;
@@ -371,7 +376,7 @@
   --color-accent-hover: var(--color-accent-300);
 
   /* Neutrals — warm gray (dark) */
-  --color-neutral-50:  #f3efee;
+  --color-neutral-50: #f3efee;
   --color-neutral-100: #ddd6d4;
   --color-neutral-200: #b0a6a3;
   --color-neutral-300: #837a77;
@@ -433,17 +438,32 @@
   body {
     background-color: var(--color-bg);
     color: var(--color-text);
-    font-family: var(--font-atkinson), ui-sans-serif, system-ui, -apple-system,
-      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    font-family:
+      var(--font-atkinson),
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      Roboto,
+      "Helvetica Neue",
+      Arial,
+      sans-serif;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1,
+      "ss01" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
 
-  code, kbd, pre, samp {
-    font-family: var(--font-mono), ui-monospace, "SFMono-Regular", Menlo,
-      Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family:
+      var(--font-mono), ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono",
+      "Courier New", monospace;
     font-variant-numeric: tabular-nums;
   }
 
@@ -501,5 +521,18 @@
     background-color: var(--color-neutral-500);
     background-clip: padding-box;
     border: 2px solid transparent;
+  }
+
+  /* Avatar por identidade: a cor sai do nome/id do contato (--tint-h), não do
+     acaso. Numa lista longa a cor vira reconhecimento ("o roxo é a Gabriela"),
+     que é justamente o que uma tela toda de uma cor só não entrega. Chroma
+     baixo e L fixo mantêm todos no mesmo tom de voz. */
+  .avatar-tint {
+    background-color: oklch(0.93 0.045 var(--tint-h));
+    color: oklch(0.4 0.1 var(--tint-h));
+  }
+  [data-theme="dark"] .avatar-tint {
+    background-color: oklch(0.32 0.05 var(--tint-h));
+    color: oklch(0.86 0.07 var(--tint-h));
   }
 }

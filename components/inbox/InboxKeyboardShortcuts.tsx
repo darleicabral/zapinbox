@@ -34,14 +34,8 @@ export function InboxKeyboardShortcuts({
     if (id) onSelect(id);
   }
 
-  useHotkeys("j", () => step(1), { enabled, preventDefault: true }, [
-    visibleIds,
-    selectedId,
-  ]);
-  useHotkeys("k", () => step(-1), { enabled, preventDefault: true }, [
-    visibleIds,
-    selectedId,
-  ]);
+  useHotkeys("j", () => step(1), { enabled, preventDefault: true }, [visibleIds, selectedId]);
+  useHotkeys("k", () => step(-1), { enabled, preventDefault: true }, [visibleIds, selectedId]);
   useHotkeys("r", () => onFocusReply(), { enabled, preventDefault: true });
   useHotkeys("a", () => onClaim(), { enabled, preventDefault: true });
   useHotkeys(

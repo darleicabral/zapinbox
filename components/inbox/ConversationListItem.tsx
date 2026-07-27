@@ -1,4 +1,5 @@
 "use client";
+import type { CSSProperties } from "react";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Robot } from "@/lib/ui/icons";
@@ -14,12 +15,24 @@ interface Props {
 }
 
 const STATUS_DOT: Record<string, string> = {
-  open: "bg-muted-foreground/60",
-  claimed: "bg-blue-500",
+  open: "bg-accent",
+  claimed: "bg-info",
   ai_handling: "bg-purple-500",
-  closed: "bg-muted-foreground/30",
-  archived: "bg-muted-foreground/20",
+  closed: "bg-neutral-400",
+  archived: "bg-neutral-300",
 };
+
+/**
+ * Hue estável por contato (0–360) para o avatar. Mesmo contato, mesma cor,
+ * sempre — a cor vira reconhecimento na lista, não enfeite. Paleta fechada em
+ * 8 matizes espaçados; nada de hue aleatório.
+ */
+const AVATAR_HUES = [15, 45, 95, 150, 190, 230, 280, 330];
+function avatarHue(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 9973;
+  return AVATAR_HUES[h % AVATAR_HUES.length]!;
+}
 
 function initials(name: string | null | undefined, fallback: string): string {
   const v = (name ?? "").trim();
@@ -45,11 +58,7 @@ function relativeTime(iso: string | null): string {
 
 export function ConversationListItem({ conversation, isSelected, onSelect }: Props) {
   const c = conversation.contacts ?? null;
-  const displayName =
-    c?.display_name?.trim() ||
-    c?.name?.trim() ||
-    c?.phone_number ||
-    "Sem nome";
+  const displayName = c?.display_name?.trim() || c?.name?.trim() || c?.phone_number || "Sem nome";
   const phoneFallback = c?.phone_number ?? "??";
   const tags = c?.tags ?? [];
   const visibleTags = tags.slice(0, 2);
@@ -66,20 +75,26 @@ export function ConversationListItem({ conversation, isSelected, onSelect }: Pro
       type="button"
       onClick={() => onSelect(conversation.id)}
       className={cn(
-        "group flex w-full items-start gap-3 border-b border-border px-3 py-3 text-left transition-colors hover:bg-accent/40",
-        isSelected && "bg-accent/60",
+        "group flex w-full items-start gap-3 border-b border-border px-3 py-3 text-left",
+        "transition-colors duration-fast ease-out hover:bg-surface-muted",
+        // Selecionada: lavada no accent (sem tarja lateral), texto no tom
+        // escuro do próprio accent p/ manter contraste alto.
+        isSelected && "bg-accent-soft hover:bg-accent-soft",
       )}
       aria-current={isSelected ? "true" : undefined}
     >
       <div className="relative shrink-0">
         <Avatar className="h-10 w-10">
-          <AvatarFallback className="text-xs">
+          <AvatarFallback
+            className="avatar-tint text-xs font-semibold"
+            style={{ "--tint-h": avatarHue(c?.id ?? displayName) } as CSSProperties}
+          >
             {initials(displayName, phoneFallback)}
           </AvatarFallback>
         </Avatar>
         <span
           className={cn(
-            "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-background",
+            "absolute -right-0.5 -top-0.5 size-2.5 rounded-full ring-2 ring-surface",
             dot,
           )}
           aria-hidden
@@ -90,18 +105,30 @@ export function ConversationListItem({ conversation, isSelected, onSelect }: Pro
         <div className="flex items-baseline justify-between gap-2">
           <span
             className={cn(
-              "truncate text-sm font-medium",
-              c?.is_anonymized && "italic text-muted-foreground",
+              "truncate text-sm text-text",
+              // Não lida pesa mais: nome em semibold, prévia em texto cheio.
+              unread > 0 ? "font-semibold" : "font-medium",
+              c?.is_anonymized && "italic text-text-subtle",
             )}
           >
             {displayName}
           </span>
-          <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span
+            className={cn(
+              "shrink-0 text-[10px] uppercase tracking-wide",
+              unread > 0 ? "font-semibold text-accent" : "text-text-subtle",
+            )}
+          >
             {time}
           </span>
         </div>
 
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+        <p
+          className={cn(
+            "mt-0.5 truncate text-xs",
+            unread > 0 ? "text-text-muted" : "text-text-subtle",
+          )}
+        >
           {isAi ? <Robot size={10} weight="duotone" className="mr-1 inline" aria-hidden /> : null}
           {truncated}
         </p>
@@ -112,9 +139,7 @@ export function ConversationListItem({ conversation, isSelected, onSelect }: Pro
               {t}
             </Badge>
           ))}
-          {overflow > 0 && (
-            <span className="text-[10px] text-muted-foreground">+{overflow}</span>
-          )}
+          {overflow > 0 && <span className="text-[10px] text-muted-foreground">+{overflow}</span>}
           {c?.is_blocked && (
             <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">
               Bloqueado
@@ -126,7 +151,9 @@ export function ConversationListItem({ conversation, isSelected, onSelect }: Pro
             </Badge>
           )}
           {unread > 0 && (
-            <Badge className="ml-auto h-4 min-w-4 px-1.5 text-[10px]">{unread}</Badge>
+            <span className="text-accent-fg ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-semibold tabular-nums">
+              {unread}
+            </span>
           )}
         </div>
       </div>

@@ -74,7 +74,7 @@ export function InboxFilters({ value, onChange }: Props) {
   }, [searchInput]);
 
   return (
-    <div className="space-y-3 border-b border-border bg-background px-3 py-3">
+    <div className="space-y-3 border-b border-border bg-surface px-3 py-3">
       <div className="relative">
         <MagnifyingGlass
           size={14}

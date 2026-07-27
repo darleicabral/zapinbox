@@ -60,14 +60,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
   if (blockedReason) {
     return (
-      <div className="border-t border-border bg-muted/40 px-4 py-3 text-center text-xs text-muted-foreground">
+      <div className="bg-muted/40 border-t border-border px-4 py-3 text-center text-xs text-muted-foreground">
         {blockedReason}
       </div>
     );
   }
 
   return (
-    <div className="border-t border-border bg-background px-3 py-2">
+    <div className="border-t border-border bg-surface px-3 py-2.5">
       <div className="flex items-end gap-2">
         <Button
           type="button"
@@ -91,8 +91,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           rows={1}
           placeholder="Escreva uma mensagem… (Enter envia, Shift+Enter quebra linha)"
           className={cn(
-            "min-h-9 max-h-40 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm",
-            "placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+            "max-h-40 min-h-9 flex-1 resize-none rounded-lg border border-border bg-field px-3 py-2 text-sm text-text",
+            "transition-colors duration-fast ease-out placeholder:text-text-subtle hover:border-border-strong",
+            "focus:ring-accent/20 focus:border-accent focus:bg-surface focus:outline-none focus:ring-2",
           )}
           disabled={isDisabled}
           aria-label="Mensagem"

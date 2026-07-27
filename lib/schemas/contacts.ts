@@ -59,10 +59,21 @@ export type ContactCreate = z.infer<typeof contactCreateSchema>;
 export const contactPatchSchema = contactCreateSchema.partial();
 export type ContactPatch = z.infer<typeof contactPatchSchema>;
 
+/**
+ * Ordenação da lista. `recent` (default) usa keyset por atividade; as demais
+ * ordenam por campo do cadastro/custom_fields e paginam por deslocamento.
+ */
+export const contactSortSchema = z.enum(["recent", "name", "liguei", "status", "empreendimento"]);
+export type ContactSort = z.infer<typeof contactSortSchema>;
+
 export const contactListQuerySchema = z.object({
   search: z.string().optional(),
   tag: z.string().optional(),
   source: z.string().optional(),
+  // Sem `.default()`: outros consumidores do handler (MCP tools) montam a query
+  // à mão e o default deixaria `sort` obrigatório no tipo. O handler assume
+  // "recent" quando vem vazio.
+  sort: contactSortSchema.optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });

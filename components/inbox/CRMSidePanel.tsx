@@ -28,9 +28,7 @@ interface LeadRow {
 
 /** Rótulo legível a partir da chave snake_case do custom_fields. */
 function humanizeKey(key: string): string {
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function formatFieldValue(value: unknown): string {
@@ -91,9 +89,7 @@ function formatMoney(cents: number | null, currency: string | null): string {
   if (cents == null) return "—";
   const cur = currency ?? "BRL";
   try {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: cur }).format(
-      cents / 100,
-    );
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: cur }).format(cents / 100);
   } catch {
     return `${(cents / 100).toFixed(2)} ${cur}`;
   }
@@ -165,10 +161,7 @@ export function CRMSidePanel({ conversation }: Props) {
 
   const tags = contact?.tags ?? [];
   const displayName =
-    contact?.display_name?.trim() ||
-    contact?.name?.trim() ||
-    contact?.phone_number ||
-    "—";
+    contact?.display_name?.trim() || contact?.name?.trim() || contact?.phone_number || "—";
 
   const sectionsLoading = useMemo(
     () => loading || (leads === null && orders === null && activities === null),
@@ -197,7 +190,7 @@ export function CRMSidePanel({ conversation }: Props) {
   }
 
   return (
-    <aside className="flex h-full flex-col gap-4 overflow-y-auto border-l border-border bg-background p-4">
+    <aside className="flex h-full flex-col gap-4 overflow-y-auto border-l border-border bg-surface-muted p-4">
       <section>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Contato
