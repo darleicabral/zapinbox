@@ -1,25 +1,20 @@
 "use client";
 /**
  * Ações da lista de Contatos (pós-venda): abrir atendimento e abrir a conversa
- * de WhatsApp do contato. Ambas devolvem o id de destino — quem chama navega.
+ * de WhatsApp do contato. Ambas devolvem o destino — quem chama navega.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
-import type { OpenLeadResult } from "@/hooks/inbox/useOpenLead";
+import type { OpenLeadTargetResult } from "@/hooks/inbox/useOpenLead";
 
-/** Cria (ou reaproveita, se reincidente) o atendimento do contato. */
+/** Resolve o destino do "Abrir atendimento" a partir do contato. */
 export function useOpenContactLead() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (contactId: string) =>
-      apiClient.post<{ data: OpenLeadResult }>(`/api/v1/contacts/${contactId}/open-lead`, {}),
+      apiClient.post<{ data: OpenLeadTargetResult }>(`/api/v1/contacts/${contactId}/open-lead`, {}),
     onError: (err) => showApiError(err),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["board"] });
-      qc.invalidateQueries({ queryKey: ["leads"] });
-    },
   });
 }
 

@@ -33,6 +33,7 @@ import {
   contactFieldFlag,
   contactFieldText,
 } from "@/lib/contacts/fields";
+import { newLeadRouteFor } from "@/lib/kanban/new-lead-handoff";
 import { hasPosvendaModule } from "@/lib/modules";
 import type { Contact } from "@/lib/types/contacts";
 import { cn } from "@/lib/utils";
@@ -175,16 +176,13 @@ function ActionsCells({ contact }: { contact: Contact }) {
 
   async function onOpenLead() {
     try {
-      const res = await openLead.mutateAsync(contact.id);
-      const info = res.data;
+      const info = (await openLead.mutateAsync(contact.id)).data;
       if (info.reincidente) {
         toast.warning(
           `Cliente já tem atendimento aberto${info.external_id ? ` (${info.external_id})` : ""} — abrindo ele.`,
         );
-      } else {
-        toast.success("Atendimento aberto.");
       }
-      router.push(`/app/pipelines/${info.pipeline_id}?open=${info.lead_id}`);
+      router.push(newLeadRouteFor(info));
     } catch {
       // erro já exibido pelo hook
     }

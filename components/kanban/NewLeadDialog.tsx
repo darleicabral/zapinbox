@@ -65,6 +65,15 @@ interface Props {
   leadNoun?: string;
   /** Campos embutidos escondidos via settings.form_hide ("value", "expected_close_date", "tags"). */
   hiddenFields?: Set<string>;
+  /**
+   * Abertura vinda de "Abrir atendimento" (lista de Contatos / Inbox): o
+   * contato já vem vinculado e o formulário nasce preenchido com o que se sabe.
+   * Aplicado na MONTAGEM — quem abre com semente deve remontar via `key`.
+   */
+  initialContact?: (ContactDisplay & { id: string }) | null;
+  initialTitle?: string;
+  initialDescription?: string | null;
+  initialCustomFields?: Record<string, unknown>;
 }
 
 function defaultStageId(stages: Stage[]): string {
@@ -80,6 +89,10 @@ export function NewLeadDialog({
   fields = [],
   leadNoun = "Lead",
   hiddenFields,
+  initialContact = null,
+  initialTitle = "",
+  initialDescription = null,
+  initialCustomFields,
 }: Props) {
   const nounLower = leadNoun.toLowerCase();
   const hide = (k: string) => hiddenFields?.has(k) ?? false;
@@ -88,9 +101,19 @@ export function NewLeadDialog({
   const create = useCreateLead(pipelineId);
   const createContact = useCreateContact();
   const initialStage = useMemo(() => defaultStageId(stages), [stages]);
-  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
-  const [contactId, setContactId] = useState<string | null>(null);
-  const [pickedContact, setPickedContact] = useState<ContactDisplay | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>(
+    initialCustomFields ?? {},
+  );
+  const [contactId, setContactId] = useState<string | null>(initialContact?.id ?? null);
+  const [pickedContact, setPickedContact] = useState<ContactDisplay | null>(
+    initialContact
+      ? {
+          display_name: initialContact.display_name,
+          name: initialContact.name,
+          phone_number: initialContact.phone_number,
+        }
+      : null,
+  );
   // A busca do comprador só existe em pipelines que usam este fluxo (têm empreendimento).
   const buyerLookupEnabled = useMemo(
     () => createFields.some((f) => f.key === "empreendimento"),
@@ -115,7 +138,7 @@ export function NewLeadDialog({
     if (!payload.name && !payload.phone_number) return null;
     // O POST devolve { data: { contact, action } }; normaliza p/ o Contact.
     const created = await createContact.mutateAsync(payload);
-    const d = created.data as unknown as ({ contact?: Contact } & Partial<Contact>);
+    const d = created.data as unknown as { contact?: Contact } & Partial<Contact>;
     return d.contact ?? (d as Contact) ?? null;
   }
 
@@ -153,8 +176,8 @@ export function NewLeadDialog({
 
   const form = useForm<FormShape>({
     defaultValues: {
-      title: "",
-      description: "",
+      title: initialTitle,
+      description: initialDescription ?? "",
       stage_id: initialStage,
       valueReais: "",
       tagsRaw: "",
@@ -242,130 +265,121 @@ export function NewLeadDialog({
       <DialogContent className="flex max-h-[90vh] flex-col">
         <DialogHeader className="shrink-0">
           <DialogTitle>Novo {leadNoun}</DialogTitle>
-          <DialogDescription>
-            Crie um {nounLower} manualmente neste pipeline.
-          </DialogDescription>
+          <DialogDescription>Crie um {nounLower} manualmente neste pipeline.</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-1">
-          <BuyerLookup
-            enabled={buyerLookupEnabled}
-            onSelect={onSelectBuyer}
-            disabled={create.isPending}
-          />
-
-          {/* Divisor que separa a busca (acima) do preenchimento do chamado. */}
-          {buyerLookupEnabled && (
-            <div className="flex items-center gap-3 pt-1" aria-hidden>
-              <span className="h-px flex-1 bg-border" />
-              <span className="text-[11px] font-medium uppercase tracking-wide text-text-muted">
-                ou preencha manualmente
-              </span>
-              <span className="h-px flex-1 bg-border" />
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label>Etapa</Label>
-            <Select
-              value={stageId}
-              onValueChange={(v) => form.setValue("stage_id", v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione a etapa" />
-              </SelectTrigger>
-              <SelectContent>
-                {stages
-                  .filter((s) => !s.is_archived)
-                  .map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="title">Título</Label>
-            <Input
-              id="title"
-              placeholder={`Resumo do ${nounLower}`}
-              {...form.register("title", { required: true, minLength: 2 })}
-            />
-          </div>
-
-          <ContactPicker
-            value={contactId}
-            onChange={(id) => {
-              setContactId(id);
-              if (!id) setPickedContact(null);
-            }}
-            initialContact={pickedContact}
-            disabled={create.isPending}
-          />
-
-          {createFields.length > 0 && (
-            <CustomFieldsEditor
-              fields={createFields}
-              value={customValues}
-              onChange={setCustomValues}
-              mode="lead"
+            <BuyerLookup
+              enabled={buyerLookupEnabled}
+              onSelect={onSelectBuyer}
               disabled={create.isPending}
             />
-          )}
 
-          <div className="space-y-2">
-            <Label htmlFor="description">Observações internas</Label>
-            <Textarea
-              id="description"
-              rows={3}
-              placeholder="Anotações da equipe sobre o atendimento (não vão para o cliente)…"
-              {...form.register("description")}
-            />
-          </div>
+            {/* Divisor que separa a busca (acima) do preenchimento do chamado. */}
+            {buyerLookupEnabled && (
+              <div className="flex items-center gap-3 pt-1" aria-hidden>
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                  ou preencha manualmente
+                </span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            )}
 
-          {(!hide("value") || !hide("expected_close_date")) && (
-            <div className="grid grid-cols-2 gap-3">
-              {!hide("value") && (
-                <div className="space-y-2">
-                  <Label htmlFor="valueReais">Valor (R$)</Label>
-                  <Input
-                    id="valueReais"
-                    inputMode="decimal"
-                    placeholder="0,00"
-                    {...form.register("valueReais")}
-                  />
-                  {form.formState.errors.valueReais && (
-                    <p className="text-xs text-error-fg">
-                      {form.formState.errors.valueReais.message}
-                    </p>
-                  )}
-                </div>
-              )}
-              {!hide("expected_close_date") && (
-                <div className="space-y-2">
-                  <Label htmlFor="expected_close_date">Fechamento previsto</Label>
-                  <Input
-                    id="expected_close_date"
-                    type="date"
-                    {...form.register("expected_close_date")}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {!hide("tags") && (
             <div className="space-y-2">
-              <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
+              <Label>Etapa</Label>
+              <Select value={stageId} onValueChange={(v) => form.setValue("stage_id", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a etapa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stages
+                    .filter((s) => !s.is_archived)
+                    .map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="title">Título</Label>
               <Input
-                id="tagsRaw"
-                placeholder="vip, recompra"
-                {...form.register("tagsRaw")}
+                id="title"
+                placeholder={`Resumo do ${nounLower}`}
+                {...form.register("title", { required: true, minLength: 2 })}
               />
             </div>
-          )}
+
+            <ContactPicker
+              value={contactId}
+              onChange={(id) => {
+                setContactId(id);
+                if (!id) setPickedContact(null);
+              }}
+              initialContact={pickedContact}
+              disabled={create.isPending}
+            />
+
+            {createFields.length > 0 && (
+              <CustomFieldsEditor
+                fields={createFields}
+                value={customValues}
+                onChange={setCustomValues}
+                mode="lead"
+                disabled={create.isPending}
+              />
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Observações internas</Label>
+              <Textarea
+                id="description"
+                rows={3}
+                placeholder="Anotações da equipe sobre o atendimento (não vão para o cliente)…"
+                {...form.register("description")}
+              />
+            </div>
+
+            {(!hide("value") || !hide("expected_close_date")) && (
+              <div className="grid grid-cols-2 gap-3">
+                {!hide("value") && (
+                  <div className="space-y-2">
+                    <Label htmlFor="valueReais">Valor (R$)</Label>
+                    <Input
+                      id="valueReais"
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      {...form.register("valueReais")}
+                    />
+                    {form.formState.errors.valueReais && (
+                      <p className="text-xs text-error-fg">
+                        {form.formState.errors.valueReais.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {!hide("expected_close_date") && (
+                  <div className="space-y-2">
+                    <Label htmlFor="expected_close_date">Fechamento previsto</Label>
+                    <Input
+                      id="expected_close_date"
+                      type="date"
+                      {...form.register("expected_close_date")}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!hide("tags") && (
+              <div className="space-y-2">
+                <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
+                <Input id="tagsRaw" placeholder="vip, recompra" {...form.register("tagsRaw")} />
+              </div>
+            )}
           </div>
 
           <DialogFooter className="shrink-0 border-t pt-4">

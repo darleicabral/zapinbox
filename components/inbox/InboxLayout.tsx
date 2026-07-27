@@ -107,8 +107,11 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
       ? "Contato anonimizado — não é possível enviar mensagens."
       : null;
 
+  // Altura = viewport − TopBar (h-14 = 3.5rem) − padding do <main> do AppShell
+  // (p-6 em cima e embaixo = 3rem). Sem descontar o padding, o composer ficava
+  // 48px abaixo da dobra e só aparecia rolando a página.
   return (
-    <div className="grid h-[calc(100vh-3.5rem)] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_320px]">
+    <div className="grid h-[calc(100vh-6.5rem)] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_320px]">
       <div className="flex h-full min-h-0 flex-col border-r border-border">
         <InboxFilters value={filterValue} onChange={setFilterValue} />
         <div className="min-h-0 flex-1 overflow-hidden">

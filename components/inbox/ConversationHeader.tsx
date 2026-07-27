@@ -11,6 +11,7 @@ import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
 import { useReleaseConversation } from "@/hooks/inbox/useReleaseConversation";
 import { useCloseConversation } from "@/hooks/inbox/useCloseConversation";
 import { useOpenLead } from "@/hooks/inbox/useOpenLead";
+import { newLeadRouteFor } from "@/lib/kanban/new-lead-handoff";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 
 interface Props {
@@ -49,28 +50,26 @@ export function ConversationHeader({ conversation }: Props) {
   const openLead = useOpenLead();
 
   const c = conversation.contacts ?? null;
-  const displayName =
-    c?.display_name?.trim() || c?.name?.trim() || c?.phone_number || "Sem nome";
+  const displayName = c?.display_name?.trim() || c?.name?.trim() || c?.phone_number || "Sem nome";
   const phone = c?.phone_number ?? null;
   const status = conversation.status;
   const isMineAssigned = conversation.assigned_to_user_id === user.id;
   const isOpen = status === "open" || conversation.assigned_to_user_id == null;
 
-  const triagem = (conversation as unknown as { metadata?: { triagem?: Triagem } }).metadata?.triagem;
+  const triagem = (conversation as unknown as { metadata?: { triagem?: Triagem } }).metadata
+    ?.triagem;
 
   async function onOpenLead() {
     try {
-      const res = await openLead.mutateAsync({ conversation_id: conversation.id });
-      const info = res.data;
+      const info = (await openLead.mutateAsync({ conversation_id: conversation.id })).data;
       if (info.reincidente) {
         toast.warning(
           `Cliente reincidente — abrindo o atendimento já existente${info.external_id ? ` (${info.external_id})` : ""}.`,
         );
-      } else {
-        toast.success("Atendimento aberto — confira a classificação sugerida.");
       }
-      // Abre o card do atendimento direto no board (triagem pré-preenchida, editável).
-      router.push(`/app/pipelines/${info.pipeline_id}?open=${info.lead_id}`);
+      // Reincidente vai pro card existente; o resto abre a tela de Novo
+      // Atendimento com contato + triagem já preenchidos (editáveis).
+      router.push(newLeadRouteFor(info));
     } catch {
       // erro já mostrado pelo hook
     }
@@ -95,12 +94,7 @@ export function ConversationHeader({ conversation }: Props) {
 
         <div className="flex shrink-0 items-center gap-1.5">
           {isPosvenda && (
-            <Button
-              size="sm"
-              variant="default"
-              disabled={openLead.isPending}
-              onClick={onOpenLead}
-            >
+            <Button size="sm" variant="default" disabled={openLead.isPending} onClick={onOpenLead}>
               {openLead.isPending ? "Abrindo…" : "Abrir atendimento"}
             </Button>
           )}
@@ -160,17 +154,21 @@ export function ConversationHeader({ conversation }: Props) {
       {triagem?.assunto && (
         <div
           className={`mx-4 mb-3 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs ${
-            triagem.nivel_sugerido ? NIVEL_STYLE[triagem.nivel_sugerido] : "border-border bg-surface-muted/40 text-text-muted"
+            triagem.nivel_sugerido
+              ? NIVEL_STYLE[triagem.nivel_sugerido]
+              : "bg-surface-muted/40 border-border text-text-muted"
           }`}
         >
           <span className="font-semibold uppercase tracking-wide">Triagem IA</span>
           <span className="font-medium">{triagem.assunto}</span>
           {triagem.nivel_sugerido && (
-            <span className="rounded-full border border-current/30 px-1.5 py-0.5 text-[10px] font-semibold">
+            <span className="border-current/30 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold">
               {triagem.nivel_sugerido}
             </span>
           )}
-          {triagem.resumo && <span className="w-full text-[11px] opacity-80">{triagem.resumo}</span>}
+          {triagem.resumo && (
+            <span className="w-full text-[11px] opacity-80">{triagem.resumo}</span>
+          )}
         </div>
       )}
     </div>

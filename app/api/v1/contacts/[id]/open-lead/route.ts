@@ -1,11 +1,10 @@
 /**
- * POST /api/v1/contacts/[id]/open-lead — abre um ATENDIMENTO já vinculado ao
- * contato, direto da lista de Contatos (botão "Abrir atendimento").
+ * POST /api/v1/contacts/[id]/open-lead — responde PARA ONDE ir quando a
+ * atendente clica em "Abrir atendimento" na lista de Contatos.
  *
- * Mesma regra da abertura pelo Inbox (pipeline default, dedupe de reincidente,
- * 1ª etapa aberta) — ver `lib/leads/open-lead.ts`. O que muda é o prefill: aqui
- * vem do cadastro do contato (empreendimento) e o canal é Telefone, porque esta
- * porta é a abordagem ativa (a atendente ligando), não uma conversa recebida.
+ * Não cria nada: devolve o pipeline, o atendimento aberto que já existe (se
+ * houver) e o pré-preenchimento do formulário de Novo Atendimento. A criação
+ * acontece no formulário (POST /api/v1/leads). Ver `lib/leads/open-lead.ts`.
  *
  * Client de SESSÃO (RLS): o ator é membro da org.
  */
@@ -14,7 +13,7 @@ import { type NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { CONTACT_FIELD, contactFieldText } from "@/lib/contacts/fields";
-import { openLeadForContact } from "@/lib/leads/open-lead";
+import { resolveOpenLeadTarget } from "@/lib/leads/open-lead";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -56,24 +55,35 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
     });
   }
 
-  const title = c.display_name?.trim() || c.name?.trim() || c.phone_number?.trim() || "Atendimento";
-
-  const prefill: Record<string, unknown> = { canal: "Telefone" };
-  const empreendimento = contactFieldText(c.custom_fields, CONTACT_FIELD.empreendimento);
-  if (empreendimento) prefill.empreendimento = empreendimento;
-
-  const outcome = await openLeadForContact(supabase, {
+  const outcome = await resolveOpenLeadTarget(supabase, {
     orgId: c.organization_id,
     contactId,
     actorUserId: user.id,
     requestId,
-    title,
-    prefill,
     origin: { from_contact: contactId },
   });
-
   if (!outcome.ok) {
     return fail(outcome.code, outcome.message, outcome.status, { requestId });
   }
-  return ok(outcome.result, { requestId });
+
+  // Pré-preenchimento do formulário: o que já se sabe do cadastro. Canal
+  // "Telefone" porque esta porta é a abordagem ativa (a atendente ligando).
+  const prefill: Record<string, unknown> = { canal: "Telefone" };
+  const empreendimento = contactFieldText(c.custom_fields, CONTACT_FIELD.empreendimento);
+  if (empreendimento) prefill.empreendimento = empreendimento;
+
+  return ok(
+    {
+      ...outcome.result,
+      title: c.display_name?.trim() || c.name?.trim() || c.phone_number?.trim() || "",
+      prefill,
+      contact: {
+        id: contactId,
+        display_name: c.display_name,
+        name: c.name,
+        phone_number: c.phone_number,
+      },
+    },
+    { requestId },
+  );
 }

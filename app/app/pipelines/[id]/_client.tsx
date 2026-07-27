@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useBoard } from "@/hooks/kanban/useBoard";
+import { takeNewLeadHandoff, type NewLeadHandoff } from "@/lib/kanban/new-lead-handoff";
 
 function formatError(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -47,11 +48,29 @@ export function PipelinePageClient({
   const filteredLeads = data ? applyFilters(data.leads, filters) : [];
   const leadNoun = data?.pipeline.vocabulary?.lead ?? "Lead";
 
-  // Abertura direta de um atendimento via ?open=<leadId> (vindo do Inbox, botão
-  // "Abrir atendimento"): o board já tem os campos/etapas em cache, então o
-  // EditLeadDialog abre com a triagem pré-preenchida. Fechar limpa o parâmetro.
+  // Abertura direta de um atendimento existente via ?open=<leadId> (reincidente).
+  // O board já tem campos/etapas em cache, então o EditLeadDialog abre pronto.
   const openId = searchParams.get("open");
   const openLead = openId && data ? (data.leads.find((l) => l.id === openId) ?? null) : null;
+
+  // "Abrir atendimento" (lista de Contatos / Inbox) manda pra cá com ?novo=1 e
+  // deixa contato + pré-preenchimento no sessionStorage: abre a tela de Novo
+  // Atendimento (com a busca de comprador) em vez de criar o card por baixo.
+  const wantsNew = searchParams.get("novo") === "1";
+  const [handoff, setHandoff] = useState<NewLeadHandoff | null>(null);
+  useEffect(() => {
+    if (!wantsNew) return;
+    setHandoff(takeNewLeadHandoff() ?? {});
+    setNewOpen(true);
+  }, [wantsNew]);
+
+  function closeNewDialog(v: boolean) {
+    setNewOpen(v);
+    if (v) return;
+    // Solta a semente (a próxima abertura manual não pode herdar o contato).
+    setHandoff(null);
+    if (wantsNew) router.replace(`/app/pipelines/${pipelineId}`);
+  }
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -65,20 +84,27 @@ export function PipelinePageClient({
       </header>
       {data && (
         <NewLeadDialog
+          // Remonta ao receber a semente: o formulário lê os valores iniciais
+          // na montagem, e sem o remount ele abriria vazio (ou com o contato
+          // de uma abertura anterior).
+          key={handoff?.contact?.id ?? (handoff ? "handoff" : "manual")}
           open={newOpen}
-          onOpenChange={setNewOpen}
+          onOpenChange={closeNewDialog}
           pipelineId={pipelineId}
           stages={data.stages}
           fields={readCustomFields(data.pipeline.settings)}
           leadNoun={leadNoun}
           hiddenFields={readHiddenFormFields(data.pipeline.settings)}
+          initialContact={handoff?.contact ?? null}
+          initialTitle={handoff?.title ?? ""}
+          initialDescription={handoff?.description ?? null}
+          initialCustomFields={handoff?.custom_fields}
         />
       )}
       <FilterBar filters={filters} onChange={setFilters} leads={data?.leads ?? []} />
       {error ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm">
-          Erro ao carregar pipeline:{" "}
-          {formatError(error)}
+        <div className="border-destructive/30 bg-destructive/10 rounded-md border p-4 text-sm">
+          Erro ao carregar pipeline: {formatError(error)}
         </div>
       ) : isLoading || !data ? (
         <div className="flex flex-1 animate-pulse items-center justify-center text-muted-foreground">

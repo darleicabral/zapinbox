@@ -1,12 +1,11 @@
 /**
- * POST /api/v1/conversations/[id]/open-lead — abre um ATENDIMENTO a partir da
- * conversa (decisão Itaville 22/07: a abertura é MANUAL; a atendente decide
- * quem vira atendimento).
+ * POST /api/v1/conversations/[id]/open-lead — responde PARA ONDE ir quando a
+ * atendente clica em "Abrir atendimento" dentro de uma conversa do Inbox.
  *
- * Aqui fica só o que é específico da conversa (título pelo contato + prefill da
- * triagem da IA). A regra de negócio — pipeline default, reincidente, 1ª etapa,
- * insert, event, audit — vive em `lib/leads/open-lead.ts`, compartilhada com a
- * abertura pela lista de Contatos.
+ * Não cria nada (decisão Darlei 26/07): devolve o pipeline, o atendimento
+ * aberto que já existe (se houver) e o pré-preenchimento vindo da sinalização
+ * da IA, para a tela de Novo Atendimento abrir preenchida. Quem cria é o
+ * formulário (POST /api/v1/leads). Ver `lib/leads/open-lead.ts`.
  *
  * Client de SESSÃO (RLS): o ator é membro da org.
  */
@@ -14,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
-import { openLeadForContact } from "@/lib/leads/open-lead";
+import { resolveOpenLeadTarget } from "@/lib/leads/open-lead";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +37,7 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   const { data: conv, error: convErr } = await supabase
     .from("conversations")
     .select(
-      "id, organization_id, contact_id, metadata, contacts:contact_id(display_name, name, phone_number)",
+      "id, organization_id, contact_id, metadata, contacts:contact_id(display_name, name, phone_number, custom_fields)",
     )
     .eq("id", conversationId)
     .maybeSingle();
@@ -58,17 +57,24 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
         display_name: string | null;
         name: string | null;
         phone_number: string | null;
+        custom_fields: Record<string, unknown> | null;
       } | null;
     }
   ).contacts;
-  const title =
-    contact?.display_name?.trim() ||
-    contact?.name?.trim() ||
-    contact?.phone_number?.trim() ||
-    "Atendimento WhatsApp";
 
-  // Pré-preenchimento a partir da sinalização da IA (metadata.triagem) — editável
-  // depois pela atendente. Só entra no atendimento NOVO (o reincidente não é tocado).
+  const outcome = await resolveOpenLeadTarget(supabase, {
+    orgId,
+    contactId,
+    actorUserId: user.id,
+    requestId,
+    origin: { from_conversation: conversationId },
+  });
+  if (!outcome.ok) {
+    return fail(outcome.code, outcome.message, outcome.status, { requestId });
+  }
+
+  // Pré-preenchimento a partir da sinalização da IA (metadata.triagem) — a
+  // atendente confere e edita no formulário antes de criar.
   const triagem = ((conv as { metadata: Record<string, unknown> | null }).metadata?.triagem ??
     null) as {
     categoria_sugerida?: string;
@@ -78,20 +84,26 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   const prefill: Record<string, unknown> = { canal: "WhatsApp" };
   if (triagem?.categoria_sugerida) prefill.categoria = triagem.categoria_sugerida;
   if (triagem?.nivel_sugerido) prefill.nivel_acompanhamento = triagem.nivel_sugerido;
+  const empreendimento = contact?.custom_fields?.empreendimento;
+  if (typeof empreendimento === "string" && empreendimento) prefill.empreendimento = empreendimento;
 
-  const outcome = await openLeadForContact(supabase, {
-    orgId,
-    contactId,
-    actorUserId: user.id,
-    requestId,
-    title,
-    prefill,
-    description: triagem?.resumo ?? null,
-    origin: { from_conversation: conversationId },
-  });
-
-  if (!outcome.ok) {
-    return fail(outcome.code, outcome.message, outcome.status, { requestId });
-  }
-  return ok(outcome.result, { requestId });
+  return ok(
+    {
+      ...outcome.result,
+      title:
+        contact?.display_name?.trim() ||
+        contact?.name?.trim() ||
+        contact?.phone_number?.trim() ||
+        "",
+      description: triagem?.resumo ?? null,
+      prefill,
+      contact: {
+        id: contactId,
+        display_name: contact?.display_name ?? null,
+        name: contact?.name ?? null,
+        phone_number: contact?.phone_number ?? null,
+      },
+    },
+    { requestId },
+  );
 }
