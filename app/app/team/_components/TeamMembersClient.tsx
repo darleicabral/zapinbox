@@ -39,6 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { RoleCapabilities, ROLE_LABEL } from "@/components/team/RoleCapabilities";
 import { ROLES, type Role } from "@/lib/schemas/team";
 import { DotsThree } from "@/lib/ui/icons";
 
@@ -88,13 +89,13 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
             {members.map((m) => (
               <TableRow key={m.user_id}>
                 <TableCell>
-                  <div className="font-medium">{m.full_name ?? m.email ?? m.user_id.slice(0, 8)}</div>
-                  {m.email ? (
-                    <div className="text-xs text-muted-foreground">{m.email}</div>
-                  ) : null}
+                  <div className="font-medium">
+                    {m.full_name ?? m.email ?? m.user_id.slice(0, 8)}
+                  </div>
+                  {m.email ? <div className="text-xs text-muted-foreground">{m.email}</div> : null}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="secondary">{m.role}</Badge>
+                  <Badge variant="secondary">{ROLE_LABEL[m.role as Role] ?? m.role}</Badge>
                 </TableCell>
                 <TableCell className="text-sm">
                   {m.notify_whatsapp_e164 ? (
@@ -111,9 +112,7 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
                   )}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {m.last_sign_in_at
-                    ? new Date(m.last_sign_in_at).toLocaleString("pt-BR")
-                    : "—"}
+                  {m.last_sign_in_at ? new Date(m.last_sign_in_at).toLocaleString("pt-BR") : "—"}
                 </TableCell>
                 {canManage ? (
                   <TableCell>
@@ -163,9 +162,9 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
       <Dialog open={!!roleDialog} onOpenChange={(o) => !o && setRoleDialog(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Mudar role</DialogTitle>
+            <DialogTitle>Mudar nível de acesso</DialogTitle>
             <DialogDescription>
-              {roleDialog?.email ?? roleDialog?.user_id} — selecione a nova role.
+              {roleDialog?.email ?? roleDialog?.user_id} — escolha o novo nível.
             </DialogDescription>
           </DialogHeader>
           <Select value={pendingRole} onValueChange={(v) => setPendingRole(v as Role)}>
@@ -175,11 +174,12 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
             <SelectContent>
               {ROLES.map((r) => (
                 <SelectItem key={r} value={r}>
-                  {r}
+                  {ROLE_LABEL[r]}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <RoleCapabilities role={pendingRole} />
           <DialogFooter>
             <Button variant="ghost" onClick={() => setRoleDialog(null)}>
               Cancelar

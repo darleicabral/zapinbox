@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RoleCapabilities, ROLE_LABEL } from "@/components/team/RoleCapabilities";
 import { ROLES, type Role } from "@/lib/schemas/team";
 
 interface ResultState {
@@ -69,7 +70,7 @@ export function InviteForm() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="role">Role</Label>
+          <Label htmlFor="role">Nível de acesso</Label>
           <Select value={role} onValueChange={(v) => setRole(v as Role)}>
             <SelectTrigger id="role">
               <SelectValue />
@@ -77,11 +78,12 @@ export function InviteForm() {
             <SelectContent>
               {ROLES.map((r) => (
                 <SelectItem key={r} value={r}>
-                  {r}
+                  {ROLE_LABEL[r]}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <RoleCapabilities role={role} />
         </div>
         <Button type="submit" disabled={invite.isPending}>
           {invite.isPending ? "Enviando…" : "Enviar convites"}
@@ -128,9 +130,7 @@ export function InviteForm() {
             ) : null}
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            Resultados aparecerão aqui após o envio.
-          </p>
+          <p className="text-sm text-muted-foreground">Resultados aparecerão aqui após o envio.</p>
         )}
       </div>
     </div>

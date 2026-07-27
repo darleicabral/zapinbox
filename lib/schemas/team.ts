@@ -23,6 +23,21 @@ export const inviteMemberSchema = z.object({
 });
 export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
 
+/**
+ * Cadastro DIRETO de membro (sem convite por e-mail): o admin define a senha
+ * inicial e a pessoa já entra ativa. Existe porque a operação real cria conta
+ * para gente que está do lado, e depender de e-mail chegar só atrasa.
+ */
+export const createMemberSchema = z.object({
+  email: z.string().email(),
+  full_name: z.string().trim().min(2).max(120).optional(),
+  // 10+ porque quem escolhe é o admin, não a pessoa: senha curta aqui vira
+  // senha curta pra sempre. Teto 72 = limite do bcrypt do Supabase Auth.
+  password: z.string().min(10).max(72),
+  role: z.enum(ROLES),
+});
+export type CreateMemberInput = z.infer<typeof createMemberSchema>;
+
 export const acceptInviteSchema = z.object({
   token: z.string().min(20),
 });
