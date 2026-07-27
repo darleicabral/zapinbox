@@ -32,9 +32,20 @@ const config: Config = {
           subtle: "var(--color-text-subtle)",
         },
 
+        // Balão enviado do Inbox (tokens próprios; ver globals.css).
+        bubble: {
+          out: "var(--color-bubble-out)",
+          "out-fg": "var(--color-bubble-out-fg)",
+          "out-border": "var(--color-bubble-out-border)",
+        },
+
         // Accent — Sage scale
         accent: {
           DEFAULT: "var(--color-accent)",
+          // Alias `fg` além de `foreground`: a variável CSS chama
+          // --color-accent-fg, e escrever `text-accent-fg` (classe que não
+          // existia) já custou um deploy com texto sem contraste no balão.
+          fg: "var(--color-accent-fg)",
           foreground: "var(--color-accent-fg)",
           soft: "var(--color-accent-soft)",
           hover: "var(--color-accent-hover)",

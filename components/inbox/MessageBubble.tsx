@@ -71,11 +71,11 @@ export function MessageBubble({ message, debugCitations }: Props) {
           // Balão = objeto sobre o canvas: recebida em branco com fio e sombra
           // rasa, enviada no verde cheio. Cada uma se separa da outra e as duas
           // se separam do fundo rebaixado da conversa.
-          "max-w-[75%] rounded-2xl px-3.5 py-2 text-sm",
+          "max-w-[75%] rounded-2xl border px-3.5 py-2 text-sm shadow-xs",
           isOutbound
-            ? "text-accent-fg rounded-br-md bg-accent shadow-sm"
-            : "rounded-bl-md border border-border bg-surface text-text shadow-xs",
-          isFailed && "border border-error",
+            ? "rounded-br-md border-bubble-out-border bg-bubble-out text-bubble-out-fg"
+            : "rounded-bl-md border-border bg-surface text-text",
+          isFailed && "border-error",
         )}
       >
         {senderLabel && (
@@ -94,7 +94,7 @@ export function MessageBubble({ message, debugCitations }: Props) {
         <div
           className={cn(
             "mt-1 flex items-center justify-end gap-1 text-[10px]",
-            isOutbound ? "text-accent-fg/75" : "text-text-subtle",
+            isOutbound ? "text-bubble-out-fg opacity-70" : "text-text-subtle",
           )}
         >
           <span>{time}</span>

@@ -37,6 +37,14 @@
   --color-border: #d6dedd;
   --color-border-strong: #b3bfbe;
 
+  /* Balão enviado (Inbox). Fica FORA do accent de propósito: accent é cor de
+     ação (botão), e um botão inteiro de texto longo não se lê bem. No claro é
+     o verde lavado com tinta escura (8.6:1); segue a marca ativa sozinho,
+     porque aponta pros stops do accent. */
+  --color-bubble-out: var(--color-accent-100);
+  --color-bubble-out-fg: var(--color-accent-900);
+  --color-bubble-out-border: var(--color-accent-200);
+
   /* Accent — ZapInbox green (11 stops) */
   --color-accent-50: #eafaf5;
   --color-accent-100: #cbf1e7;
@@ -178,6 +186,12 @@
   /* Borders (dark) */
   --color-border: #1f322e;
   --color-border-strong: #2b4440;
+
+  /* Balão enviado (dark): verde FUNDO, não o mint do accent — mint em área
+     grande grita e o texto por cima não fecha contraste. 7.4:1. */
+  --color-bubble-out: var(--color-accent-800);
+  --color-bubble-out-fg: var(--color-accent-50);
+  --color-bubble-out-border: var(--color-accent-700);
 
   /* Accent stays same hex stops; default shifts up for dark contrast */
   --color-accent-50: #eafaf5;
