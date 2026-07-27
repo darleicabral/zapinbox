@@ -5,12 +5,7 @@ import { Eye, ChartBar, Warning } from "@/lib/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLgpdPreview, type LgpdPreviewCounts } from "@/hooks/useLgpdPreview";
 
 interface PreviewPanelProps {
@@ -37,12 +32,7 @@ export function PreviewPanel({ requestId }: PreviewPanelProps) {
 
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setOpen(true)}
-        className="gap-2"
-      >
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="gap-2">
         <Eye size={16} aria-hidden />
         Pré-visualizar dados
       </Button>
@@ -84,8 +74,10 @@ export function PreviewPanel({ requestId }: PreviewPanelProps) {
 
               {/* Contact card */}
               {preview.contact && (
-                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                  <p className="font-medium">{preview.contact.name ?? preview.contact.display_name ?? "—"}</p>
+                <div className="bg-muted/30 rounded-md border px-3 py-2 text-sm">
+                  <p className="font-medium">
+                    {preview.contact.name ?? preview.contact.display_name ?? "—"}
+                  </p>
                   {preview.contact.email && (
                     <p className="text-muted-foreground">{preview.contact.email}</p>
                   )}
@@ -132,7 +124,10 @@ export function PreviewPanel({ requestId }: PreviewPanelProps) {
                     <SampleBlock label="Conversas" rows={preview.sample.conversations} />
                   )}
                   {preview.sample.messages_recent.length > 0 && (
-                    <SampleBlock label="Mensagens (recentes)" rows={preview.sample.messages_recent} />
+                    <SampleBlock
+                      label="Mensagens (recentes)"
+                      rows={preview.sample.messages_recent}
+                    />
                   )}
                   {preview.sample.leads.length > 0 && (
                     <SampleBlock label="Leads" rows={preview.sample.leads} />
@@ -144,7 +139,8 @@ export function PreviewPanel({ requestId }: PreviewPanelProps) {
               )}
 
               <p className="text-center text-xs text-muted-foreground">
-                Gerado em {new Date(preview.generated_at).toLocaleString("pt-BR")} · PII mascarada · CPF não exibido
+                Gerado em {new Date(preview.generated_at).toLocaleString("pt-BR")} · PII mascarada ·
+                CPF não exibido
               </p>
             </div>
           )}
@@ -158,8 +154,8 @@ function SampleBlock({ label, rows }: { label: string; rows: unknown[] }) {
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="max-h-40 overflow-y-auto rounded-md border bg-muted/20 p-2">
-        <pre className="text-xs leading-relaxed whitespace-pre-wrap break-all">
+      <div className="bg-muted/20 max-h-40 overflow-y-auto rounded-md border p-2">
+        <pre className="whitespace-pre-wrap break-all text-xs leading-relaxed">
           {JSON.stringify(rows, null, 2)}
         </pre>
       </div>

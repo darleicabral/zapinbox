@@ -70,7 +70,11 @@ export async function GET(
     patch.last_status_change_at = new Date().toISOString();
   }
   if (phoneNumber && phoneNumber !== session.phone_number) patch.phone_number = phoneNumber;
-  await supabase.from("channel_sessions").update(patch).eq("organization_id", activeOrg.orgId).eq("id", id);
+  await supabase
+    .from("channel_sessions")
+    .update(patch)
+    .eq("organization_id", activeOrg.orgId)
+    .eq("id", id);
 
   return ok(
     {

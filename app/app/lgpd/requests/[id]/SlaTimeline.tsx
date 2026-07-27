@@ -15,10 +15,7 @@ interface Milestone {
   date: Date;
 }
 
-function getMilestones(
-  receivedAt: Date,
-  requestType: string,
-): { label: string; day: number }[] {
+function getMilestones(receivedAt: Date, requestType: string): { label: string; day: number }[] {
   if (requestType === "customer_data_request") {
     return [
       { label: "Recebido", day: 0 },
@@ -54,9 +51,7 @@ export function SlaTimeline({ received_at, due_at, request_type }: SlaTimelinePr
   const milestoneConfigs = getMilestones(receivedAt, request_type);
   const milestones: (Milestone & { status: "completed" | "current" | "future" })[] =
     milestoneConfigs.map((m, idx) => {
-      const date = new Date(
-        receivedAt.getTime() + m.day * 24 * 60 * 60 * 1000,
-      );
+      const date = new Date(receivedAt.getTime() + m.day * 24 * 60 * 60 * 1000);
       const isLast = idx === milestoneConfigs.length - 1;
       return {
         label: m.label,
@@ -76,11 +71,7 @@ export function SlaTimeline({ received_at, due_at, request_type }: SlaTimelinePr
   const daysRemaining = differenceInDays(dueAt, now);
 
   const progressColor =
-    progress >= 1
-      ? "bg-red-500"
-      : progress >= 0.75
-        ? "bg-yellow-500"
-        : "bg-emerald-500";
+    progress >= 1 ? "bg-red-500" : progress >= 0.75 ? "bg-yellow-500" : "bg-emerald-500";
 
   return (
     <div className="space-y-4">
@@ -130,13 +121,8 @@ export function SlaTimeline({ received_at, due_at, request_type }: SlaTimelinePr
           return (
             <li key={m.targetDay} className="flex gap-3">
               <div className="flex flex-col items-center">
-                <div
-                  className={`mt-0.5 h-3 w-3 rounded-full border-2 ${dotColor}`}
-                  aria-hidden
-                />
-                {!isLast && (
-                  <div className="mt-1 h-8 w-px bg-border" aria-hidden />
-                )}
+                <div className={`mt-0.5 h-3 w-3 rounded-full border-2 ${dotColor}`} aria-hidden />
+                {!isLast && <div className="mt-1 h-8 w-px bg-border" aria-hidden />}
               </div>
               <div className={`pb-1 text-sm ${isLast ? "" : "pb-3"}`}>
                 <p className={`leading-tight ${labelColor}`}>

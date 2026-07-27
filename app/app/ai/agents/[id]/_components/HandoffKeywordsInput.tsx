@@ -32,13 +32,13 @@ export function HandoffKeywordsInput({ value, onChange, disabled }: Props) {
   return (
     <div className="space-y-2">
       <Label htmlFor="handoff_kw">Palavras-chave de handoff</Label>
-      <div className="flex flex-wrap gap-1 rounded border border-border/60 p-2">
+      <div className="border-border/60 flex flex-wrap gap-1 rounded border p-2">
         {value.map((kw) => (
           <button
             key={kw}
             type="button"
             onClick={() => !disabled && remove(kw)}
-            className="group flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-xs hover:bg-destructive/15"
+            className="hover:bg-destructive/15 group flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-xs"
             disabled={disabled}
             aria-label={`Remover ${kw}`}
           >
@@ -67,7 +67,7 @@ export function HandoffKeywordsInput({ value, onChange, disabled }: Props) {
         />
         <button
           type="button"
-          className="rounded border border-border/60 px-3 text-xs hover:bg-muted"
+          className="border-border/60 rounded border px-3 text-xs hover:bg-muted"
           onClick={() => add(draft)}
           disabled={disabled || draft.trim() === ""}
         >
@@ -81,7 +81,7 @@ export function HandoffKeywordsInput({ value, onChange, disabled }: Props) {
             type="button"
             onClick={() => add(d)}
             disabled={disabled}
-            className="rounded border border-dashed border-border/60 px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+            className="border-border/60 rounded border border-dashed px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
           >
             + {d}
           </button>

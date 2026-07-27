@@ -61,23 +61,18 @@ export function RunsTable({ agentId, active }: Props) {
         <p className="text-sm text-muted-foreground">
           {isLoading ? "Carregando…" : `${rows.length} execuções recentes`}
         </p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => refetch()}
-          disabled={isFetching}
-        >
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
           {isFetching ? "Atualizando…" : "Atualizar"}
         </Button>
       </div>
 
       {error ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+        <p className="border-destructive/40 bg-destructive/10 rounded-md border p-3 text-sm text-destructive">
           Erro ao carregar execuções.
         </p>
       ) : null}
 
-      <div className="rounded-md border border-border/60">
+      <div className="border-border/60 rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -127,8 +122,7 @@ export function RunsTable({ agentId, active }: Props) {
                   )}
                 </TableCell>
                 <TableCell className="font-mono text-xs">
-                  {(r.tokens_in ?? 0).toLocaleString()} /{" "}
-                  {(r.tokens_out ?? 0).toLocaleString()}
+                  {(r.tokens_in ?? 0).toLocaleString()} / {(r.tokens_out ?? 0).toLocaleString()}
                 </TableCell>
                 <TableCell className="font-mono text-xs">{fmtCost(r.cost_cents)}</TableCell>
                 <TableCell className="font-mono text-xs">{fmtLatency(r.latency_ms)}</TableCell>

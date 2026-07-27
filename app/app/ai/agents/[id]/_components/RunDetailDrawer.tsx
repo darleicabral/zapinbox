@@ -65,9 +65,7 @@ export function RunDetailDrawer({ run, open, onOpenChange }: Props) {
               </Badge>
             ) : null}
           </SheetTitle>
-          <SheetDescription className="font-mono text-xs">
-            {run?.id ?? ""}
-          </SheetDescription>
+          <SheetDescription className="font-mono text-xs">{run?.id ?? ""}</SheetDescription>
         </SheetHeader>
 
         {run ? (
@@ -86,10 +84,8 @@ export function RunDetailDrawer({ run, open, onOpenChange }: Props) {
             </dl>
 
             {run.error_code || run.error_message ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs">
-                <p className="font-medium text-destructive">
-                  {run.error_code ?? "error"}
-                </p>
+              <div className="border-destructive/40 bg-destructive/10 rounded-md border p-2 text-xs">
+                <p className="font-medium text-destructive">{run.error_code ?? "error"}</p>
                 {run.error_message ? (
                   <p className="mt-1 whitespace-pre-wrap">{run.error_message}</p>
                 ) : null}
@@ -99,16 +95,12 @@ export function RunDetailDrawer({ run, open, onOpenChange }: Props) {
             <div className="flex flex-wrap gap-2">
               {run.conversation_id ? (
                 <Button variant="outline" size="sm" asChild>
-                  <Link href={`/app/inbox?conversation=${run.conversation_id}`}>
-                    Ver conversa
-                  </Link>
+                  <Link href={`/app/inbox?conversation=${run.conversation_id}`}>Ver conversa</Link>
                 </Button>
               ) : null}
               {run.inbound_message_id ? (
                 <Button variant="ghost" size="sm" asChild>
-                  <Link href={`/app/inbox?message=${run.inbound_message_id}`}>
-                    Ver inbound
-                  </Link>
+                  <Link href={`/app/inbox?message=${run.inbound_message_id}`}>Ver inbound</Link>
                 </Button>
               ) : null}
             </div>
@@ -130,7 +122,7 @@ export function RunDetailDrawer({ run, open, onOpenChange }: Props) {
 
 function Cell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded border border-border/60 px-2 py-1">
+    <div className="border-border/60 rounded border px-2 py-1">
       <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className="font-mono">{children}</dd>
     </div>

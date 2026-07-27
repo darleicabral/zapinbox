@@ -25,11 +25,14 @@ export function AuditTrail({ entries }: AuditTrailProps) {
         return (
           <li key={entry.id} className="flex gap-3">
             <div className="flex flex-col items-center">
-              <div className="mt-1 h-2 w-2 rounded-full bg-border ring-2 ring-background" aria-hidden />
+              <div
+                className="mt-1 h-2 w-2 rounded-full bg-border ring-2 ring-background"
+                aria-hidden
+              />
               {!isLast && <div className="mt-1 h-full min-h-[24px] w-px bg-border" aria-hidden />}
             </div>
-            <div className={`pb-3 min-w-0 flex-1 ${isLast ? "pb-0" : ""}`}>
-              <p className="text-sm font-mono font-medium truncate">{entry.action}</p>
+            <div className={`min-w-0 flex-1 pb-3 ${isLast ? "pb-0" : ""}`}>
+              <p className="truncate font-mono text-sm font-medium">{entry.action}</p>
               <p className="text-xs text-muted-foreground">
                 {format(new Date(entry.created_at), "dd/MM/yyyy HH:mm:ss", { locale: ptBR })}
                 {entry.actor_user_id && (

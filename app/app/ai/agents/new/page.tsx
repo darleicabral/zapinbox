@@ -42,11 +42,7 @@ export default async function NewAgentPage() {
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">
-      <AgentForm
-        mode="create"
-        credentials={credentials}
-        channelSessions={channelSessions}
-      />
+      <AgentForm mode="create" credentials={credentials} channelSessions={channelSessions} />
     </div>
   );
 }

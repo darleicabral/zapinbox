@@ -57,10 +57,7 @@ const STATUS_VARIANT: Record<
   pending_review: "outline",
 };
 
-const SLA_VARIANT: Record<
-  SlaBucket,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
+const SLA_VARIANT: Record<SlaBucket, "default" | "secondary" | "destructive" | "outline"> = {
   overdue: "destructive",
   critical: "destructive",
   warning: "outline",
@@ -335,9 +332,7 @@ export function RequestsTable() {
           >
             Anterior
           </Button>
-          <span className="text-xs text-muted-foreground">
-            Página {meta.page}
-          </span>
+          <span className="text-xs text-muted-foreground">Página {meta.page}</span>
           <Button
             variant="outline"
             size="sm"

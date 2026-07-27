@@ -26,7 +26,10 @@ interface ApproveButtonProps {
   status: string;
 }
 
-const VARIANT_LABELS: Record<LgpdRequestType, { button: string; title: string; description: string }> = {
+const VARIANT_LABELS: Record<
+  LgpdRequestType,
+  { button: string; title: string; description: string }
+> = {
   customer_data_request: {
     button: "Aprovar export",
     title: "Aprovar exportação de dados",
@@ -93,7 +96,7 @@ export function ApproveButton({ requestId, requestType, status }: ApproveButtonP
         <div className="space-y-2 py-2">
           <Label htmlFor="approved_reason">
             Justificativa{" "}
-            <span className="text-muted-foreground text-xs">(mínimo 10 caracteres)</span>
+            <span className="text-xs text-muted-foreground">(mínimo 10 caracteres)</span>
           </Label>
           <Textarea
             id="approved_reason"

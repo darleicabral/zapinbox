@@ -61,7 +61,7 @@ export function LgpdRequestDetail({ id }: Props) {
 
   if (error || !data) {
     return (
-      <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+      <div className="border-destructive/30 bg-destructive/5 rounded-md border px-4 py-3 text-sm text-destructive">
         Falha ao carregar solicitação.
       </div>
     );
@@ -87,16 +87,10 @@ export function LgpdRequestDetail({ id }: Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold tracking-tight font-mono">
-            #{shortId}
-          </h1>
-          <Badge variant={STATUS_VARIANT[request.status] ?? "secondary"}>
-            {statusLabel}
-          </Badge>
+          <h1 className="font-mono text-xl font-semibold tracking-tight">#{shortId}</h1>
+          <Badge variant={STATUS_VARIANT[request.status] ?? "secondary"}>{statusLabel}</Badge>
           <Badge variant="outline">{typeLabel}</Badge>
-          {request.emergency && (
-            <Badge variant="destructive">Urgente</Badge>
-          )}
+          {request.emergency && <Badge variant="destructive">Urgente</Badge>}
         </div>
 
         <p className="text-sm text-muted-foreground">
@@ -105,8 +99,7 @@ export function LgpdRequestDetail({ id }: Props) {
           {request.due_at && (
             <>
               {" · "}
-              Vence em{" "}
-              {format(new Date(request.due_at), "dd/MM/yyyy", { locale: ptBR })}
+              Vence em {format(new Date(request.due_at), "dd/MM/yyyy", { locale: ptBR })}
             </>
           )}
         </p>
@@ -114,7 +107,7 @@ export function LgpdRequestDetail({ id }: Props) {
 
       {/* PDF download if completed */}
       {signed_pdf_url && (
-        <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm flex items-center justify-between gap-4">
+        <div className="bg-muted/30 flex items-center justify-between gap-4 rounded-md border px-4 py-3 text-sm">
           <span>Relatório de exportação disponível (expira em 72h).</span>
           <Button size="sm" variant="outline" asChild>
             <a href={signed_pdf_url} download>
@@ -166,9 +159,7 @@ export function LgpdRequestDetail({ id }: Props) {
             <Row label="Origem" value={request.source ?? "—"} />
             <Row label="Escopo" value={request.scope} />
             <Row label="Tentativas" value={String(request.attempts)} />
-            {request.contact_id && (
-              <Row label="Contact ID" value={request.contact_id} mono />
-            )}
+            {request.contact_id && <Row label="Contact ID" value={request.contact_id} mono />}
             {request.external_customer_id && (
               <Row label="External customer ID" value={request.external_customer_id} />
             )}
@@ -179,9 +170,9 @@ export function LgpdRequestDetail({ id }: Props) {
               />
             )}
             {request.error_message && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1">
+              <div className="border-destructive/30 bg-destructive/5 rounded-md border px-2 py-1">
                 <p className="text-xs text-muted-foreground">Erro</p>
-                <p className="text-destructive text-xs">{request.error_message}</p>
+                <p className="text-xs text-destructive">{request.error_message}</p>
               </div>
             )}
           </CardContent>
@@ -203,19 +194,11 @@ export function LgpdRequestDetail({ id }: Props) {
   );
 }
 
-function Row({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
+function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex justify-between gap-4">
-      <span className="text-muted-foreground shrink-0">{label}</span>
-      <span className={`text-right truncate ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className={`truncate text-right ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
     </div>
   );
 }

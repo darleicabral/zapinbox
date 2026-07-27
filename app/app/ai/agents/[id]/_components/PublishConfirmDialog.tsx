@@ -38,8 +38,7 @@ export function PublishConfirmDialog({
   isPending,
 }: Props) {
   const toolsDiff = diffArr(published?.tool_ids ?? [], draft.tool_ids);
-  const promptDeltaChars =
-    draft.system_prompt.length - (published?.system_prompt.length ?? 0);
+  const promptDeltaChars = draft.system_prompt.length - (published?.system_prompt.length ?? 0);
   const modelChanged = !published || draft.model !== published.model;
   const providerChanged = !published || draft.provider !== published.provider;
 
@@ -54,7 +53,7 @@ export function PublishConfirmDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <div className="space-y-2 rounded-md border border-border/60 p-3 text-xs">
+        <div className="border-border/60 space-y-2 rounded-md border p-3 text-xs">
           {providerChanged ? (
             <p>
               <strong>Provider:</strong>{" "}

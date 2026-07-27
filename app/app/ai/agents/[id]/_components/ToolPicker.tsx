@@ -64,10 +64,7 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
   return (
     <div className="space-y-4">
       {grouped.map(([category, list]) => (
-        <fieldset
-          key={category}
-          className="space-y-2 rounded-md border border-border/60 p-3"
-        >
+        <fieldset key={category} className="border-border/60 space-y-2 rounded-md border p-3">
           <legend className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {CATEGORY_LABELS[category] ?? category}
           </legend>
@@ -76,7 +73,7 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
             return (
               <label
                 key={t.id}
-                className="flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-muted/40"
+                className="hover:bg-muted/40 flex cursor-pointer items-start gap-2 rounded p-1"
               >
                 <input
                   type="checkbox"

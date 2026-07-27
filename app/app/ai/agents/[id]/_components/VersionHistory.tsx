@@ -15,12 +15,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -127,12 +122,11 @@ export function VersionHistory({ agentId, versions, readOnly }: Props) {
     <>
       <ol className="flex flex-col gap-2">
         {sorted.map((v) => {
-          const canRevert =
-            !readOnly && v.status !== "draft" && v.status !== "archived";
+          const canRevert = !readOnly && v.status !== "draft" && v.status !== "archived";
           return (
             <li
               key={v.id}
-              className="flex flex-wrap items-center gap-3 rounded-md border border-border/60 p-3 text-sm"
+              className="border-border/60 flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm"
             >
               <Badge variant={STATUS_VARIANT[v.status] ?? "outline"} className="text-xs">
                 {v.status}
@@ -154,11 +148,7 @@ export function VersionHistory({ agentId, versions, readOnly }: Props) {
                   Diff
                 </Button>
                 {canRevert ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setRevertTarget(v)}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => setRevertTarget(v)}>
                     Reverter
                   </Button>
                 ) : null}
@@ -181,18 +171,13 @@ export function VersionHistory({ agentId, versions, readOnly }: Props) {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
-        open={revertTarget != null}
-        onOpenChange={(o) => !o && setRevertTarget(null)}
-      >
+      <AlertDialog open={revertTarget != null} onOpenChange={(o) => !o && setRevertTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Reverter para v{revertTarget?.version_number}?
-            </AlertDialogTitle>
+            <AlertDialogTitle>Reverter para v{revertTarget?.version_number}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Uma nova versão idêntica a v{revertTarget?.version_number} será criada e
-              publicada imediatamente. A versão atualmente publicada vira superseded.
+              Uma nova versão idêntica a v{revertTarget?.version_number} será criada e publicada
+              imediatamente. A versão atualmente publicada vira superseded.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

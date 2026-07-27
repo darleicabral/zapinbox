@@ -49,28 +49,22 @@ function clip(text: string, max = 4000): string {
   return `${text.slice(0, max)}\n\n… (truncado)`;
 }
 
-export function RunTrace({
-  toolCalls,
-  finalText,
-  emptyMessage = "Sem trace disponível.",
-}: Props) {
+export function RunTrace({ toolCalls, finalText, emptyMessage = "Sem trace disponível." }: Props) {
   const steps = asArray(toolCalls);
 
   if (steps.length === 0 && !finalText) {
-    return (
-      <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-    );
+    return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
   return (
     <div className="flex flex-col gap-3">
       {steps.map((s, idx) => {
         const stepNum = s.step ?? idx + 1;
-        const errMsg = typeof s.error === "string" ? s.error : s.error?.message ?? null;
+        const errMsg = typeof s.error === "string" ? s.error : (s.error?.message ?? null);
         return (
           <details
             key={`${stepNum}-${s.tool_name ?? idx}`}
-            className="group rounded-md border border-border/60 bg-background"
+            className="border-border/60 group rounded-md border bg-background"
           >
             <summary className="flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm">
               <span className="flex items-center gap-2">
@@ -88,23 +82,23 @@ export function RunTrace({
                 {typeof s.latency_ms === "number" ? `${s.latency_ms}ms` : "—"}
               </span>
             </summary>
-            <div className="space-y-3 border-t border-border/60 px-3 py-3 text-xs">
+            <div className="border-border/60 space-y-3 border-t px-3 py-3 text-xs">
               <div>
                 <p className="mb-1 font-medium text-muted-foreground">Args</p>
-                <pre className="overflow-x-auto rounded bg-muted/40 p-2 font-mono leading-relaxed">
+                <pre className="bg-muted/40 overflow-x-auto rounded p-2 font-mono leading-relaxed">
                   {clip(fmtJson(s.args))}
                 </pre>
               </div>
               <div>
                 <p className="mb-1 font-medium text-muted-foreground">Result</p>
-                <pre className="overflow-x-auto rounded bg-muted/40 p-2 font-mono leading-relaxed">
+                <pre className="bg-muted/40 overflow-x-auto rounded p-2 font-mono leading-relaxed">
                   {clip(fmtJson(s.result))}
                 </pre>
               </div>
               {errMsg ? (
                 <div>
                   <p className="mb-1 font-medium text-destructive">Error</p>
-                  <pre className="overflow-x-auto rounded bg-destructive/10 p-2 font-mono leading-relaxed text-destructive">
+                  <pre className="bg-destructive/10 overflow-x-auto rounded p-2 font-mono leading-relaxed text-destructive">
                     {clip(errMsg)}
                   </pre>
                 </div>
@@ -120,7 +114,7 @@ export function RunTrace({
       })}
 
       {finalText ? (
-        <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+        <div className="border-primary/30 bg-primary/5 rounded-md border p-3 text-sm">
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-primary">
             Mensagem que SERIA enviada
           </p>

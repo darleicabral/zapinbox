@@ -120,7 +120,7 @@ export function VersionDiff({ versionA, versionB }: Props) {
             </thead>
             <tbody>
               {fields.map((f) => (
-                <tr key={f.key} className="border-t border-border/40">
+                <tr key={f.key} className="border-border/40 border-t">
                   <td className="py-1 font-mono">{f.label}</td>
                   <td className="py-1 font-mono text-destructive">{String(f.a)}</td>
                   <td className="py-1 font-mono text-emerald-600">{String(f.b)}</td>
@@ -148,7 +148,7 @@ export function VersionDiff({ versionA, versionB }: Props) {
       </Section>
 
       <Section title="System prompt">
-        <pre className="max-h-96 overflow-auto rounded-md border border-border/60 bg-muted/30 p-2 font-mono text-xs leading-relaxed">
+        <pre className="border-border/60 bg-muted/30 max-h-96 overflow-auto rounded-md border p-2 font-mono text-xs leading-relaxed">
           {lines.map((l, idx) => {
             const cls =
               l.kind === "add"
@@ -173,23 +173,13 @@ export function VersionDiff({ versionA, versionB }: Props) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2">
-      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {title}
-      </h4>
+      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h4>
       <div className="space-y-2">{children}</div>
     </section>
   );
 }
 
-function Pills({
-  label,
-  tone,
-  items,
-}: {
-  label: string;
-  tone: "add" | "del";
-  items: string[];
-}) {
+function Pills({ label, tone, items }: { label: string; tone: "add" | "del"; items: string[] }) {
   if (items.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
