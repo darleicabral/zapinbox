@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { z } from "zod";
 import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { listAuthUsersByIds } from "@/lib/auth/admin-users";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { randomUUID } from "node:crypto";
@@ -34,9 +35,7 @@ function encodeCursor(payload: CursorPayload): string {
 
 function decodeCursor(cursor: string): CursorPayload | null {
   try {
-    return JSON.parse(
-      Buffer.from(cursor, "base64url").toString("utf-8"),
-    ) as CursorPayload;
+    return JSON.parse(Buffer.from(cursor, "base64url").toString("utf-8")) as CursorPayload;
   } catch {
     return null;
   }
@@ -56,9 +55,7 @@ export async function GET(req: NextRequest) {
     return fail("forbidden", "Platform admin required", 403, { requestId });
   }
 
-  const parsed = querySchema.safeParse(
-    Object.fromEntries(req.nextUrl.searchParams.entries()),
-  );
+  const parsed = querySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams.entries()));
   if (!parsed.success) {
     return fail("validation_error", "Invalid query params", 400, {
       requestId,
@@ -148,23 +145,9 @@ export async function GET(req: NextRequest) {
   // Step 2: get unique user IDs
   const userIds = [...new Set((uoRows as unknown as UoRow[]).map((r) => r.user_id))];
 
-  // Step 3: fetch auth users via admin client (batched)
-  // Supabase auth admin API paginates by default; for cross-tenant admin views
-  // we fetch all users matching our collected IDs.
-  // auth.admin.listUsers() doesn't support filter by IDs, so we use
-  // admin.schema('auth').from('users') with the service role.
-  const { data: authUsersData, error: authError } = await admin
-    .schema("auth")
-    .from("users")
-    .select("id, email, last_sign_in_at, created_at, raw_user_meta_data")
-    .in("id", userIds);
-
-  if (authError) {
-    return fail("internal_error", "Auth user query failed", 500, {
-      requestId,
-      details: authError.message,
-    });
-  }
+  // Step 3: usuários via Admin API do Auth.  não é consultável pelo
+  // PostgREST (PGRST106: schema não exposto) — ver lib/auth/admin-users.ts.
+  const authUsersData = await listAuthUsersByIds(admin, userIds);
 
   type AuthUser = {
     id: string;
@@ -208,8 +191,7 @@ export async function GET(req: NextRequest) {
         tenant_name: org.display_name,
         tenant_slug: org.slug,
         email: u.email ?? null,
-        full_name:
-          (u.raw_user_meta_data?.full_name as string | undefined) ?? null,
+        full_name: (u.raw_user_meta_data?.full_name as string | undefined) ?? null,
         last_sign_in_at: u.last_sign_in_at,
         created_at: u.created_at,
       },
@@ -220,9 +202,7 @@ export async function GET(req: NextRequest) {
   if (q) {
     const lq = q.toLowerCase();
     joined = joined.filter(
-      (r) =>
-        r.email?.toLowerCase().includes(lq) ||
-        r.full_name?.toLowerCase().includes(lq),
+      (r) => r.email?.toLowerCase().includes(lq) || r.full_name?.toLowerCase().includes(lq),
     );
   }
 
@@ -233,9 +213,7 @@ export async function GET(req: NextRequest) {
     }
     if (!a.last_sign_in_at) return 1;
     if (!b.last_sign_in_at) return -1;
-    const diff =
-      new Date(b.last_sign_in_at).getTime() -
-      new Date(a.last_sign_in_at).getTime();
+    const diff = new Date(b.last_sign_in_at).getTime() - new Date(a.last_sign_in_at).getTime();
     if (diff !== 0) return diff;
     const uid = a.user_id < b.user_id ? -1 : a.user_id > b.user_id ? 1 : 0;
     if (uid !== 0) return uid;
@@ -244,13 +222,9 @@ export async function GET(req: NextRequest) {
 
   // Step 7: apply cursor
   if (cursorPayload) {
-    const { last_sign_in_at: cLsi, user_id: cUid, organization_id: cOid } =
-      cursorPayload;
+    const { last_sign_in_at: cLsi, user_id: cUid, organization_id: cOid } = cursorPayload;
     const cursorIdx = joined.findIndex(
-      (r) =>
-        r.last_sign_in_at === cLsi &&
-        r.user_id === cUid &&
-        r.organization_id === cOid,
+      (r) => r.last_sign_in_at === cLsi && r.user_id === cUid && r.organization_id === cOid,
     );
     if (cursorIdx !== -1) {
       joined = joined.slice(cursorIdx + 1);

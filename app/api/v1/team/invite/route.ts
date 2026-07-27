@@ -16,6 +16,7 @@ import { env } from "@/lib/env";
 import { ok, fail } from "@/lib/api/wrappers";
 import { ApiError } from "@/lib/api/types";
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
+import { findAuthUserIdByEmail } from "@/lib/auth/admin-users";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canAssignRole, canManageTeam } from "@/lib/auth/permissions";
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const sent: SentItem[] = [];
   const failed: FailedItem[] = [];
 
-  // Resolve existing-member check via admin client (auth.users lookup by email).
+  // Pré-checagem de "já é membro" com service role (ver lib/auth/admin-users.ts).
   const admin = isServiceRoleConfigured() ? createAdminClient() : null;
   // env.* parseia process.env em runtime → funciona na imagem genérica self-host
   // (não fica queimado no bundle como process.env.NEXT_PUBLIC_APP_URL direto).
@@ -80,33 +81,17 @@ export async function POST(req: NextRequest): Promise<Response> {
   for (const inv of input.invitations) {
     const email = inv.email.trim().toLowerCase();
 
-    // Best-effort already-member check (only when service role is configured).
+    // Já é membro ativo? Antes isto lia `auth.users` pelo PostgREST, que responde
+    // PGRST106 (schema não exposto) — a checagem nunca rodava de verdade e todo
+    // mundo recebia convite, inclusive quem já estava dentro.
     if (admin) {
       try {
-        const { data: usersList } = await admin.auth.admin.listUsers({
-          page: 1,
-          perPage: 1,
-        });
-        // listUsers does not support email filter directly across all versions;
-        // fallback to a paginated scan is overkill for MVP. Try direct getUser
-        // by email if available; otherwise skip the pre-check.
-        void usersList;
-      } catch {
-        // ignore — issue invite anyway
-      }
-      // Direct email lookup (Supabase JS v2): find via SQL on auth.users.
-      try {
-        const { data: existingUser } = await admin
-          .schema("auth")
-          .from("users")
-          .select("id")
-          .eq("email", email)
-          .maybeSingle();
-        if (existingUser?.id) {
+        const existingUserId = await findAuthUserIdByEmail(admin, email);
+        if (existingUserId) {
           const { data: existingMembership } = await admin
             .from("user_organizations")
             .select("id")
-            .eq("user_id", existingUser.id)
+            .eq("user_id", existingUserId)
             .eq("organization_id", activeOrg.orgId)
             .is("revoked_at", null)
             .maybeSingle();
@@ -116,7 +101,7 @@ export async function POST(req: NextRequest): Promise<Response> {
           }
         }
       } catch {
-        // ignore lookup failure — proceed to issue invite
+        // falha na busca não pode impedir o convite
       }
     }
 

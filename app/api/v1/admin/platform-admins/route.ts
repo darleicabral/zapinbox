@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { listAuthUsersByIds } from "@/lib/auth/admin-users";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { randomUUID } from "node:crypto";
@@ -10,8 +11,7 @@ import { randomUUID } from "node:crypto";
 // This route is strictly READ-ONLY. POST/PATCH/DELETE return 405 explicitly.
 // ---------------------------------------------------------------------------
 
-const T04_MESSAGE =
-  "platform_admins é gerenciado exclusivamente via DBA (Spec 01 §3.4 T-04)";
+const T04_MESSAGE = "platform_admins é gerenciado exclusivamente via DBA (Spec 01 §3.4 T-04)";
 
 // ---------------------------------------------------------------------------
 // GET /api/v1/admin/platform-admins
@@ -65,19 +65,9 @@ export async function GET(_req: NextRequest) {
   }
   const allUserIds = Array.from(userIdSet);
 
-  // Step 3: resolve auth.users emails via service-role (cross-schema join)
-  const { data: authUsersData, error: authError } = await admin
-    .schema("auth")
-    .from("users")
-    .select("id, email, raw_user_meta_data")
-    .in("id", allUserIds);
-
-  if (authError) {
-    return fail("internal_error", "Auth user query failed", 500, {
-      requestId,
-      details: authError.message,
-    });
-  }
+  // Step 3: e-mails via Admin API do Auth. NÃO dá para consultar auth.users
+  // pelo PostgREST (PGRST106: schema não exposto) — ver lib/auth/admin-users.ts.
+  const authUsersData = await listAuthUsersByIds(admin, allUserIds);
 
   type AuthUser = {
     id: string;
@@ -99,9 +89,7 @@ export async function GET(_req: NextRequest) {
       id: pa.id,
       user_id: pa.user_id,
       user_email: targetUser?.email ?? null,
-      user_name:
-        (targetUser?.raw_user_meta_data?.full_name as string | undefined) ??
-        null,
+      user_name: (targetUser?.raw_user_meta_data?.full_name as string | undefined) ?? null,
       granted_by: pa.granted_by,
       granted_by_email: grantedByUser?.email ?? null,
       granted_at: pa.granted_at,
@@ -161,8 +149,4 @@ export function DELETE() {
   return methodNotAllowed();
 }
 
-export type PlatformAdminRow = Awaited<
-  ReturnType<typeof GET>
-> extends Response
-  ? never
-  : never;
+export type PlatformAdminRow = Awaited<ReturnType<typeof GET>> extends Response ? never : never;

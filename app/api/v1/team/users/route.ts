@@ -18,6 +18,7 @@ import type { NextRequest } from "next/server";
 import { ApiError } from "@/lib/api/types";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
+import { findAuthUserIdByEmail } from "@/lib/auth/admin-users";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { canAssignRole, canManageTeam } from "@/lib/auth/permissions";
 import { createMemberSchema, validateRequest } from "@/lib/schemas";
@@ -67,19 +68,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   const email = input.email.trim().toLowerCase();
   const admin = createAdminClient();
 
-  // Conta já existe? (mesmo e-mail pode ser membro de outro tenant)
-  const { data: existingUser, error: lookupErr } = await admin
-    .schema("auth")
-    .from("users")
-    .select("id")
-    .eq("email", email)
-    .maybeSingle();
-  if (lookupErr) {
-    return fail("internal_error", lookupErr.message, 500, { requestId });
-  }
-
-  let userId = (existingUser as { id: string } | null)?.id ?? null;
-  const reusedAccount = !!userId;
+  // Conta já existe? (o mesmo e-mail pode ser membro de outro tenant)
+  let userId = await findAuthUserIdByEmail(admin, email);
+  let reusedAccount = !!userId;
 
   if (!userId) {
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
@@ -89,11 +80,19 @@ export async function POST(req: NextRequest): Promise<Response> {
       user_metadata: input.full_name ? { full_name: input.full_name } : {},
     });
     if (createErr || !created?.user) {
-      return fail("create_user_failed", createErr?.message ?? "Falha ao criar o usuário.", 422, {
-        requestId,
-      });
+      // O GoTrue recusa e-mail repetido: pode ser corrida ou base grande demais
+      // para a paginação acima. Procura de novo antes de desistir.
+      const raced = await findAuthUserIdByEmail(admin, email);
+      if (!raced) {
+        return fail("create_user_failed", createErr?.message ?? "Falha ao criar o usuário.", 422, {
+          requestId,
+        });
+      }
+      userId = raced;
+      reusedAccount = true;
+    } else {
+      userId = created.user.id;
     }
-    userId = created.user.id;
   }
 
   // Associação com a org: cria, ou reativa a que foi revogada.
