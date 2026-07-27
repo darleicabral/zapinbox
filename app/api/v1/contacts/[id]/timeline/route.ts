@@ -114,7 +114,9 @@ export async function GET(
 
   const directQ = buildQuery("contact_id", contactId);
   const leadQ =
-    leadIds.length > 0 ? buildQuery("lead_id", leadIds) : Promise.resolve({ data: [], error: null });
+    leadIds.length > 0
+      ? buildQuery("lead_id", leadIds)
+      : Promise.resolve({ data: [], error: null });
 
   const [directRes, leadRes] = await Promise.all([directQ, leadQ]);
 
@@ -140,9 +142,7 @@ export async function GET(
   const page = hasMore ? sorted.slice(0, limit) : sorted;
   const last = page[page.length - 1];
   const nextCursor =
-    hasMore && last
-      ? encodeCursor({ performed_at: last.performed_at, id: last.id })
-      : null;
+    hasMore && last ? encodeCursor({ performed_at: last.performed_at, id: last.id }) : null;
 
   return ok(page, {
     requestId,

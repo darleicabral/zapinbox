@@ -35,12 +35,7 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
     return fail("forbidden_tenant", "Sem organização ativa.", 403, { requestId });
   }
   if (ROLE_RANK[activeOrg.role] < ROLE_RANK.agent) {
-    return fail(
-      "forbidden_role",
-      "Apenas agentes podem reativar o bot.",
-      403,
-      { requestId },
-    );
+    return fail("forbidden_role", "Apenas agentes podem reativar o bot.", 403, { requestId });
   }
 
   const supabase = await createClient();

@@ -9,10 +9,7 @@ export function useCreateContact() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: ContactCreate) =>
-      apiClient.post<{ data: Contact; meta?: { action?: string } }>(
-        "/api/v1/contacts",
-        input,
-      ),
+      apiClient.post<{ data: Contact; meta?: { action?: string } }>("/api/v1/contacts", input),
     onError: showApiError,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["contacts"] });

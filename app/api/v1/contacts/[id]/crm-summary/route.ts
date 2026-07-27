@@ -36,9 +36,7 @@ export async function GET(
   const [leadsR, ordersR, actsR, lpR] = await Promise.all([
     supabase
       .from("crm_leads")
-      .select(
-        "id, title, status, value_cents, currency, updated_at, description, custom_fields",
-      )
+      .select("id, title, status, value_cents, currency, updated_at, description, custom_fields")
       .eq("contact_id", contactId)
       .order("updated_at", { ascending: false })
       .limit(3),

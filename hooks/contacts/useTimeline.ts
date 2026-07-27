@@ -30,7 +30,6 @@ export function useTimeline(contactId: string, types?: string[]) {
         throw err;
       }
     },
-    getNextPageParam: (lastPage) =>
-      lastPage.meta?.has_more ? lastPage.meta.cursor : undefined,
+    getNextPageParam: (lastPage) => (lastPage.meta?.has_more ? lastPage.meta.cursor : undefined),
   });
 }

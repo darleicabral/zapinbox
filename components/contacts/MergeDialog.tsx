@@ -75,9 +75,8 @@ export function MergeDialog({ queueItemId, open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Resolver merge de contatos</DialogTitle>
           <DialogDescription>
-            Comparação dos candidatos detectados. A resolução automática via API
-            ainda não está disponível neste MVP — entre em contato com o admin para
-            mesclar via SQL.
+            Comparação dos candidatos detectados. A resolução automática via API ainda não está
+            disponível neste MVP — entre em contato com o admin para mesclar via SQL.
           </DialogDescription>
         </DialogHeader>
 

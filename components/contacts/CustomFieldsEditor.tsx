@@ -123,9 +123,7 @@ export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props)
               id={id}
               type="number"
               value={typeof v === "number" ? v : ""}
-              onChange={(e) =>
-                set(f.key, e.target.value === "" ? null : Number(e.target.value))
-              }
+              onChange={(e) => set(f.key, e.target.value === "" ? null : Number(e.target.value))}
               disabled={disabled}
             />
           </div>
@@ -145,7 +143,7 @@ export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props)
         );
       case "select": {
         const parentVal = f.optionsBy ? String(value[f.optionsBy.field] ?? "") : "";
-        const opts = f.optionsBy ? f.optionsBy.map[parentVal] ?? [] : f.options ?? [];
+        const opts = f.optionsBy ? (f.optionsBy.map[parentVal] ?? []) : (f.options ?? []);
         const waitingParent = !!f.optionsBy && !parentVal;
         const parentLabel =
           fields.find((pf) => pf.key === f.optionsBy?.field)?.label ?? "o campo anterior";
@@ -293,7 +291,7 @@ export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props)
         ) : (
           <section
             key={i}
-            className="space-y-3 rounded-lg border border-warning/40 bg-warning-bg p-3.5 duration-200 animate-in fade-in-0 slide-in-from-top-1"
+            className="border-warning/40 animate-in fade-in-0 slide-in-from-top-1 space-y-3 rounded-lg border bg-warning-bg p-3.5 duration-200"
           >
             <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-warning-fg">
               <Warning size={14} weight="fill" aria-hidden />
@@ -356,8 +354,7 @@ export function missingRequiredFields(
   for (const f of fields) {
     if (!f.required || !isVisible(f)) continue;
     const v = values[f.key];
-    const empty =
-      v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+    const empty = v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
     if (empty) missing.push(f.label);
   }
   return missing;
@@ -375,12 +372,7 @@ export function buildCustomFields(
   const out: Record<string, string | number | boolean | string[] | null> = {};
   for (const f of fields) {
     const v = values[f.key];
-    if (
-      v === undefined ||
-      v === null ||
-      v === "" ||
-      (Array.isArray(v) && v.length === 0)
-    ) {
+    if (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)) {
       out[f.key] = null;
     } else if (
       typeof v === "string" ||

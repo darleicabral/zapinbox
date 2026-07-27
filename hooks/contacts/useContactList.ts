@@ -33,7 +33,6 @@ export function useContactList(filters: ContactListFilters) {
         throw err;
       }
     },
-    getNextPageParam: (lastPage) =>
-      lastPage.meta?.has_more ? lastPage.meta.cursor : undefined,
+    getNextPageParam: (lastPage) => (lastPage.meta?.has_more ? lastPage.meta.cursor : undefined),
   });
 }

@@ -64,8 +64,8 @@ export function AnonymizeDialog({ contactId, open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle className="text-error-fg">Anonimizar contato (LGPD)</DialogTitle>
           <DialogDescription>
-            Esta ação é irreversível. O nome será substituído por &quot;Contato Anonimizado #N&quot;,
-            email/telefone/CPF serão limpos, e atividades terão conteúdo redigido.
+            Esta ação é irreversível. O nome será substituído por &quot;Contato Anonimizado
+            #N&quot;, email/telefone/CPF serão limpos, e atividades terão conteúdo redigido.
           </DialogDescription>
         </DialogHeader>
 
@@ -99,7 +99,7 @@ export function AnonymizeDialog({ contactId, open, onOpenChange }: Props) {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-md border border-error-fg/30 bg-error-bg p-3 text-sm text-error-fg">
+            <div className="border-error-fg/30 rounded-md border bg-error-bg p-3 text-sm text-error-fg">
               Para confirmar, digite <strong>{CONFIRM_TEXT}</strong> abaixo.
             </div>
             <div className="space-y-2">
