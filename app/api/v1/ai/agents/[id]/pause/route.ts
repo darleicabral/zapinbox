@@ -29,7 +29,7 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
   if (!authUser) return fail("unauthenticated", "Auth required.", 401, { requestId });
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return fail("forbidden", "Sem organização ativa.", 403, { requestId });
-  if (ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
+  if (ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) {
     return fail("forbidden_role", "Permissão insuficiente. Requer role admin.", 403, { requestId });
   }
 

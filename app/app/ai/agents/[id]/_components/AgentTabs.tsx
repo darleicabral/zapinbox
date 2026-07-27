@@ -20,6 +20,8 @@ interface Props {
   credentials: CredentialRow[];
   channelSessions: ChannelSessionLite[];
   readOnly?: boolean;
+  /** Gerente publica a versão que o admin preparou. */
+  canPublish?: boolean;
 }
 
 export function AgentTabs(props: Props) {
@@ -52,6 +54,7 @@ export function AgentTabs(props: Props) {
           credentials={props.credentials}
           channelSessions={props.channelSessions}
           readOnly={props.readOnly}
+          canPublish={props.canPublish}
         />
       </TabsContent>
 

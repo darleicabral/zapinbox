@@ -28,6 +28,8 @@ export default async function AgentsListPage() {
 
   const agents = (data ?? []) as unknown as AgentRow[];
   const canWrite = ROLE_RANK[activeOrg.role] >= ROLE_RANK.admin;
+  // Gerente liga/pausa o bot (operação); criar e editar segue admin.
+  const canOperate = ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">
@@ -39,7 +41,7 @@ export default async function AgentsListPage() {
           </p>
         </div>
       </header>
-      <AgentsList initialData={agents} canWrite={canWrite} />
+      <AgentsList initialData={agents} canWrite={canWrite} canOperate={canOperate} />
     </div>
   );
 }

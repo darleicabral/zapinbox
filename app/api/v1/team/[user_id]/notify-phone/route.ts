@@ -12,7 +12,7 @@ import { z } from "zod";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
-import { ROLE_RANK } from "@/lib/auth/types";
+import { canManageTeam } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +37,7 @@ export async function PATCH(
   if (!authUser) return fail("unauthenticated", "Auth required.", 401, { requestId });
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return fail("forbidden_tenant", "Sem organização ativa.", 403, { requestId });
-  if (ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
+  if (!canManageTeam(activeOrg.role)) {
     return fail("forbidden_role", "Apenas admins podem definir o WhatsApp de notificação.", 403, {
       requestId,
     });
@@ -47,7 +47,8 @@ export async function PATCH(
   try {
     input = bodySchema.parse(await req.json());
   } catch (err) {
-    const msg = err instanceof z.ZodError ? (err.issues[0]?.message ?? "inválido") : "Body inválido.";
+    const msg =
+      err instanceof z.ZodError ? (err.issues[0]?.message ?? "inválido") : "Body inválido.";
     return fail("validation_failed", msg, 422, { requestId });
   }
 
@@ -64,7 +65,10 @@ export async function PATCH(
 
   const { error: updErr } = await supabase
     .from("user_organizations")
-    .update({ notify_whatsapp_e164: input.notify_whatsapp_e164, updated_at: new Date().toISOString() })
+    .update({
+      notify_whatsapp_e164: input.notify_whatsapp_e164,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", target.id);
   if (updErr) return fail("internal_error", updErr.message, 500, { requestId });
 

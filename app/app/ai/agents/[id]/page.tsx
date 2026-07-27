@@ -22,11 +22,7 @@ const VERSION_COLUMNS =
 const CREDENTIAL_COLUMNS =
   "id, organization_id, provider, label, api_key_last4, validated_at, validation_error, models_available, is_active, created_by, created_at, updated_at";
 
-export default async function AgentEditorPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function AgentEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   const user = await requireAuth();
@@ -48,6 +44,8 @@ export default async function AgentEditorPage({
 
   const agent = agentRow as unknown as AgentRow;
   const readOnly = ROLE_RANK[activeOrg.role] < ROLE_RANK.admin;
+  // Publicar é decisão de operação: gerente pode ligar a versão pronta.
+  const canPublish = ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
 
   // Caminho legado: rag_bot continua usando o editor pré-EPIC-13.
   if ((agent.kind ?? "rag_bot") !== "mcp_agent") {
@@ -85,13 +83,12 @@ export default async function AgentEditorPage({
     phone_number: (c.phone_number as string | null) ?? null,
   }));
 
-  const draft =
-    versions
-      .filter((v) => v.status === "draft")
-      .reduce<AgentVersionRow | null>(
-        (a, b) => (a && a.version_number > b.version_number ? a : b),
-        null,
-      );
+  const draft = versions
+    .filter((v) => v.status === "draft")
+    .reduce<AgentVersionRow | null>(
+      (a, b) => (a && a.version_number > b.version_number ? a : b),
+      null,
+    );
   const published = versions.find((v) => v.status === "published") ?? null;
 
   return (
@@ -104,6 +101,7 @@ export default async function AgentEditorPage({
         credentials={credentials}
         channelSessions={channelSessions}
         readOnly={readOnly}
+        canPublish={canPublish}
       />
     </div>
   );

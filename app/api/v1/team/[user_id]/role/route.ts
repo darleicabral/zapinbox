@@ -13,7 +13,7 @@ import { ok, fail } from "@/lib/api/wrappers";
 import { ApiError } from "@/lib/api/types";
 import { audit } from "@/lib/audit";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
-import { ROLE_RANK } from "@/lib/auth/types";
+import { canAssignRole, canManageMember, canManageTeam } from "@/lib/auth/permissions";
 import { changeRoleSchema, validateRequest } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,8 +30,10 @@ export async function PATCH(
   if (!authUser) return fail("unauthenticated", "Auth required.", 401, { requestId });
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return fail("forbidden_tenant", "Sem organização ativa.", 403, { requestId });
-  if (ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
-    return fail("forbidden_role", "Apenas admins podem alterar roles.", 403, { requestId });
+  if (!canManageTeam(activeOrg.role)) {
+    return fail("forbidden_role", "Apenas gerentes e admins podem alterar níveis.", 403, {
+      requestId,
+    });
   }
 
   let input;
@@ -61,6 +63,19 @@ export async function PATCH(
     return fail("state_conflict", "Membro está revogado.", 409, { requestId });
   }
 
+  // Gerente administra a equipe MENOS os admins: não rebaixa admin nem promove
+  // ninguém a admin (senão viraria admin sozinho). Ver lib/auth/permissions.ts.
+  if (!canManageMember(activeOrg.role, target.role as "viewer" | "agent" | "manager" | "admin")) {
+    return fail("forbidden_role", "Gerente não altera o nível de um administrador.", 403, {
+      requestId,
+    });
+  }
+  if (!canAssignRole(activeOrg.role, input.role)) {
+    return fail("forbidden_role", "Gerente não pode promover alguém a administrador.", 403, {
+      requestId,
+    });
+  }
+
   if (target.role === "admin" && input.role !== "admin") {
     const { count, error: countErr } = await supabase
       .from("user_organizations")
@@ -70,12 +85,9 @@ export async function PATCH(
       .is("revoked_at", null);
     if (countErr) return fail("internal_error", countErr.message, 500, { requestId });
     if ((count ?? 0) <= 1) {
-      return fail(
-        "state_conflict",
-        "Não é possível rebaixar o último admin do tenant.",
-        409,
-        { requestId },
-      );
+      return fail("state_conflict", "Não é possível rebaixar o último admin do tenant.", 409, {
+        requestId,
+      });
     }
   }
 

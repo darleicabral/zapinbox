@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
-import { ROLE_RANK } from "@/lib/auth/types";
+import { canManageTeam } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
 import { TeamMembersClient } from "./_components/TeamMembersClient";
 
@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 export default async function TeamPage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
-  const isAdmin = !!activeOrg && ROLE_RANK[activeOrg.role] >= ROLE_RANK.admin;
+  // Gerente administra a equipe (menos os admins) desde 26/07.
+  const canManage = !!activeOrg && canManageTeam(activeOrg.role);
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">
@@ -21,7 +22,7 @@ export default async function TeamPage() {
             Gestão de membros, roles e acesso ao tenant.
           </p>
         </div>
-        {isAdmin ? (
+        {canManage ? (
           <div className="flex items-center gap-2">
             <Button asChild variant="outline">
               <Link href="/app/team/invite">Convidar por e-mail</Link>
@@ -33,7 +34,7 @@ export default async function TeamPage() {
         ) : null}
       </header>
 
-      <TeamMembersClient currentUserId={user.id} canManage={isAdmin} />
+      <TeamMembersClient currentUserId={user.id} canManage={canManage} />
     </div>
   );
 }

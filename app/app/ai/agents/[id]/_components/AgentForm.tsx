@@ -38,11 +38,7 @@ import { ToolPicker } from "./ToolPicker";
 import { TriggerEditor, type TriggerValue } from "./TriggerEditor";
 import { HandoffKeywordsInput } from "./HandoffKeywordsInput";
 import { PublishConfirmDialog } from "./PublishConfirmDialog";
-import {
-  saveAgentDraftAction,
-  publishAgentAction,
-  createMcpAgentAction,
-} from "../_actions";
+import { saveAgentDraftAction, publishAgentAction, createMcpAgentAction } from "../_actions";
 
 import { versionCreateSchema, agentMcpCreateSchema } from "@/lib/ai/agents/validation";
 import type { AgentRow } from "@/hooks/ai/useAgent";
@@ -61,6 +57,8 @@ interface BaseProps {
   credentials: CredentialRow[];
   channelSessions: ChannelSessionLite[];
   readOnly?: boolean;
+  /** Gerente pra cima: publica a versão pronta sem poder editá-la. */
+  canPublish?: boolean;
 }
 
 interface EditProps extends BaseProps {
@@ -107,10 +105,7 @@ const DEFAULT_TRIGGER: TriggerValue = {
   concurrency: "one_per_conversation",
 };
 
-function buildState(args: {
-  agent?: AgentRow;
-  version: AgentVersionRow | null;
-}): FormState {
+function buildState(args: { agent?: AgentRow; version: AgentVersionRow | null }): FormState {
   const { agent, version } = args;
   return {
     name: agent?.name ?? "",
@@ -121,8 +116,7 @@ function buildState(args: {
     credential_id: version?.credential_id ?? "",
     channel_session_id: version?.channel_session_id ?? "",
     system_prompt:
-      version?.system_prompt ??
-      "Você é um atendente. Responda de forma educada e clara, em pt-BR.",
+      version?.system_prompt ?? "Você é um atendente. Responda de forma educada e clara, em pt-BR.",
     tool_ids: version?.tool_ids ?? [],
     trigger_config: (version?.trigger_config as unknown as TriggerValue) ?? DEFAULT_TRIGGER,
     max_steps: version?.max_steps ?? 10,
@@ -130,11 +124,7 @@ function buildState(args: {
     cost_budget_cents: version?.cost_budget_cents ?? 50,
     history_message_window: version?.history_message_window ?? 20,
     history_token_window: version?.history_token_window ?? 8_000,
-    handoff_keywords: version?.handoff_keywords ?? [
-      "falar com humano",
-      "atendente",
-      "pessoa real",
-    ],
+    handoff_keywords: version?.handoff_keywords ?? ["falar com humano", "atendente", "pessoa real"],
     handoff_tool_enabled: version?.handoff_tool_enabled ?? true,
   };
 }
@@ -205,8 +195,7 @@ export function AgentForm(props: Props) {
       errors.system_prompt = "Prompt máximo de 20.000 caracteres.";
     if (!form.model) errors.model = "Selecione um modelo.";
     if (!form.credential_id) errors.credential_id = "Selecione uma credencial.";
-    if (!form.channel_session_id)
-      errors.channel_session_id = "Selecione um número de WhatsApp.";
+    if (!form.channel_session_id) errors.channel_session_id = "Selecione um número de WhatsApp.";
     if (form.tool_ids.length > 20) errors.tool_ids = "Máximo de 20 tools.";
 
     // Tenta o schema completo:
@@ -304,6 +293,12 @@ export function AgentForm(props: Props) {
   }
 
   const disabled = readOnly || saving || publishing;
+  /**
+   * Publicar é operação, editar é configuração: o gerente liga a versão que o
+   * admin preparou, sem poder mexer no prompt. Por isso o botão de publicar não
+   * segue o `readOnly` dos campos.
+   */
+  const publishDisabled = (props.canPublish ?? !readOnly) === false || saving || publishing;
 
   // Status badge
   const statusBadge = (() => {
@@ -340,11 +335,7 @@ export function AgentForm(props: Props) {
 
         <div className="flex flex-wrap items-center gap-2">
           {isEdit ? (
-            <Button
-              variant="outline"
-              onClick={handleReset}
-              disabled={!dirty || disabled}
-            >
+            <Button variant="outline" onClick={handleReset} disabled={!dirty || disabled}>
               Descartar alterações
             </Button>
           ) : null}
@@ -356,7 +347,7 @@ export function AgentForm(props: Props) {
               <Button
                 variant="default"
                 onClick={() => setConfirmOpen(true)}
-                disabled={disabled || publishBlockReason !== null}
+                disabled={publishDisabled || publishBlockReason !== null}
               >
                 {publishing
                   ? "Publicando…"
@@ -551,9 +542,7 @@ export function AgentForm(props: Props) {
                   min={0}
                   max={200}
                   value={form.history_message_window}
-                  onChange={(e) =>
-                    patch({ history_message_window: Number(e.target.value) })
-                  }
+                  onChange={(e) => patch({ history_message_window: Number(e.target.value) })}
                   disabled={disabled}
                 />
               </div>
@@ -566,9 +555,7 @@ export function AgentForm(props: Props) {
                   max={50000}
                   step={500}
                   value={form.history_token_window}
-                  onChange={(e) =>
-                    patch({ history_token_window: Number(e.target.value) })
-                  }
+                  onChange={(e) => patch({ history_token_window: Number(e.target.value) })}
                   disabled={disabled}
                 />
               </div>

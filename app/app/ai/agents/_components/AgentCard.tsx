@@ -11,6 +11,7 @@ import { AgentRowMenu } from "./AgentRowMenu";
 interface Props {
   agent: AgentRow;
   canWrite: boolean;
+  canOperate?: boolean;
 }
 
 function formatModel(model: string): string {
@@ -18,7 +19,7 @@ function formatModel(model: string): string {
   return model.includes("/") ? model.split("/").slice(1).join("/") : model;
 }
 
-export function AgentCard({ agent, canWrite }: Props) {
+export function AgentCard({ agent, canWrite, canOperate = false }: Props) {
   const status = deriveAgentStatus(agent);
   const provider = agent.model?.split("/")[0] ?? "?";
 
@@ -40,7 +41,9 @@ export function AgentCard({ agent, canWrite }: Props) {
             </Badge>
           )}
           <AgentStatusBadge status={status} />
-          {canWrite && <AgentRowMenu agent={agent} />}
+          {(canWrite || canOperate) && (
+            <AgentRowMenu agent={agent} canWrite={canWrite} canOperate={canOperate} />
+          )}
         </div>
       </div>
       {agent.description && (

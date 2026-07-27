@@ -14,7 +14,7 @@ import { revalidatePath } from "next/cache";
 
 import { audit } from "@/lib/audit";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
-import { ROLE_RANK } from "@/lib/auth/types";
+import { ROLE_RANK, type Role } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,15 +24,24 @@ type ActionResult<T = void> =
   | { ok: false; error: string; message?: string };
 
 type AdminGuard =
-  | { kind: "ok"; authUser: { id: string }; activeOrg: { orgId: string; role: "viewer" | "agent" | "manager" | "admin" } }
+  | {
+      kind: "ok";
+      authUser: { id: string };
+      activeOrg: { orgId: string; role: "viewer" | "agent" | "manager" | "admin" };
+    }
   | { kind: "fail"; result: { ok: false; error: string } };
 
-async function ensureAdmin(): Promise<AdminGuard> {
+/**
+ * `min` existe porque ligar/pausar o bot é operação (gerente faz), enquanto
+ * criar, renomear, duplicar e arquivar agente segue sendo admin. Ver
+ * lib/auth/permissions.ts.
+ */
+async function ensureRole(min: Role = "admin"): Promise<AdminGuard> {
   const authUser = await loadAuthUser();
   if (!authUser) return { kind: "fail", result: { ok: false, error: "unauthenticated" } };
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return { kind: "fail", result: { ok: false, error: "forbidden_tenant" } };
-  if (ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
+  if (ROLE_RANK[activeOrg.role] < ROLE_RANK[min]) {
     return { kind: "fail", result: { ok: false, error: "forbidden_role" } };
   }
   return { kind: "ok", authUser, activeOrg };
@@ -40,7 +49,7 @@ async function ensureAdmin(): Promise<AdminGuard> {
 
 export async function pauseAgentAction(id: string): Promise<ActionResult> {
   if (!UUID_RX.test(id)) return { ok: false, error: "invalid_request" };
-  const guard = await ensureAdmin();
+  const guard = await ensureRole("manager");
   if (guard.kind === "fail") return guard.result;
   const { authUser, activeOrg } = guard;
 
@@ -53,10 +62,12 @@ export async function pauseAgentAction(id: string): Promise<ActionResult> {
     .maybeSingle();
 
   if (!existing) return { ok: false, error: "not_found" };
-  if (existing.archived_at) return { ok: false, error: "state_conflict", message: "Agent arquivado." };
+  if (existing.archived_at)
+    return { ok: false, error: "state_conflict", message: "Agent arquivado." };
 
   const requestId = randomUUID();
-  const previousVersionId = (existing as { published_version_id: string | null }).published_version_id;
+  const previousVersionId = (existing as { published_version_id: string | null })
+    .published_version_id;
 
   if (previousVersionId) {
     await admin
@@ -97,7 +108,7 @@ export async function pauseAgentAction(id: string): Promise<ActionResult> {
 
 export async function unpauseAgentAction(id: string): Promise<ActionResult> {
   if (!UUID_RX.test(id)) return { ok: false, error: "invalid_request" };
-  const guard = await ensureAdmin();
+  const guard = await ensureRole("manager");
   if (guard.kind === "fail") return guard.result;
   const { authUser, activeOrg } = guard;
 
@@ -139,7 +150,7 @@ export async function unpauseAgentAction(id: string): Promise<ActionResult> {
 
 export async function archiveAgentAction(id: string): Promise<ActionResult> {
   if (!UUID_RX.test(id)) return { ok: false, error: "invalid_request" };
-  const guard = await ensureAdmin();
+  const guard = await ensureRole();
   if (guard.kind === "fail") return guard.result;
   const { authUser, activeOrg } = guard;
 
@@ -187,7 +198,7 @@ export async function renameAgentAction(id: string, name: string): Promise<Actio
   if (trimmed.length < 1 || trimmed.length > 120) {
     return { ok: false, error: "validation_failed", message: "Nome entre 1 e 120 caracteres." };
   }
-  const guard = await ensureAdmin();
+  const guard = await ensureRole();
   if (guard.kind === "fail") return guard.result;
   const { authUser, activeOrg } = guard;
 
@@ -214,7 +225,7 @@ export async function renameAgentAction(id: string, name: string): Promise<Actio
 
 export async function duplicateAgentAction(id: string): Promise<ActionResult<{ new_id: string }>> {
   if (!UUID_RX.test(id)) return { ok: false, error: "invalid_request" };
-  const guard = await ensureAdmin();
+  const guard = await ensureRole();
   if (guard.kind === "fail") return guard.result;
   const { authUser, activeOrg } = guard;
 

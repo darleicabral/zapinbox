@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   if (!authUser) return fail("unauthenticated", "Auth required.", 401, { requestId });
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return fail("forbidden", "Sem organização ativa.", 403, { requestId });
-  if (ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
+  if (ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) {
     return fail("forbidden_role", "Permissão insuficiente. Requer role admin.", 403, { requestId });
   }
 
@@ -92,9 +92,8 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
 
   if (!result.ok) {
     if (PUBLISH_ERROR_CODES.has(result.code as string)) {
-      const status = result.code === "agent_not_found" || result.code === "version_not_found"
-        ? 404
-        : 422;
+      const status =
+        result.code === "agent_not_found" || result.code === "version_not_found" ? 404 : 422;
       return fail(result.code, "Validação de publish falhou.", status, { requestId });
     }
     return fail("internal_error", "Erro ao publicar.", 500, { requestId });

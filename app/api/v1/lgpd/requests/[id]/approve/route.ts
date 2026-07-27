@@ -40,27 +40,19 @@ export async function POST(
     return fail("forbidden_tenant", "Nenhuma organização ativa.", 403, { requestId });
   }
 
-  const isAllowed =
-    authUser.is_platform_admin || ROLE_RANK[activeOrg.role] >= ROLE_RANK.admin;
+  const isAllowed = authUser.is_platform_admin || ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
   if (!isAllowed) {
-    return fail(
-      "forbidden_role",
-      "Apenas administradores podem aprovar solicitações LGPD.",
-      403,
-      { requestId },
-    );
+    return fail("forbidden_role", "Apenas administradores podem aprovar solicitações LGPD.", 403, {
+      requestId,
+    });
   }
 
   // Idempotency-Key is required
-  const idempotencyKey =
-    req.headers.get("Idempotency-Key") ?? req.headers.get("idempotency-key");
+  const idempotencyKey = req.headers.get("Idempotency-Key") ?? req.headers.get("idempotency-key");
   if (!idempotencyKey) {
-    return fail(
-      "missing_idempotency_key",
-      "Header Idempotency-Key é obrigatório.",
-      422,
-      { requestId },
-    );
+    return fail("missing_idempotency_key", "Header Idempotency-Key é obrigatório.", 422, {
+      requestId,
+    });
   }
 
   const { id } = await params;

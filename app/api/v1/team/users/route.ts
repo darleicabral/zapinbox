@@ -6,7 +6,8 @@
  * da operação real (a atendente está do lado; esperar e-mail só atrasa) e o
  * mesmo que o seed fazia por script.
  *
- * Só admin da org ativa. Precisa de service role (cria usuário no Auth).
+ * Gerente pra cima na org ativa, e gerente só cadastra até gerente (não cria
+ * admin). Precisa de service role (cria usuário no Auth).
  * Se o e-mail JÁ tem conta, não mexe na senha: só vincula (ou reativa) a
  * associação com a org — trocar a senha de alguém por engano é irreversível
  * para quem já usava a conta noutro tenant.
@@ -18,7 +19,7 @@ import { ApiError } from "@/lib/api/types";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
-import { ROLE_RANK } from "@/lib/auth/types";
+import { canAssignRole, canManageTeam } from "@/lib/auth/permissions";
 import { createMemberSchema, validateRequest } from "@/lib/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -31,8 +32,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!authUser) return fail("unauthenticated", "Auth required.", 401, { requestId });
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return fail("forbidden_tenant", "Sem organização ativa.", 403, { requestId });
-  if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
-    return fail("forbidden_role", "Apenas admins podem cadastrar usuários.", 403, { requestId });
+  if (!authUser.is_platform_admin && !canManageTeam(activeOrg.role)) {
+    return fail("forbidden_role", "Apenas gerentes e admins podem cadastrar usuários.", 403, {
+      requestId,
+    });
   }
   if (!isServiceRoleConfigured()) {
     return fail(
@@ -54,6 +57,11 @@ export async function POST(req: NextRequest): Promise<Response> {
       });
     }
     throw err;
+  }
+
+  // Gerente cadastra até gerente; admin, qualquer nível.
+  if (!canAssignRole(activeOrg.role, input.role)) {
+    return fail("forbidden_role", "Gerente não pode cadastrar administrador.", 403, { requestId });
   }
 
   const email = input.email.trim().toLowerCase();

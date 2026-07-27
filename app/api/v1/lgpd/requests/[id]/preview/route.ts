@@ -39,15 +39,11 @@ export async function GET(
     return fail("forbidden_tenant", "Nenhuma organização ativa.", 403, { requestId });
   }
 
-  const isAllowed =
-    authUser.is_platform_admin || ROLE_RANK[activeOrg.role] >= ROLE_RANK.admin;
+  const isAllowed = authUser.is_platform_admin || ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
   if (!isAllowed) {
-    return fail(
-      "forbidden_role",
-      "Apenas administradores podem acessar o preview LGPD.",
-      403,
-      { requestId },
-    );
+    return fail("forbidden_role", "Apenas administradores podem acessar o preview LGPD.", 403, {
+      requestId,
+    });
   }
 
   const { id } = await params;

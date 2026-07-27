@@ -21,7 +21,7 @@ import { revalidatePath } from "next/cache";
 
 import { audit } from "@/lib/audit";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
-import { ROLE_RANK } from "@/lib/auth/types";
+import { ROLE_RANK, type Role } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   agentMcpCreateSchema,
@@ -41,12 +41,17 @@ type ActionResult<T = void> =
   | { ok: true; data?: T }
   | { ok: false; error: string; message?: string; details?: unknown };
 
-async function ensureAdmin() {
+/**
+ * `min` existe porque PUBLICAR é operação (gerente decide ligar a versão que
+ * está pronta), enquanto salvar rascunho, reverter versão e criar agente segue
+ * sendo admin. Ver lib/auth/permissions.ts.
+ */
+async function ensureRole(min: Role = "admin") {
   const authUser = await loadAuthUser();
   if (!authUser) return { ok: false as const, error: "unauthenticated" };
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return { ok: false as const, error: "forbidden_tenant" };
-  if (ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
+  if (ROLE_RANK[activeOrg.role] < ROLE_RANK[min]) {
     return { ok: false as const, error: "forbidden_role" };
   }
   return { ok: true as const, authUser, activeOrg };
@@ -61,7 +66,7 @@ export async function saveAgentDraftAction(
   payload: unknown,
 ): Promise<ActionResult<{ version_id: string; version_number: number }>> {
   if (!UUID_RX.test(agentId)) return { ok: false, error: "invalid_request" };
-  const guard = await ensureAdmin();
+  const guard = await ensureRole();
   if (!guard.ok) return guard;
   const { authUser, activeOrg } = guard;
 
@@ -206,7 +211,7 @@ export async function publishAgentAction(
   if (!UUID_RX.test(agentId) || !UUID_RX.test(versionId)) {
     return { ok: false, error: "invalid_request" };
   }
-  const guard = await ensureAdmin();
+  const guard = await ensureRole("manager");
   if (!guard.ok) return guard;
   const { authUser, activeOrg } = guard;
 
@@ -299,7 +304,7 @@ export async function revertToVersionAction(
   if (!UUID_RX.test(agentId) || !UUID_RX.test(versionId)) {
     return { ok: false, error: "invalid_request" };
   }
-  const guard = await ensureAdmin();
+  const guard = await ensureRole();
   if (!guard.ok) return guard;
   const { authUser, activeOrg } = guard;
 
@@ -473,7 +478,7 @@ export async function revertToVersionAction(
 export async function createMcpAgentAction(
   payload: unknown,
 ): Promise<ActionResult<{ agent_id: string }>> {
-  const guard = await ensureAdmin();
+  const guard = await ensureRole();
   if (!guard.ok) return guard;
   const { authUser, activeOrg } = guard;
 

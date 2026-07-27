@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
-import { ROLE_RANK } from "@/lib/auth/types";
+import { canManageTeam } from "@/lib/auth/permissions";
 import { InviteForm } from "./_components/InviteForm";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function TeamInvitePage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
-  if (!activeOrg || ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
+  if (!activeOrg || !canManageTeam(activeOrg.role)) {
     redirect("/403");
   }
 

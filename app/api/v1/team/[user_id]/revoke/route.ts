@@ -12,7 +12,7 @@ import type { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
-import { ROLE_RANK } from "@/lib/auth/types";
+import { canManageMember, canManageTeam } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -28,8 +28,10 @@ export async function POST(
   if (!authUser) return fail("unauthenticated", "Auth required.", 401, { requestId });
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return fail("forbidden_tenant", "Sem organização ativa.", 403, { requestId });
-  if (ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
-    return fail("forbidden_role", "Apenas admins podem revogar membros.", 403, { requestId });
+  if (!canManageTeam(activeOrg.role)) {
+    return fail("forbidden_role", "Apenas gerentes e admins podem revogar membros.", 403, {
+      requestId,
+    });
   }
   if (targetUserId === authUser.id) {
     return fail("state_conflict", "Não é possível revogar o próprio acesso.", 409, { requestId });
@@ -49,6 +51,13 @@ export async function POST(
     return ok({ user_id: targetUserId, already_revoked: true }, { requestId });
   }
 
+  // Gerente administra a equipe MENOS os admins (lib/auth/permissions.ts).
+  if (!canManageMember(activeOrg.role, target.role as "viewer" | "agent" | "manager" | "admin")) {
+    return fail("forbidden_role", "Gerente não revoga o acesso de um administrador.", 403, {
+      requestId,
+    });
+  }
+
   if (target.role === "admin") {
     const { count, error: countErr } = await supabase
       .from("user_organizations")
@@ -58,12 +67,9 @@ export async function POST(
       .is("revoked_at", null);
     if (countErr) return fail("internal_error", countErr.message, 500, { requestId });
     if ((count ?? 0) <= 1) {
-      return fail(
-        "state_conflict",
-        "Não é possível revogar o último admin do tenant.",
-        409,
-        { requestId },
-      );
+      return fail("state_conflict", "Não é possível revogar o último admin do tenant.", 409, {
+        requestId,
+      });
     }
   }
 

@@ -33,15 +33,11 @@ export async function GET(
     return fail("forbidden_tenant", "Nenhuma organização ativa.", 403, { requestId });
   }
 
-  const isAllowed =
-    authUser.is_platform_admin || ROLE_RANK[activeOrg.role] >= ROLE_RANK.admin;
+  const isAllowed = authUser.is_platform_admin || ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
   if (!isAllowed) {
-    return fail(
-      "forbidden_role",
-      "Apenas administradores podem acessar solicitações LGPD.",
-      403,
-      { requestId },
-    );
+    return fail("forbidden_role", "Apenas administradores podem acessar solicitações LGPD.", 403, {
+      requestId,
+    });
   }
 
   const { id } = await params;
@@ -70,9 +66,7 @@ export async function GET(
     .from("api_audit_log")
     .select("id, action, actor_user_id, resource_type, resource_id, metadata, created_at")
     .eq("organization_id", orgId)
-    .or(
-      `resource_id.eq.${id},metadata->>request_id.eq.${id}`,
-    )
+    .or(`resource_id.eq.${id},metadata->>request_id.eq.${id}`)
     .order("created_at", { ascending: true })
     .limit(50);
 
@@ -103,8 +97,5 @@ export async function GET(
     }
   }
 
-  return ok(
-    { request, audit_trail, signed_pdf_url },
-    { requestId },
-  );
+  return ok({ request, audit_trail, signed_pdf_url }, { requestId });
 }

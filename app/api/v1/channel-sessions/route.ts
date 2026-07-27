@@ -46,8 +46,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!user) return fail("unauthenticated", "Auth required.", 401, { requestId });
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) return fail("forbidden_tenant", "Nenhuma organização ativa.", 403, { requestId });
-  if (!user.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
-    return fail("forbidden_role", "Apenas administradores podem conectar números.", 403, { requestId });
+  if (!user.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) {
+    return fail("forbidden_role", "Apenas administradores podem conectar números.", 403, {
+      requestId,
+    });
   }
 
   const waha = getWahaClient();
@@ -96,7 +98,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     .select(CHANNEL_COLUMNS)
     .single();
   if (insErr || !created) {
-    return fail("internal_error", insErr?.message ?? "channel_session_insert_failed", 500, { requestId });
+    return fail("internal_error", insErr?.message ?? "channel_session_insert_failed", 500, {
+      requestId,
+    });
   }
 
   try {

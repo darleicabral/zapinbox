@@ -21,8 +21,9 @@ export const ROLE_LABEL: Record<Role, string> = {
 export const ROLE_SUMMARY: Record<Role, string> = {
   viewer: "Só olha. Não responde cliente nem edita nada.",
   agent: "O dia a dia do atendimento: responde, abre e move atendimentos.",
-  manager: "Tudo do atendimento + relatórios e leitura da IA. Não mexe na configuração.",
-  admin: "Poder total no tenant, incluindo equipe, WhatsApp, IA e LGPD.",
+  manager:
+    "Atendimento + equipe, WhatsApp, LGPD e ligar/pausar a IA. Não mexe em admin nem na configuração do sistema.",
+  admin: "Poder total no tenant, incluindo configuração, chaves e promover admin.",
 };
 
 /** Capacidade → papel mínimo que a libera (bate com as travas das rotas). */
@@ -33,11 +34,14 @@ const CAPABILITIES: Array<{ label: string; min: Role }> = [
   { label: "Ver CPF do cliente", min: "manager" },
   { label: "Ver agentes de IA, versões e consumo", min: "manager" },
   { label: "Base de conhecimento da IA", min: "manager" },
-  { label: "Convidar, cadastrar e remover pessoas", min: "admin" },
-  { label: "Conectar e reconectar o WhatsApp", min: "admin" },
-  { label: "Publicar ou pausar agente de IA", min: "admin" },
+  { label: "Ligar, pausar e publicar o agente de IA", min: "manager" },
+  { label: "Conectar e reconectar o WhatsApp", min: "manager" },
+  { label: "LGPD: ver e aprovar pedidos", min: "manager" },
+  { label: "Convidar, cadastrar e remover pessoas (menos admins)", min: "manager" },
+  { label: "Criar, editar e arquivar agente de IA", min: "admin" },
   { label: "Chaves de IA e orçamento", min: "admin" },
-  { label: "LGPD: ver e aprovar pedidos", min: "admin" },
+  { label: "Promover alguém a administrador", min: "admin" },
+  { label: "Anonimizar contato fora do fluxo de pedido (LGPD)", min: "admin" },
   { label: "Configurações do tenant e opções dos campos", min: "admin" },
   { label: "Tokens de API", min: "admin" },
 ];

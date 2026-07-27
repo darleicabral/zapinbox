@@ -14,9 +14,10 @@ import { deriveAgentStatus } from "./AgentStatusBadge";
 interface Props {
   initialData: AgentRow[];
   canWrite: boolean;
+  canOperate?: boolean;
 }
 
-export function AgentsList({ initialData, canWrite }: Props) {
+export function AgentsList({ initialData, canWrite, canOperate = false }: Props) {
   const { data, isLoading } = useAgentsList({ initialData });
   const [status, setStatus] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
@@ -41,8 +42,8 @@ export function AgentsList({ initialData, canWrite }: Props) {
         <Robot size={36} aria-hidden className="text-muted-foreground" />
         <h2 className="font-medium">Nenhum agent configurado</h2>
         <p className="max-w-sm text-sm text-muted-foreground">
-          Crie um agent para responder a conversas no WhatsApp com IA. Você
-          configura prompt, tools, gatilhos e janela de contexto.
+          Crie um agent para responder a conversas no WhatsApp com IA. Você configura prompt, tools,
+          gatilhos e janela de contexto.
         </p>
         {canWrite && (
           <Link href="/app/ai/agents/new">
@@ -83,7 +84,7 @@ export function AgentsList({ initialData, canWrite }: Props) {
         <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((agent) => (
             <li key={agent.id}>
-              <AgentCard agent={agent} canWrite={canWrite} />
+              <AgentCard agent={agent} canWrite={canWrite} canOperate={canOperate} />
             </li>
           ))}
         </ul>

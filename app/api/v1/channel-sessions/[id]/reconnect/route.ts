@@ -29,8 +29,10 @@ export async function POST(
   if (!user) return fail("unauthenticated", "Auth required.", 401, { requestId });
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) return fail("forbidden_tenant", "Nenhuma organização ativa.", 403, { requestId });
-  if (!user.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
-    return fail("forbidden_role", "Apenas administradores podem reconectar números.", 403, { requestId });
+  if (!user.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) {
+    return fail("forbidden_role", "Apenas administradores podem reconectar números.", 403, {
+      requestId,
+    });
   }
 
   const supabase = await createClient();

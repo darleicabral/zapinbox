@@ -17,12 +17,8 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 const querySchema = z.object({
-  status: z
-    .enum(["received", "processing", "completed", "failed", "pending_review"])
-    .optional(),
-  type: z
-    .enum(["customer_redact", "customer_data_request", "store_redact"])
-    .optional(),
+  status: z.enum(["received", "processing", "completed", "failed", "pending_review"]).optional(),
+  type: z.enum(["customer_redact", "customer_data_request", "store_redact"]).optional(),
   sla_bucket: z.enum(["overdue", "critical", "warning", "ok"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -67,15 +63,11 @@ export async function GET(req: NextRequest): Promise<Response> {
   }
 
   // Permission: role >= admin OR platform_admin
-  const isAllowed =
-    authUser.is_platform_admin || ROLE_RANK[activeOrg.role] >= ROLE_RANK.admin;
+  const isAllowed = authUser.is_platform_admin || ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
   if (!isAllowed) {
-    return fail(
-      "forbidden_role",
-      "Apenas administradores podem acessar solicitações LGPD.",
-      403,
-      { requestId },
-    );
+    return fail("forbidden_role", "Apenas administradores podem acessar solicitações LGPD.", 403, {
+      requestId,
+    });
   }
 
   // Parse + validate query params
