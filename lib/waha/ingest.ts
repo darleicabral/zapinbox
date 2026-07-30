@@ -261,6 +261,54 @@ async function markConversation(
   if (error) console.error("[waha.ingest] fn_mark_conversation_message failed", error.message);
 }
 
+/** Status em que a conversa está fora do dia a dia e some da aba "Mensagens". */
+const CLOSED_STATUSES = ["closed", "archived"];
+
+/**
+ * Cliente voltou a escrever numa conversa encerrada → reabre (decisão Darlei,
+ * 30/07). Sem isso a mensagem entrava e ficava invisível: a aba "Mensagens"
+ * esconde closed/archived e ninguém percebia o retorno do cliente. Vale para
+ * fechamento manual e para o fechamento automático de "Resolvido"
+ * (`lib/attendance/close-on-resolve.ts`), que continua NÃO reabrindo por
+ * mudança de etapa — só a fala do cliente reabre.
+ *
+ * Best-effort: reabrir é efeito colateral, não pode derrubar a ingestão da
+ * mensagem. O `in(status)` no WHERE evita corrida com quem fecha ao mesmo tempo
+ * (duas mensagens na mesma rajada só geram um reopen).
+ */
+async function reopenIfClosed(
+  admin: Admin,
+  orgId: string,
+  convId: string,
+  prevStatus: string | null,
+  ctx: { now: string; requestId: string },
+): Promise<void> {
+  if (!prevStatus || !CLOSED_STATUSES.includes(prevStatus)) return;
+
+  const { data, error } = await admin
+    .from("conversations")
+    .update({ status: "open", status_changed_at: ctx.now })
+    .eq("id", convId)
+    .in("status", CLOSED_STATUSES)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[waha.ingest] reabertura da conversa falhou", error.message);
+    return;
+  }
+  if (!data) return; // alguém já reabriu (rajada de mensagens)
+
+  await audit({
+    action: "conversation.reopened",
+    organizationId: orgId,
+    resourceType: "conversation",
+    resourceId: convId,
+    requestId: ctx.requestId,
+    metadata: { reason: "inbound_message", from_status: prevStatus },
+  });
+}
+
 /**
  * Mensagem recebida (fromMe=false). Contato = remetente (`from`).
  */
@@ -331,16 +379,22 @@ async function handleInbound(
   }
   if (insertErr?.code === "23505") return;
 
-  // Última entrada ANTES de marcar — usado no limitador do push (abaixo).
+  // Estado ANTES de marcar — última entrada alimenta o limitador do push (abaixo)
+  // e o status decide se a conversa precisa reabrir.
   const { data: convBefore } = await admin
     .from("conversations")
-    .select("last_inbound_at")
+    .select("last_inbound_at, status")
     .eq("id", conversationId)
     .maybeSingle();
-  const prevInboundAt =
-    (convBefore as { last_inbound_at: string | null } | null)?.last_inbound_at ?? null;
+  const convPrev = convBefore as { last_inbound_at: string | null; status: string | null } | null;
+  const prevInboundAt = convPrev?.last_inbound_at ?? null;
 
   await markConversation(admin, conversationId, "inbound", previewFromMessage(p), now);
+
+  await reopenIfClosed(admin, session.organization_id, conversationId, convPrev?.status ?? null, {
+    now,
+    requestId,
+  });
 
   if (p.body && STOP_RX.test(p.body)) {
     await admin
