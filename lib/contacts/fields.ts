@@ -35,6 +35,14 @@ export const CONTACT_STATUS_OPTIONS = [
   "Doc. Assinado",
 ] as const;
 
+/**
+ * Status que fecha o ciclo: a linha do contato fica verde clara na lista
+ * (pedido do Darlei, 30/07 — bater o olho e ver quem já assinou). Constante e
+ * não string solta: o valor gravado é o próprio texto, então um erro de digitação
+ * aqui quebraria o destaque sem quebrar nada mais.
+ */
+export const CONTACT_STATUS_DONE = "Doc. Assinado";
+
 export type ContactCustomFields = Record<string, unknown> | null | undefined;
 
 export function contactFieldText(cf: ContactCustomFields, key: string): string {

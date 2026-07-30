@@ -79,6 +79,16 @@ export const contactListQuerySchema = z.object({
 });
 export type ContactListQuery = z.infer<typeof contactListQuerySchema>;
 
+/**
+ * Apagar contatos em lote (30/07). Teto de 100 por chamada: a rota consulta
+ * conversas/mensagens/atendimentos de cada um antes de apagar, e `.in()` com
+ * lista gigante degrada.
+ */
+export const contactsBulkDeleteSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(100),
+});
+export type ContactsBulkDelete = z.infer<typeof contactsBulkDeleteSchema>;
+
 export const lgpdAnonymizeSchema = z.object({
   contact_id: z.string().uuid(),
   justification: z.string().min(10).max(1000),

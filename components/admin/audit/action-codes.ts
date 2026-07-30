@@ -56,6 +56,7 @@ export const ACTION_CODES: string[] = [
   "message.sent",
   "message.received",
   "contact.blocked",
+  "contact.bulk_deleted",
   "ai.handoff_triggered",
   "ai.reactivated_by_agent",
   "conversation.usable_for_rag_toggled",

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { format, formatRelative } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -17,18 +17,29 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Check, WhatsappLogo, ArrowRight, PhoneCall } from "@/lib/ui/icons";
+import { Check, WhatsappLogo, ArrowRight, PhoneCall, Trash } from "@/lib/ui/icons";
 import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { useUpdateContact } from "@/hooks/contacts/useUpdateContact";
 import { useContactConversation, useOpenContactLead } from "@/hooks/contacts/useContactActions";
+import { useDeleteContacts } from "@/hooks/contacts/useDeleteContacts";
+import { canManageTeam } from "@/lib/auth/permissions";
 import {
   CONTACT_FIELD,
+  CONTACT_STATUS_DONE,
   CONTACT_STATUS_OPTIONS,
   contactCallLog,
   contactFieldText,
@@ -116,19 +127,6 @@ function EmpreendimentoCell({ contact, options }: { contact: Contact; options: s
       placeholder="—"
       onChange={field.save}
       label={`Empreendimento de ${displayName(contact)}`}
-    />
-  );
-}
-
-function StatusCell({ contact }: { contact: Contact }) {
-  const field = useInlineField(contact, CONTACT_FIELD.status);
-  return (
-    <InlineSelect
-      value={field.value}
-      options={CONTACT_STATUS_OPTIONS}
-      placeholder="—"
-      onChange={field.save}
-      label={`Status de ${displayName(contact)}`}
     />
   );
 }
@@ -271,91 +269,294 @@ function StatusBadges({ contact }: { contact: Contact }) {
   );
 }
 
-export function ContactsTable({ contacts, empreendimentos = [] }: Props) {
-  // Pós-venda (atendente único): a lista de contatos é tela de trabalho ativo —
-  // sai "Última atividade"/status do cadastro, entram as colunas de abordagem.
-  const posvenda = hasPosvendaModule(useActiveOrg()?.orgId);
+/**
+ * Uma linha. O status mora AQUI (não dentro da célula) porque a linha inteira
+ * fica verde quando é "Doc. Assinado" — e tem que ficar verde no clique, antes do
+ * servidor responder, senão a marcação parece travada.
+ *
+ * ⚠️ Os fundos usam `!bg-…`: o `TableRow` do design system traz
+ * `hover:bg-muted/50`, e entre duas utilitárias de mesma especificidade quem
+ * ganha é a ordem no CSS compilado — ou seja, sorte. O `!important` torna o
+ * resultado previsível (custo: linha destacada não muda de cor no hover).
+ */
+function ContactRow({
+  contact,
+  posvenda,
+  empreendimentos,
+  selectable,
+  selected,
+  onToggle,
+}: {
+  contact: Contact;
+  posvenda: boolean;
+  empreendimentos: string[];
+  selectable: boolean;
+  selected: boolean;
+  onToggle: (id: string, checked: boolean) => void;
+}) {
+  const status = useInlineField(contact, CONTACT_FIELD.status);
+  const done = posvenda && status.value === CONTACT_STATUS_DONE;
 
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Nome</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Telefone</TableHead>
-            <TableHead>Tags</TableHead>
-            {posvenda ? (
-              <>
-                <TableHead>Empreendimento</TableHead>
-                <TableHead>Abrir atendimento</TableHead>
-                <TableHead>WhatsApp</TableHead>
-                <TableHead>Liguei (data e hora)</TableHead>
-                <TableHead>Status</TableHead>
-              </>
-            ) : (
-              <>
-                <TableHead>Última atividade</TableHead>
-                <TableHead>Status</TableHead>
-              </>
-            )}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {contacts.map((c) => (
-            <TableRow key={c.id}>
-              <TableCell className="font-medium">
-                <Link href={`/app/contacts/${c.id}`} className="hover:underline">
-                  {displayName(c)}
-                </Link>
-              </TableCell>
-              <TableCell className="text-muted-foreground">{c.email ?? "—"}</TableCell>
-              <TableCell className="whitespace-nowrap text-muted-foreground">
-                {c.phone_number ?? "—"}
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-wrap gap-1">
-                  {c.tags.length === 0 ? (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  ) : (
-                    c.tags.map((t) => (
-                      <Badge key={t} variant="neutral">
-                        {t}
-                      </Badge>
-                    ))
-                  )}
-                </div>
-              </TableCell>
+    <TableRow
+      className={cn(selected ? "!bg-accent-soft" : done ? "!bg-success-bg" : undefined)}
+      data-state={selected ? "selected" : undefined}
+    >
+      {selectable && (
+        <TableCell className="w-10">
+          <input
+            type="checkbox"
+            className="size-4 cursor-pointer accent-accent"
+            checked={selected}
+            onChange={(e) => onToggle(contact.id, e.target.checked)}
+            aria-label={`Selecionar ${displayName(contact)}`}
+          />
+        </TableCell>
+      )}
+      <TableCell className="font-medium">
+        <Link href={`/app/contacts/${contact.id}`} className="hover:underline">
+          {displayName(contact)}
+        </Link>
+      </TableCell>
+      <TableCell className="text-muted-foreground">{contact.email ?? "—"}</TableCell>
+      <TableCell className="whitespace-nowrap text-muted-foreground">
+        {contact.phone_number ?? "—"}
+      </TableCell>
+      <TableCell>
+        <div className="flex flex-wrap gap-1">
+          {contact.tags.length === 0 ? (
+            <span className="text-xs text-muted-foreground">—</span>
+          ) : (
+            contact.tags.map((t) => (
+              <Badge key={t} variant="neutral">
+                {t}
+              </Badge>
+            ))
+          )}
+        </div>
+      </TableCell>
 
+      {posvenda ? (
+        <>
+          <TableCell>
+            <EmpreendimentoCell contact={contact} options={empreendimentos} />
+          </TableCell>
+          <ActionsCells contact={contact} />
+          <TableCell>
+            <LigueiCell contact={contact} />
+          </TableCell>
+          <TableCell>
+            <InlineSelect
+              value={status.value}
+              options={CONTACT_STATUS_OPTIONS}
+              placeholder="—"
+              onChange={status.save}
+              label={`Status de ${displayName(contact)}`}
+            />
+          </TableCell>
+        </>
+      ) : (
+        <>
+          <TableCell className="text-sm text-muted-foreground">
+            {contact.last_activity_at
+              ? formatRelative(new Date(contact.last_activity_at), new Date(), { locale: ptBR })
+              : "—"}
+          </TableCell>
+          <TableCell>
+            <StatusBadges contact={contact} />
+          </TableCell>
+        </>
+      )}
+    </TableRow>
+  );
+}
+
+export function ContactsTable({ contacts, empreendimentos = [] }: Props) {
+  const activeOrg = useActiveOrg();
+  // Pós-venda (atendente único): a lista de contatos é tela de trabalho ativo —
+  // sai "Última atividade"/status do cadastro, entram as colunas de abordagem.
+  const posvenda = hasPosvendaModule(activeOrg?.orgId);
+  // Apagar contato é irreversível: gerente pra cima. A atendente não vê nem a
+  // coluna de seleção (a rota também recusa, esta é só a metade visual da trava).
+  const canDelete = canManageTeam(activeOrg?.role);
+
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const del = useDeleteContacts();
+  const allRef = useRef<HTMLInputElement>(null);
+
+  // Filtro/busca/refetch mudam a lista: solta da seleção quem saiu da tela, pra
+  // não apagar às cegas um contato que o usuário não está mais vendo.
+  useEffect(() => {
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(contacts.map((c) => c.id));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [contacts]);
+
+  const allChecked = contacts.length > 0 && selected.size === contacts.length;
+  useEffect(() => {
+    if (allRef.current) {
+      allRef.current.indeterminate = selected.size > 0 && !allChecked;
+    }
+  }, [selected.size, allChecked]);
+
+  const selectedNames = useMemo(
+    () =>
+      contacts
+        .filter((c) => selected.has(c.id))
+        .slice(0, 5)
+        .map(displayName),
+    [contacts, selected],
+  );
+
+  function toggle(id: string, checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  async function runDelete() {
+    try {
+      const { deleted, skipped } = (await del.mutateAsync([...selected])).data;
+      setConfirmOpen(false);
+      // Mantém marcados só os recusados: o usuário vê exatamente o que sobrou.
+      setSelected(new Set(skipped.map((s) => s.id)));
+      if (deleted.length > 0) {
+        toast.success(`${deleted.length} contato${deleted.length > 1 ? "s" : ""} apagado${deleted.length > 1 ? "s" : ""}`);
+      }
+      if (skipped.length > 0) {
+        const detalhe = skipped
+          .slice(0, 3)
+          .map((s) => `${s.name} (${s.reason})`)
+          .join("; ");
+        toast.warning(
+          `${skipped.length} mantido${skipped.length > 1 ? "s" : ""} por ter histórico: ${detalhe}${skipped.length > 3 ? "…" : ""}`,
+          { duration: 9000 },
+        );
+      }
+    } catch {
+      // erro já exibido pelo hook
+    }
+  }
+
+  return (
+    <>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {canDelete && (
+                <TableHead className="w-10">
+                  <input
+                    ref={allRef}
+                    type="checkbox"
+                    className="size-4 cursor-pointer accent-accent"
+                    checked={allChecked}
+                    onChange={(e) =>
+                      setSelected(e.target.checked ? new Set(contacts.map((c) => c.id)) : new Set())
+                    }
+                    aria-label="Selecionar todos os contatos da tela"
+                  />
+                </TableHead>
+              )}
+              <TableHead>Nome</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Telefone</TableHead>
+              <TableHead>Tags</TableHead>
               {posvenda ? (
                 <>
-                  <TableCell>
-                    <EmpreendimentoCell contact={c} options={empreendimentos} />
-                  </TableCell>
-                  <ActionsCells contact={c} />
-                  <TableCell>
-                    <LigueiCell contact={c} />
-                  </TableCell>
-                  <TableCell>
-                    <StatusCell contact={c} />
-                  </TableCell>
+                  <TableHead>Empreendimento</TableHead>
+                  <TableHead>Abrir atendimento</TableHead>
+                  <TableHead>WhatsApp</TableHead>
+                  <TableHead>Liguei (data e hora)</TableHead>
+                  <TableHead>Status</TableHead>
                 </>
               ) : (
                 <>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {c.last_activity_at
-                      ? formatRelative(new Date(c.last_activity_at), new Date(), { locale: ptBR })
-                      : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadges contact={c} />
-                  </TableCell>
+                  <TableHead>Última atividade</TableHead>
+                  <TableHead>Status</TableHead>
                 </>
               )}
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {contacts.map((c) => (
+              <ContactRow
+                key={c.id}
+                contact={c}
+                posvenda={posvenda}
+                empreendimentos={empreendimentos}
+                selectable={canDelete}
+                selected={selected.has(c.id)}
+                onToggle={toggle}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Barra flutuante: fica fora do fluxo de propósito, pra não empurrar a
+          tabela nem sumir dentro do scroll horizontal do Card. */}
+      {canDelete && selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-surface px-4 py-2.5 shadow-lg">
+          <span className="text-sm font-medium text-text">
+            {selected.size} selecionado{selected.size > 1 ? "s" : ""}
+          </span>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => setConfirmOpen(true)}
+            disabled={del.isPending}
+          >
+            <Trash size={14} weight="bold" aria-hidden />
+            <span>Apagar</span>
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+            Limpar
+          </Button>
+        </div>
+      )}
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Apagar {selected.size} contato{selected.size > 1 ? "s" : ""}?
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2">
+                <p>Não tem como desfazer.</p>
+                <p>
+                  Quem já tem <strong>conversa, mensagem ou atendimento</strong> não é apagado — o
+                  sistema mantém esses e avisa quais foram, para não deixar atendimento sem cliente.
+                </p>
+                {selectedNames.length > 0 && (
+                  <p className="text-xs">
+                    {selectedNames.join(", ")}
+                    {selected.size > selectedNames.length
+                      ? ` e mais ${selected.size - selectedNames.length}`
+                      : ""}
+                  </p>
+                )}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmOpen(false)} disabled={del.isPending}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={runDelete} disabled={del.isPending}>
+              {del.isPending ? "Apagando…" : "Apagar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
