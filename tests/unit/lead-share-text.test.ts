@@ -4,8 +4,9 @@
  *
  * O que importa garantir aqui: nada de campo vazio poluindo o e-mail, rótulo de
  * opção em vez do valor cru, campo condicional respeitado (bloco Van Gogh só
- * quando o empreendimento é Van Gogh) e escape de HTML — o título do chamado é
- * texto digitado pela atendente e vai pra dentro do HTML colado no e-mail.
+ * quando o empreendimento é Van Gogh), observações internas no fim com as
+ * quebras de linha, e escape de HTML — título e observações são texto digitado
+ * pela atendente e vão pra dentro do HTML colado no e-mail.
  */
 import { describe, it, expect } from "vitest";
 
@@ -23,7 +24,7 @@ function lead(overrides: Partial<Lead> = {}): Lead {
     stage_id: "s1",
     contact_id: "c1",
     title: "Boleto de julho",
-    description: "anotação interna que NÃO deve sair",
+    description: "Cliente pediu retorno até sexta.",
     status: "open",
     lost_reason: null,
     position_in_stage: 1,
@@ -116,12 +117,32 @@ describe("buildLeadShareText", () => {
     expect(out.text).toContain("Aberto em: 21/07/2026");
   });
 
-  it("não inclui campo vazio nem as observações internas", () => {
+  it("não inclui campo vazio", () => {
     const out = build(lead({ custom_fields: { interlocutor: "Maria", categoria: "" } }));
     expect(out.text).toContain("Interlocutor (quem falou): Maria");
     expect(out.text).not.toContain("Categoria");
     expect(out.text).not.toContain("Subcategoria");
-    expect(out.text).not.toContain("anotação interna");
+  });
+
+  it("inclui as observações internas no fim, com as quebras de linha", () => {
+    const out = build(
+      lead({ description: "Ligou 3x nesta semana.\n\n\nPediu retorno do Jurídico." }),
+    );
+    const [antes, depois] = out.text.split("— Observações internas —");
+    expect(antes).toContain("Nº do chamado: VG-2026-001");
+    // sequência de linhas vazias colapsa (e-mail sem buraco)
+    expect(depois).toContain("Ligou 3x nesta semana.\n\nPediu retorno do Jurídico.");
+    // vem antes do rodapé, não depois
+    expect(out.text.indexOf("Observações internas")).toBeLessThan(
+      out.text.indexOf("Resumo gerado pelo CRM"),
+    );
+    expect(out.html).toContain("white-space:pre-wrap");
+  });
+
+  it("sem observação escrita, não cria a seção vazia", () => {
+    const out = build(lead({ description: "   " }));
+    expect(out.text).not.toContain("Observações internas");
+    expect(out.html).not.toContain("Observações internas");
   });
 
   it("não duplica pontuação em rótulo que já termina com ?", () => {

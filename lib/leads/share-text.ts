@@ -8,9 +8,13 @@
  * novo no pipeline entra no resumo sozinho, sem tocar neste arquivo — chumbar a
  * lista aqui garantiria resumo desatualizado em algumas semanas.
  *
- * O que NÃO entra (decisão do Darlei ao escolher o escopo): observações internas
- * (`description`), histórico de mensagens do WhatsApp e link do card. Se um dia
- * entrarem, é acrescentar seção aqui — o `subject` já existe pensando no envio
+ * As **observações internas** (`lead.description`) entram no fim, em bloco
+ * próprio e preservando as quebras de linha (30/07: o Darlei pediu depois de ver
+ * o resumo sem elas). ⚠️ É texto livre da atendente saindo do sistema por
+ * e-mail: o `esc()` cuida do HTML, mas o julgamento do conteúdo é humano.
+ *
+ * O que NÃO entra: histórico de mensagens do WhatsApp e link do card. Se um dia
+ * entrarem, é acrescentar bloco aqui — o `subject` já existe pensando no envio
  * por e-mail direto do CRM (hoje não há RESEND_API_KEY em produção).
  *
  * Função PURA: recebe tudo por parâmetro (inclusive `now`) pra ser testável.
@@ -187,6 +191,15 @@ export function buildLeadShareText(input: LeadShareInput): LeadShareOutput {
     : `${leadNoun} — ${lead.title}`;
   const footer = `Resumo gerado pelo CRM em ${format(now, "dd/MM/yyyy 'às' HH:mm")}.`;
 
+  // Observações internas: bloco solto no fim, com as quebras de linha do que foi
+  // digitado (é relato corrido, não par rótulo/valor). Normaliza CRLF e corta
+  // sequência de linhas vazias, senão o e-mail sai com buracos.
+  const notes = (lead.description ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const NOTES_TITLE = "Observações internas";
+
   const textParts: string[] = [subject, ""];
   for (const b of blocks) {
     if (b.rows.length === 0) continue;
@@ -194,6 +207,7 @@ export function buildLeadShareText(input: LeadShareInput): LeadShareOutput {
     for (const r of b.rows) textParts.push(`${r.label}${labelSep(r.label)} ${r.value}`);
     textParts.push("");
   }
+  if (notes) textParts.push(`— ${NOTES_TITLE} —`, notes, "");
   textParts.push(footer);
 
   const htmlParts: string[] = [
@@ -214,6 +228,13 @@ export function buildLeadShareText(input: LeadShareInput): LeadShareOutput {
       );
     }
     htmlParts.push("</table>");
+  }
+  if (notes) {
+    htmlParts.push(
+      `<p style="margin:16px 0 4px;font-weight:600">${esc(NOTES_TITLE)}</p>`,
+      // pre-wrap preserva as quebras de linha ao colar no Gmail/Outlook.
+      `<p style="margin:0;white-space:pre-wrap">${esc(notes)}</p>`,
+    );
   }
   htmlParts.push(
     `<p style="margin:16px 0 0;font-size:12px;color:#666">${esc(footer)}</p>`,
