@@ -10,6 +10,11 @@
 export {
   // navigation (inbox icon = Tray in Phosphor)
   Tray as Inbox,
+  // sidebar: ícones mais expressivos que os genéricos (30/07) — WhatsApp usa a
+  // própria logo, Contatos vira agenda de contatos, Manuais vira livro.
+  AddressBook,
+  BookOpen,
+  ChartLineUp,
   PlugsConnected,
   QrCode,
   Kanban,
