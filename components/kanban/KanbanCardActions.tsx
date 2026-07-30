@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,8 +9,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { DotsThree, PencilSimple } from "@/lib/ui/icons";
+import { Copy, DotsThree, PencilSimple } from "@/lib/ui/icons";
+import { readCustomFields, readHiddenFormFields } from "@/components/contacts/CustomFieldsEditor";
 import { useWinLead } from "@/hooks/kanban/useUpdateLead";
+import { buildLeadShareText } from "@/lib/leads/share-text";
+import { copyRichText } from "@/lib/ui/clipboard";
 import { LoseLeadDialog } from "./LoseLeadDialog";
 import type { Lead } from "@/lib/types/leads";
 import type { BoardData } from "@/lib/kanban/types";
@@ -26,9 +30,31 @@ export function KanbanCardActions({ lead, pipelineId, onEdit }: KanbanCardAction
   const [loseOpen, setLoseOpen] = useState(false);
   const winMutation = useWinLead(pipelineId);
   const qc = useQueryClient();
-  const vocab = qc.getQueryData<BoardData>(["board", pipelineId])?.pipeline.vocabulary;
+  const board = qc.getQueryData<BoardData>(["board", pipelineId]);
+  const vocab = board?.pipeline.vocabulary;
   const wonWord = (vocab?.won ?? "ganho").toLowerCase();
   const lostWord = (vocab?.lost ?? "perdido").toLowerCase();
+  const leadNoun = vocab?.lead ?? "Atendimento";
+
+  /**
+   * Copia o resumo do card pra colar num e-mail (gestor, Jurídico, Financeiro).
+   * Tudo vem do cache do board — nada de rede aqui, senão o `await` quebraria o
+   * gesto do usuário que libera a área de transferência.
+   */
+  function handleCopy() {
+    const settings = board?.pipeline.settings;
+    const { text, html } = buildLeadShareText({
+      lead,
+      fields: readCustomFields(settings),
+      hiddenFormFields: readHiddenFormFields(settings),
+      stageName: board?.stages.find((s) => s.id === lead.stage_id)?.name ?? null,
+      leadNoun,
+    });
+    void copyRichText(text, html).then((ok) => {
+      if (ok) toast.success("Dados copiados — cole no e-mail (Ctrl+V)");
+      else toast.error("Não consegui copiar. Tente pelo navegador do computador.");
+    });
+  }
 
   return (
     <>
@@ -50,6 +76,9 @@ export function KanbanCardActions({ lead, pipelineId, onEdit }: KanbanCardAction
         >
           <DropdownMenuItem onSelect={onEdit}>
             <PencilSimple size={14} className="mr-2" /> Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleCopy}>
+            <Copy size={14} className="mr-2" /> Copiar dados p/ e-mail
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={winMutation.isPending}
