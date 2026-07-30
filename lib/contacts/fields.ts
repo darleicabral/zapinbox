@@ -17,12 +17,22 @@ export const CONTACT_FIELD = {
   status: "status_contato",
 } as const;
 
-/** Status da abordagem ativa (coluna "Status" na lista de contatos). */
+/**
+ * Status da abordagem ativa (coluna "Status" na lista de contatos).
+ *
+ * O valor gravado é o próprio texto, então **renomear uma opção não renomeia o
+ * que já está nos contatos** (os antigos ficariam com o texto velho, fora da
+ * lista). Acrescentar no fim é seguro; renomear pede varredura em
+ * `custom_fields->>status_contato`. Doc. Enviado/Assinado entraram em 30/07 a
+ * pedido do Darlei.
+ */
 export const CONTACT_STATUS_OPTIONS = [
   "Passei a informação",
   "Cliente não atende",
   "Cliente em Atendimento",
   "Pediu para ligar depois",
+  "Doc. Enviado",
+  "Doc. Assinado",
 ] as const;
 
 export type ContactCustomFields = Record<string, unknown> | null | undefined;
