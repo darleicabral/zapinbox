@@ -34,6 +34,9 @@ import {
 import { ContactPicker } from "@/components/kanban/ContactPicker";
 import { useEditLead } from "@/hooks/kanban/useUpdateLead";
 import { useMoveCard } from "@/hooks/kanban/useMoveCard";
+import { Copy } from "@/lib/ui/icons";
+import { buildLeadShareText } from "@/lib/leads/share-text";
+import { copyRichText } from "@/lib/ui/clipboard";
 import type { Lead } from "@/lib/types/leads";
 import type { BoardData } from "@/lib/kanban/types";
 import { updateLeadSchema, type UpdateLeadInput } from "@/lib/schemas/leads";
@@ -179,6 +182,39 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead.id]);
+
+  /**
+   * Copia o resumo pra colar num e-mail, igual ao item do menu ⋯ do card.
+   * Diferença: aqui monta com o que está NA TELA (título, observações, campos e
+   * etapa que a pessoa acabou de mexer), mesmo sem salvar — copiar o valor
+   * gravado enquanto o formulário mostra outro seria pegadinha.
+   *
+   * Sem `await` antes do clipboard: a área de transferência só abre durante o
+   * gesto do usuário.
+   */
+  function handleCopy() {
+    const values = form.getValues();
+    const snapshot: Lead = {
+      ...lead,
+      title: values.title.trim() || lead.title,
+      description: values.description.trim() ? values.description.trim() : null,
+      custom_fields:
+        fields.length > 0
+          ? (buildCustomFields(fields, customValues) as Record<string, unknown>)
+          : lead.custom_fields,
+    };
+    const { text, html } = buildLeadShareText({
+      lead: snapshot,
+      fields,
+      hiddenFormFields: hiddenFields,
+      stageName: stages.find((s) => s.id === stageId)?.name ?? null,
+      leadNoun,
+    });
+    void copyRichText(text, html).then((ok) => {
+      if (ok) toast.success("Dados copiados — cole no e-mail (Ctrl+V)");
+      else toast.error("Não consegui copiar. Tente pelo navegador do computador.");
+    });
+  }
 
   async function onSubmit(values: FormShape) {
     const tags = values.tagsRaw
@@ -394,7 +430,13 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
           )}
           </div>
 
-          <DialogFooter className="shrink-0 border-t pt-4">
+          <DialogFooter className="shrink-0 border-t pt-4 sm:justify-between">
+            {/* Copiar fica separado de Cancelar/Salvar: não é decisão de salvar. */}
+            <Button type="button" variant="outline" onClick={handleCopy}>
+              <Copy size={14} weight="bold" aria-hidden />
+              <span>Copiar p/ e-mail</span>
+            </Button>
+            <div className="flex items-center gap-2">
             <Button
               type="button"
               variant="ghost"
@@ -406,6 +448,7 @@ export function EditLeadDialog({ open, onOpenChange, lead, pipelineId }: Props) 
             <Button type="submit" disabled={edit.isPending}>
               {edit.isPending ? "Salvando…" : "Salvar"}
             </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
