@@ -11,7 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api/types";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
-import { hashCpf, encryptCpfSql } from "@/lib/contacts/cpf";
+import { hashCpf, encryptCpf, decryptCpf, isCpfEncryptionAvailable } from "@/lib/contacts/cpf";
 import type { Contact } from "@/lib/types/contacts";
 import type { ContactCreate, ContactPatch, ContactListQuery } from "@/lib/schemas";
 
@@ -223,13 +223,23 @@ export async function getContactHandler(
     if (rank < ROLE_RANK.manager!) {
       cpfDecryptDenied = true;
     } else {
-      const { data: dec, error: decErr } = await supabase.rpc("decrypt_cpf", {
-        p_contact_id: input.contactId,
-      });
-      if (decErr) {
-        console.warn("[contacts.get] decrypt_cpf RPC unavailable", decErr.message);
-      } else if (typeof dec === "string") {
-        cpfDecrypted = dec;
+      // Decifra na aplicação (a RPC `decrypt_cpf` nunca existiu — ver
+      // lib/contacts/cpf.ts). `cpf_encrypted` NÃO está em SELECT_COLS de
+      // propósito: o texto cifrado não deve trafegar pro browser, então é lido
+      // aqui, numa consulta própria, e só o CPF em claro sai na resposta.
+      const { data: row, error: encErr } = await supabase
+        .from("contacts")
+        .select("cpf_encrypted")
+        .eq("id", input.contactId)
+        .eq("organization_id", ctx.organization_id)
+        .maybeSingle();
+      if (encErr) {
+        console.warn("[contacts.get] leitura do cpf_encrypted falhou", encErr.message);
+      } else {
+        cpfDecrypted = decryptCpf((row as { cpf_encrypted?: string | null } | null)?.cpf_encrypted);
+        if (!cpfDecrypted && !isCpfEncryptionAvailable()) {
+          console.warn("[contacts.get] CPF_ENCRYPTION_KEY ausente/inválida — CPF não decifrado.");
+        }
       }
       const a = actorAuditPayload(ctx.actor);
       await audit({
@@ -286,10 +296,23 @@ export async function createContactHandler(
     custom_fields: input.custom_fields ?? {},
   };
 
+  // ⚠️ `cpf_hash` e `cpf_encrypted` andam JUNTOS: o CHECK
+  // `contacts_cpf_consistency` exige que os dois sejam nulos ou os dois
+  // preenchidos. Gravar só o hash derrubava o INSERT inteiro com "Erro interno"
+  // (era esse o bug de 04/08 ao cadastrar contato com CPF).
   if (input.cpf) {
+    const enc = encryptCpf(input.cpf);
+    if (!enc) {
+      throw new ApiError(
+        422,
+        "cpf_encryption_unavailable",
+        undefined,
+        ctx.requestId,
+        "CPF não pode ser salvo com segurança: a chave de criptografia (CPF_ENCRYPTION_KEY) está ausente ou inválida. Cadastre o contato sem CPF.",
+      );
+    }
     insertRow.cpf_hash = hashCpf(input.cpf);
-    const enc = await encryptCpfSql(supabase, input.cpf);
-    if (enc) insertRow.cpf_encrypted = enc;
+    insertRow.cpf_encrypted = enc;
   }
 
   const { data: created, error: insErr } = await supabase
@@ -390,9 +413,19 @@ export async function patchContactHandler(
     patch.custom_fields = { ...current, ...input.custom_fields };
   }
   if (input.cpf !== undefined) {
+    // Mesma regra do create: hash e cifra andam juntos (CHECK do banco).
+    const enc = encryptCpf(input.cpf);
+    if (!enc) {
+      throw new ApiError(
+        422,
+        "cpf_encryption_unavailable",
+        undefined,
+        ctx.requestId,
+        "CPF não pode ser salvo com segurança: a chave de criptografia (CPF_ENCRYPTION_KEY) está ausente ou inválida.",
+      );
+    }
     patch.cpf_hash = hashCpf(input.cpf);
-    const enc = await encryptCpfSql(supabase, input.cpf);
-    if (enc) patch.cpf_encrypted = enc;
+    patch.cpf_encrypted = enc;
   }
 
   if (Object.keys(patch).length === 0) {
