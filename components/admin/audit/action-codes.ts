@@ -53,6 +53,7 @@ export const ACTION_CODES: string[] = [
   "conversation.released",
   "conversation.closed",
   "conversation.reopened",
+  "member.channels_changed",
   "message.sent",
   "message.received",
   "contact.blocked",

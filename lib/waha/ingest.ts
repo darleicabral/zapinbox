@@ -187,9 +187,12 @@ async function upsertContact(
   parsed: ChatIdentity,
   chatId: string,
   notifyName: string | null,
+  /** Número que recebeu a mensagem: vira o dono do contato (visibilidade, 0029). */
+  sessionId: string,
   phoneHint: string | null = null,
 ): Promise<string | null> {
   if (parsed.kind === "group") return null;
+  // 7 argumentos = assinatura da 0029 (a de 6 continua no banco p/ chamador antigo).
   const { data, error } = await admin.rpc(
     "fn_upsert_wa_contact" as never,
     {
@@ -199,6 +202,7 @@ async function upsertContact(
       p_lid: parsed.kind === "lid" ? parsed.lid : null,
       p_chat_id: chatId,
       p_notify: notifyName,
+      p_session: sessionId,
     } as never,
   );
   if (error) {
@@ -331,6 +335,7 @@ async function handleInbound(
     parsed,
     chatId,
     notifyNameOf(p),
+    session.id,
     phoneHintOf(p),
   );
   if (!contactId) return;
@@ -504,6 +509,7 @@ async function handleOutboundFromUserPhone(
     parsed,
     chatId,
     notifyNameOf(p),
+    session.id,
   );
   if (!contactId) return;
   const conversationId = await upsertConversation(

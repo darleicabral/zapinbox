@@ -31,6 +31,11 @@ interface MemberDto extends MembershipRow {
   email: string | null;
   full_name: string | null;
   last_sign_in_at: string | null;
+  /**
+   * Números de WhatsApp atribuídos (0029). Lista VAZIA = sem restrição, vê
+   * todos — é o default e o estado de quem nunca foi restringido.
+   */
+  channel_session_ids: string[];
 }
 
 export async function GET(_req: NextRequest): Promise<Response> {
@@ -52,12 +57,25 @@ export async function GET(_req: NextRequest): Promise<Response> {
 
   const members: MembershipRow[] = (rows ?? []) as MembershipRow[];
 
+  // Atribuições de número, numa consulta só (não uma por membro).
+  const { data: assign } = await supabase
+    .from("user_channel_sessions")
+    .select("user_id, channel_session_id")
+    .eq("organization_id", activeOrg.orgId);
+  const channelsByUser = new Map<string, string[]>();
+  for (const a of (assign ?? []) as { user_id: string; channel_session_id: string }[]) {
+    const list = channelsByUser.get(a.user_id) ?? [];
+    list.push(a.channel_session_id);
+    channelsByUser.set(a.user_id, list);
+  }
+
   if (!isServiceRoleConfigured() || members.length === 0) {
     const degraded: MemberDto[] = members.map((m) => ({
       ...m,
       email: null,
       full_name: null,
       last_sign_in_at: null,
+      channel_session_ids: channelsByUser.get(m.user_id) ?? [],
     }));
     return ok(degraded, { requestId });
   }
@@ -72,6 +90,7 @@ export async function GET(_req: NextRequest): Promise<Response> {
         email: u?.email ?? null,
         full_name: (u?.user_metadata?.full_name as string | undefined) ?? null,
         last_sign_in_at: u?.last_sign_in_at ?? null,
+        channel_session_ids: channelsByUser.get(m.user_id) ?? [],
       };
     }),
   );

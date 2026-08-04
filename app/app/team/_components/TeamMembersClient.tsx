@@ -6,6 +6,8 @@ import { useTeamMembers, type TeamMember } from "@/hooks/team/useTeamMembers";
 import { useChangeRole } from "@/hooks/team/useChangeRole";
 import { useRevokeMember } from "@/hooks/team/useRevokeMember";
 import { useSetNotifyPhone } from "@/hooks/team/useSetNotifyPhone";
+import { useSetMemberChannels } from "@/hooks/team/useSetMemberChannels";
+import { useChannelSessions, type ChannelSession } from "@/hooks/channels/useChannelSessions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,17 +50,32 @@ interface Props {
   canManage: boolean;
 }
 
+/** Nome curto do número, como a pessoa reconhece na tela. */
+function channelLabel(c: ChannelSession): string {
+  return c.display_name?.trim() || c.phone_number || c.waha_session_name;
+}
+
 export function TeamMembersClient({ currentUserId, canManage }: Props) {
   const { data, isLoading, isError } = useTeamMembers();
+  const { data: channels } = useChannelSessions();
   const changeRole = useChangeRole();
   const revoke = useRevokeMember();
   const setNotifyPhone = useSetNotifyPhone();
+  const setChannels = useSetMemberChannels();
 
   const [roleDialog, setRoleDialog] = useState<TeamMember | null>(null);
   const [revokeDialog, setRevokeDialog] = useState<TeamMember | null>(null);
   const [pendingRole, setPendingRole] = useState<Role>("agent");
   const [phoneDialog, setPhoneDialog] = useState<TeamMember | null>(null);
   const [pendingPhone, setPendingPhone] = useState("");
+  const [channelDialog, setChannelDialog] = useState<TeamMember | null>(null);
+  const [pendingChannels, setPendingChannels] = useState<string[]>([]);
+
+  const channelList = channels ?? [];
+  const channelName = (id: string) => {
+    const c = channelList.find((x) => x.id === id);
+    return c ? channelLabel(c) : id.slice(0, 8);
+  };
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">Carregando…</p>;
@@ -80,6 +97,7 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
               <TableHead>Membro</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>WhatsApp (avisos)</TableHead>
+              <TableHead>Números que vê</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Última atividade</TableHead>
               {canManage ? <TableHead className="w-[80px]" /> : null}
@@ -102,6 +120,22 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
                     <span className="tabular-nums">{m.notify_whatsapp_e164}</span>
                   ) : (
                     <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-sm">
+                  {/* Gerente/admin vê tudo por papel: atribuição não se aplica. */}
+                  {(m.role as Role) === "manager" || (m.role as Role) === "admin" ? (
+                    <span className="text-muted-foreground">Todos (por nível)</span>
+                  ) : m.channel_session_ids.length === 0 ? (
+                    <span className="text-muted-foreground">Todos</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {m.channel_session_ids.map((id) => (
+                        <Badge key={id} variant="neutral">
+                          {channelName(id)}
+                        </Badge>
+                      ))}
+                    </div>
                   )}
                 </TableCell>
                 <TableCell>
@@ -130,6 +164,14 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
                           }}
                         >
                           Definir WhatsApp de avisos
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setPendingChannels(m.channel_session_ids);
+                            setChannelDialog(m);
+                          }}
+                        >
+                          Definir números que vê
                         </DropdownMenuItem>
                         {m.user_id !== currentUserId ? (
                           <>
@@ -276,6 +318,96 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
                   });
                   toast.success(trimmed === "" ? "WhatsApp removido." : "WhatsApp salvo.");
                   setPhoneDialog(null);
+                } catch {
+                  /* showApiError already triggered */
+                }
+              }}
+            >
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!channelDialog} onOpenChange={(o) => !o && setChannelDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Números que {channelDialog?.full_name ?? "este membro"} vê</DialogTitle>
+            <DialogDescription>
+              Marque os números de WhatsApp desta pessoa. Ela passa a ver apenas as conversas, os
+              contatos e os atendimentos desses números.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {(channelDialog?.role as Role) === "manager" ||
+            (channelDialog?.role as Role) === "admin" ? (
+              <p className="rounded-md bg-warning-bg px-3 py-2 text-xs text-warning-fg">
+                Gerente e administrador veem <strong>todos</strong> os números por causa do nível de
+                acesso. Marcar aqui não muda nada para esta pessoa.
+              </p>
+            ) : null}
+
+            {channelList.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nenhum número conectado ainda. Conecte em Conexões primeiro.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {channelList.map((c) => (
+                  <label
+                    key={c.id}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-md border border-border px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-accent"
+                      checked={pendingChannels.includes(c.id)}
+                      onChange={(e) =>
+                        setPendingChannels((prev) =>
+                          e.target.checked ? [...prev, c.id] : prev.filter((x) => x !== c.id),
+                        )
+                      }
+                    />
+                    <span className="font-medium">{channelLabel(c)}</span>
+                    {c.phone_number && c.display_name ? (
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {c.phone_number}
+                      </span>
+                    ) : null}
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {/* A regra menos óbvia da tela: nada marcado libera tudo. Sem este
+                aviso, o gerente desmarca esperando cortar acesso e faz o contrário. */}
+            <p className="text-xs text-muted-foreground">
+              {pendingChannels.length === 0
+                ? "Nenhum marcado = vê TODOS os números (sem restrição)."
+                : `Vai ver ${pendingChannels.length} de ${channelList.length} números.`}
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setChannelDialog(null)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={setChannels.isPending}
+              onClick={async () => {
+                if (!channelDialog) return;
+                try {
+                  await setChannels.mutateAsync({
+                    userId: channelDialog.user_id,
+                    channelSessionIds: pendingChannels,
+                  });
+                  toast.success(
+                    pendingChannels.length === 0
+                      ? "Sem restrição: vê todos os números."
+                      : "Números salvos.",
+                  );
+                  setChannelDialog(null);
                 } catch {
                   /* showApiError already triggered */
                 }

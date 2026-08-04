@@ -11,7 +11,13 @@
  * O arquivo de dados fica FORA do repo (tem PII: telefone/e-mail).
  *
  *   CONTATOS_JSON="D:\HD downloads\CLAUDE\CRM\itaville-contatos.json" \
+ *   OWNER_SESSION_ID=<uuid do número>  # opcional, ver abaixo
  *   APPLY=1 npx tsx scripts/import-contatos-itaville.ts
+ *
+ * OWNER_SESSION_ID marca de qual **número de WhatsApp** são esses contatos
+ * (visibilidade por número, migration 0029). Sem ele o contato nasce sem dono,
+ * o que significa "visível a todos" — que é o certo enquanto a empresa tem um
+ * número só, e errado no dia em que tiver dois.
  *
  * Sem APPLY=1 faz ensaio: valida tudo e mostra o resumo sem gravar.
  */
@@ -48,6 +54,7 @@ interface Entrada {
 
 async function main(): Promise<void> {
   const arquivo = env("CONTATOS_JSON");
+  const ownerSession = process.env.OWNER_SESSION_ID?.trim() || null;
   const entradas = JSON.parse(readFileSync(arquivo, "utf8")) as Entrada[];
   const agora = new Date().toISOString();
 
@@ -105,6 +112,7 @@ async function main(): Promise<void> {
       is_blocked: e.blocked,
       blocked_reason: e.blocked ? "planilha: NÃO CONTATAR" : null,
       blocked_at: e.blocked ? agora : null,
+      owner_channel_session_id: ownerSession,
     });
   }
 
@@ -113,6 +121,7 @@ async function main(): Promise<void> {
   console.log(`prontos: ${linhas.length}   recusados: ${recusados.length}`);
   console.log(`  com telefone: ${linhas.filter((l) => l.phone_number).length}`);
   console.log(`  bloqueados:   ${linhas.filter((l) => l.is_blocked).length}`);
+  console.log(`  número dono:  ${ownerSession ?? "(nenhum — visível a todos)"}`);
   for (const r of recusados.slice(0, 10)) console.log(`  ! ${r}`);
   if (recusados.length > 10) console.log(`  … e mais ${recusados.length - 10}`);
 

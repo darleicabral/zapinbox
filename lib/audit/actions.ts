@@ -54,6 +54,7 @@ export type AuditAction =
   | "conversation.released"
   | "conversation.closed"
   | "conversation.reopened"
+  | "member.channels_changed"
   | "message.sent"
   | "message.received"
   | "contact.blocked"

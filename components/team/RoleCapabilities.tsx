@@ -38,6 +38,8 @@ const CAPABILITIES: Array<{ label: string; min: Role }> = [
   { label: "Conectar e reconectar o WhatsApp", min: "manager" },
   { label: "LGPD: ver e aprovar pedidos", min: "manager" },
   { label: "Convidar, cadastrar e remover pessoas (menos admins)", min: "manager" },
+  { label: "Definir quais números de WhatsApp cada pessoa vê", min: "manager" },
+  { label: "Apagar contatos em lote", min: "manager" },
   { label: "Criar, editar e arquivar agente de IA", min: "admin" },
   { label: "Chaves de IA e orçamento", min: "admin" },
   { label: "Promover alguém a administrador", min: "admin" },

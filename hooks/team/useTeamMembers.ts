@@ -13,6 +13,8 @@ export interface TeamMember {
   full_name: string | null;
   last_sign_in_at: string | null;
   notify_whatsapp_e164: string | null;
+  /** Números atribuídos (0029). Vazio = sem restrição, vê todos. */
+  channel_session_ids: string[];
 }
 
 export function useTeamMembers() {
