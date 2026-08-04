@@ -25,6 +25,9 @@ type Admin = ReturnType<typeof createAdminClient>;
 interface Session {
   id: string;
   organization_id: string;
+  /** Número pareado, só dígitos como o WAHA devolve. Usado p/ ignorar o
+   *  "chat consigo mesmo" (ver handleOutboundFromUserPhone). */
+  phone_number?: string | null;
 }
 
 export interface WahaPayload {
@@ -121,10 +124,23 @@ export function verifyHmacSha512(
   }
 }
 
+/** Rótulo do preview quando a mensagem não tem texto (só mídia). */
+const PREVIEW_BY_TYPE: Record<string, string> = {
+  image: "[foto]",
+  video: "[vídeo]",
+  audio: "[áudio]",
+  document: "[documento]",
+  sticker: "[figurinha]",
+  location: "[localização]",
+  contact: "[contato]",
+};
+
 function previewFromMessage(p: WahaPayload): string {
   if (p.body) return p.body.slice(0, 280);
-  if (p.type) return `[${p.type}]`;
-  return "";
+  // Antes usava p.type, que o NOWEB não manda (ver messageTypeOf): preview de
+  // foto/áudio ficava vazio na lista de conversas.
+  const t = messageTypeOf(p);
+  return PREVIEW_BY_TYPE[t] ?? (t === "text" ? "" : `[${t}]`);
 }
 
 /**
@@ -154,6 +170,22 @@ function mapWahaMessageType(raw: string | undefined): string {
   // Fallback "text": só chegamos ao insert com body/mídia presente (guarda acima),
   // então tratar tipo desconhecido como texto não perde a mensagem.
   return WA_TYPE_MAP[raw.toLowerCase()] ?? "text";
+}
+
+/**
+ * Tipo final da mensagem. Nesta versão do NOWEB (2026.7) os eventos de mensagem
+ * **não trazem `type`** — verificado no payload cru gravado em
+ * webhook_events_log. Sem mídia isso cai em "text" e está certo; COM mídia, sem
+ * olhar o mime, uma foto entraria como "text" e viraria um balão vazio.
+ */
+function messageTypeOf(p: WahaPayload): string {
+  if (p.type) return mapWahaMessageType(p.type);
+  const mime = mediaMimeOf(p);
+  if (!mime) return "text";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  return "document";
 }
 
 function notifyNameOf(p: WahaPayload): string | null {
@@ -192,19 +224,29 @@ async function upsertContact(
   phoneHint: string | null = null,
 ): Promise<string | null> {
   if (parsed.kind === "group") return null;
-  // 7 argumentos = assinatura da 0029 (a de 6 continua no banco p/ chamador antigo).
-  const { data, error } = await admin.rpc(
-    "fn_upsert_wa_contact" as never,
-    {
-      p_org: orgId,
-      p_kind: parsed.kind,
-      p_phone: parsed.kind === "phone" ? parsed.phone : null,
-      p_lid: parsed.kind === "lid" ? parsed.lid : null,
-      p_chat_id: chatId,
-      p_notify: notifyName,
-      p_session: sessionId,
-    } as never,
-  );
+  const base = {
+    p_org: orgId,
+    p_kind: parsed.kind,
+    p_phone: parsed.kind === "phone" ? parsed.phone : null,
+    p_lid: parsed.kind === "lid" ? parsed.lid : null,
+    p_chat_id: chatId,
+    p_notify: notifyName,
+  };
+
+  // 7 argumentos = assinatura da 0029 (marca o número dono do contato).
+  let { data, error } = await admin.rpc("fn_upsert_wa_contact" as never, {
+    ...base,
+    p_session: sessionId,
+  } as never);
+
+  // ⚠️ Banco AINDA sem a 0029: a de 7 args não existe e o PostgREST devolve
+  // "Could not find the function". Cai na assinatura antiga (contato nasce sem
+  // dono, que é o comportamento de hoje) em vez de derrubar a ingestão — sem
+  // isso, deployar antes de aplicar o SQL faria TODA mensagem recebida sumir.
+  if (error && /could not find the function/i.test(error.message)) {
+    ({ data, error } = await admin.rpc("fn_upsert_wa_contact" as never, base as never));
+  }
+
   if (error) {
     console.error("[waha.ingest] fn_upsert_wa_contact failed", error.message);
     return null;
@@ -356,7 +398,7 @@ async function handleInbound(
       channel_session_id: session.id,
       contact_id: contactId,
       external_id: p.id,
-      type: mapWahaMessageType(p.type),
+      type: messageTypeOf(p),
       direction: "inbound",
       status: "delivered",
       ack: p.ack ?? null,
@@ -487,9 +529,27 @@ async function handleInbound(
 }
 
 /**
- * fromMe=true: operador respondeu direto do WhatsApp dele (não pelo composer).
- * Contato = destinatário (`to`). `from` é o próprio número do operador — nunca
- * vira contato. Registrado como outbound p/ o operador ver o histórico completo.
+ * fromMe=true: alguém respondeu direto do WhatsApp no celular (não pelo
+ * composer). Registrado como outbound p/ o histórico do CRM ficar completo.
+ *
+ * 🐛 04/08/2026 — TODA mensagem enviada pelo celular era descartada em silêncio.
+ * O código lia o chat de `p.to`, mas o **NOWEB não manda `to`** nos eventos
+ * fromMe: o chat vem em `p.from` (provado no payload cru de webhook_events_log:
+ * `from: "12154774274171@lid", to: undefined, source: "app"`). Com `to`
+ * undefined, `chatId` virava "" e a guarda abaixo abortava. Sintoma: 37 eventos
+ * fromMe recebidos, ZERO linha em messages.
+ *
+ * A precedência `to ?? from` cobre os dois formatos: engine que manda `to`
+ * (WEBJS) continua usando o destinatário; NOWEB cai no `from`, que nele é o
+ * chat do cliente — nunca o número do operador.
+ *
+ * Não duplica o que foi enviado PELO CRM: aquele caminho grava o id do WAHA em
+ * `external_id`, então o mesmo evento aqui bate na unique (org, external_id) e
+ * sai pelo 23505 logo abaixo.
+ *
+ * ⚠️ NÃO passe `phoneHintOf(p)` aqui (o inbound passa). Em evento fromMe o
+ * `_data.key.senderPn` é o **nosso** número, então o hint gravaria o número da
+ * empresa no cadastro do cliente.
  */
 async function handleOutboundFromUserPhone(
   admin: Admin,
@@ -497,10 +557,17 @@ async function handleOutboundFromUserPhone(
   p: WahaPayload,
   requestId: string,
 ): Promise<void> {
-  const chatId = p.to ?? "";
+  const chatId = p.to ?? p.from ?? "";
   const parsed = parseChatId(chatId);
   if (parsed.kind === "group") return;
   if (!p.id || !chatId) return;
+  // "Chat consigo mesmo": mensagem que a pessoa manda pro próprio número da
+  // empresa (teste, recado pessoal). Sem esta guarda o CRM criaria um contato e
+  // uma conversa da Itaville com a Itaville.
+  if (parsed.kind === "phone" && session.phone_number) {
+    const so = (s: string) => s.replace(/\D/g, "");
+    if (so(parsed.phone) === so(session.phone_number)) return;
+  }
   if (!p.body && !p.mediaUrl && !p.hasMedia) return;
 
   const contactId = await upsertContact(
@@ -527,7 +594,7 @@ async function handleOutboundFromUserPhone(
     channel_session_id: session.id,
     contact_id: contactId,
     external_id: p.id,
-    type: mapWahaMessageType(p.type),
+    type: messageTypeOf(p),
     direction: "outbound",
     status: "sent",
     ack: p.ack ?? null,
