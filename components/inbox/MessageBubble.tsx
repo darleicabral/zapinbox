@@ -16,9 +16,18 @@ import type { Message } from "@/lib/types/messaging";
 import { CitationButton } from "@/components/ai/CitationButton";
 import { extractCitations, isAiGeneratedMessage } from "@/lib/ai/citations/types";
 
+/** Referência da mensagem citada (quoted reply), guardada em metadata.quoted. */
+interface QuotedRef {
+  author: string;
+  text: string;
+  from_me?: boolean;
+}
+
 interface Props {
   message: Message;
   debugCitations?: boolean;
+  /** Rabinho: só no 1º balão de um grupo do mesmo remetente (igual WhatsApp). */
+  tail?: boolean;
 }
 
 const MEDIA_LABEL: Record<string, { Icon: typeof ImageIcon; label: string }> = {
@@ -93,67 +102,91 @@ function MediaContent({ message }: { message: Message }) {
 
 function AckIndicator({ status }: { status: string }) {
   if (status === "read") {
-    return <Checks size={12} weight="bold" className="text-blue-400" aria-label="Lida" />;
+    return <Checks size={15} weight="bold" style={{ color: "var(--wa-tick)" }} aria-label="Lida" />;
   }
   if (status === "delivered") {
-    return <Checks size={12} weight="bold" className="text-current/70" aria-label="Entregue" />;
+    return (
+      <Checks size={15} weight="bold" style={{ color: "var(--wa-meta)" }} aria-label="Entregue" />
+    );
   }
   if (status === "sent") {
-    return <Check size={12} weight="bold" className="text-current/70" aria-label="Enviada" />;
+    return <Check size={15} weight="bold" style={{ color: "var(--wa-meta)" }} aria-label="Enviada" />;
   }
   return null;
 }
 
-export function MessageBubble({ message, debugCitations }: Props) {
+/** Cartão da mensagem citada, dentro do balão (barra colorida + autor + trecho). */
+function QuotedCard({ quoted }: { quoted: QuotedRef }) {
+  return (
+    <div
+      className="mb-1 flex flex-col gap-0.5 overflow-hidden rounded border-l-[3px] px-2 py-1 text-xs"
+      style={{ borderColor: "var(--wa-quote)", background: "rgba(0,0,0,0.045)" }}
+    >
+      <span className="font-semibold" style={{ color: "var(--wa-quote)" }}>
+        {quoted.from_me ? "Você" : quoted.author}
+      </span>
+      <span className="line-clamp-2 opacity-70">{quoted.text}</span>
+    </div>
+  );
+}
+
+export function MessageBubble({ message, debugCitations, tail = true }: Props) {
   const isOutbound = message.direction === "outbound";
   const time = format(new Date(message.sent_at), "HH:mm", { locale: ptBR });
   const isFailed = message.status === "failed";
   const aiGenerated = isAiGeneratedMessage(message.metadata);
   const citations = extractCitations(message.metadata);
   const showCitationButton = isOutbound && aiGenerated && (debugCitations ?? false);
-  const senderLabel = (() => {
-    if (!isOutbound) return null;
-    if (message.sent_via === "ai") return "IA";
-    return null;
-  })();
+  const senderLabel = isOutbound && message.sent_via === "ai" ? "IA" : null;
+  const rawQuoted = message.metadata?.quoted;
+  const quoted =
+    rawQuoted && typeof rawQuoted === "object" ? (rawQuoted as QuotedRef) : null;
 
   return (
-    <div className={cn("flex w-full px-4 py-1", isOutbound ? "justify-end" : "justify-start")}>
+    <div
+      className={cn(
+        "flex w-full px-4",
+        isOutbound ? "justify-end" : "justify-start",
+        tail ? "mt-2" : "mt-0.5",
+      )}
+    >
       <div
         className={cn(
-          // Balão = objeto sobre o canvas: recebida em branco com fio e sombra
-          // rasa, enviada no verde cheio. Cada uma se separa da outra e as duas
-          // se separam do fundo rebaixado da conversa.
-          "max-w-[75%] rounded-2xl border px-3.5 py-2 text-sm shadow-xs",
+          // Balão WhatsApp: verde do WhatsApp no enviado, branco no recebido,
+          // sombra rasa e rabinho no 1º do grupo.
+          "relative max-w-[65%] rounded-lg px-2 py-1.5 text-sm shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
           isOutbound
-            ? "rounded-br-md border-bubble-out-border bg-bubble-out text-bubble-out-fg"
-            : "rounded-bl-md border-border bg-surface text-text",
-          isFailed && "border-error",
+            ? cn("bg-[var(--wa-out)] text-[var(--wa-out-fg)]", tail && "wa-tail-out rounded-tr-none")
+            : cn("bg-[var(--wa-in)] text-[var(--wa-in-fg)]", tail && "wa-tail-in rounded-tl-none"),
+          isFailed && "ring-1 ring-error",
         )}
       >
         {senderLabel && (
-          <div className="mb-0.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
-            {senderLabel === "IA" ? <Robot size={10} weight="duotone" aria-hidden /> : null}
+          <div
+            className="mb-0.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide"
+            style={{ color: "var(--wa-quote)" }}
+          >
+            <Robot size={10} weight="duotone" aria-hidden />
             {senderLabel}
           </div>
         )}
 
+        {quoted && <QuotedCard quoted={quoted} />}
+
         {/* Mídia primeiro, texto embaixo como legenda — igual ao WhatsApp. */}
         {message.type !== "text" && (
-          <div className={cn(message.body && "mb-1.5")}>
+          <div className={cn(message.body && "mb-1")}>
             <MediaContent message={message} />
           </div>
         )}
 
         {message.body && (
-          <p className="whitespace-pre-wrap break-words leading-snug">{message.body}</p>
+          <p className="whitespace-pre-wrap break-words leading-[1.35]">{message.body}</p>
         )}
 
         <div
-          className={cn(
-            "mt-1 flex items-center justify-end gap-1 text-[10px]",
-            isOutbound ? "text-bubble-out-fg opacity-70" : "text-text-subtle",
-          )}
+          className="mt-0.5 flex items-center justify-end gap-1 text-[11px] leading-none"
+          style={{ color: "var(--wa-meta)" }}
         >
           <span>{time}</span>
           {showCitationButton && <CitationButton citations={citations} messageId={message.id} />}
@@ -162,7 +195,7 @@ export function MessageBubble({ message, debugCitations }: Props) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="inline-flex items-center gap-0.5 font-semibold text-destructive">
-                  <WarningOctagon size={10} weight="fill" aria-hidden /> Falhou
+                  <WarningOctagon size={11} weight="fill" aria-hidden /> Falhou
                 </span>
               </TooltipTrigger>
               <TooltipContent>

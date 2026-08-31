@@ -550,3 +550,73 @@
     color: oklch(0.86 0.07 var(--tint-h));
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   WhatsApp Web — skin do CHAT (fixa, independente da marca).
+   Decisão do cliente: o chat deve parecer o WhatsApp Web "de verdade" — verde
+   do WhatsApp no enviado, papel de parede, tique azul. A marca (verde/vinho)
+   vive no chrome (sidebar, botões), não no balão. Por isso estes tokens NÃO
+   apontam pro accent: são as cores do próprio WhatsApp, iguais em todo tenant.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  --wa-wall: #efeae2; /* papel de parede (bege) */
+  --wa-out: #d9fdd3; /* balão enviado (verde claro) */
+  --wa-out-fg: #111b21;
+  --wa-in: #ffffff; /* balão recebido */
+  --wa-in-fg: #111b21;
+  --wa-meta: #667781; /* hora/checks cinza */
+  --wa-tick: #53bdeb; /* tique azul (lida) */
+  --wa-bar: #f0f2f5; /* barra do header/composer */
+  --wa-panel: #ffffff; /* lista de conversas */
+  --wa-chip-bg: rgba(255, 255, 255, 0.92); /* pílula de data */
+  --wa-chip-fg: #54656f;
+  --wa-quote: #06cf9c; /* barra da citação (reply) */
+  --wa-hover: rgba(0, 0, 0, 0.04); /* hover das linhas da lista */
+}
+[data-theme="dark"] {
+  --wa-wall: #0b141a;
+  --wa-out: #005c4b;
+  --wa-out-fg: #e9edef;
+  --wa-in: #202c33;
+  --wa-in-fg: #e9edef;
+  --wa-meta: #8696a0;
+  --wa-tick: #53bdeb;
+  --wa-bar: #202c33;
+  --wa-panel: #111b21;
+  --wa-chip-bg: rgba(24, 34, 41, 0.85);
+  --wa-chip-fg: #8696a0;
+  --wa-quote: #06cf9c;
+  --wa-hover: rgba(255, 255, 255, 0.04);
+}
+
+/* Papel de parede: cor-base + doodles finos em baixa opacidade (arte própria,
+   não o asset do WhatsApp). O doodle é o sinal nº1 de "isto é WhatsApp". */
+.wa-chat-bg {
+  background-color: var(--wa-wall);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='none' stroke='%23111111' stroke-opacity='0.045' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M28 44h44a10 10 0 0 1 10 10v20a10 10 0 0 1 -10 10h-30l-14 12v-12a10 10 0 0 1 -10 -10v-20a10 10 0 0 1 10 -10z'/%3E%3Cpath d='M182 54c-5-9-20-6-20 5 0 9 20 20 20 20s20-11 20-20c0-11-15-14-20-5z'/%3E%3Ccircle cx='64' cy='176' r='22'/%3E%3Cpath d='M54 180a12 8 0 0 0 20 0'/%3E%3Ccircle cx='56' cy='170' r='1.6'/%3E%3Ccircle cx='72' cy='170' r='1.6'/%3E%3Crect x='198' y='150' width='26' height='44' rx='5'/%3E%3Cline x1='207' y1='186' x2='215' y2='186'/%3E%3Cpath d='M150 106l5 12 13 1-10 9 3 13-11-7-11 7 3-13-10-9 13-1z'/%3E%3Cpath d='M112 58v26'/%3E%3Cpath d='M112 58l14-4v26'/%3E%3Ccircle cx='108' cy='86' r='5'/%3E%3Ccircle cx='122' cy='82' r='5'/%3E%3Cpath d='M30 216l16-16a7 7 0 0 1 10 10l-18 18a11 11 0 0 1 -16-16l16-16'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 260px 260px;
+}
+[data-theme="dark"] .wa-chat-bg {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.05' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M28 44h44a10 10 0 0 1 10 10v20a10 10 0 0 1 -10 10h-30l-14 12v-12a10 10 0 0 1 -10 -10v-20a10 10 0 0 1 10 -10z'/%3E%3Cpath d='M182 54c-5-9-20-6-20 5 0 9 20 20 20 20s20-11 20-20c0-11-15-14-20-5z'/%3E%3Ccircle cx='64' cy='176' r='22'/%3E%3Cpath d='M54 180a12 8 0 0 0 20 0'/%3E%3Ccircle cx='56' cy='170' r='1.6'/%3E%3Ccircle cx='72' cy='170' r='1.6'/%3E%3Crect x='198' y='150' width='26' height='44' rx='5'/%3E%3Cline x1='207' y1='186' x2='215' y2='186'/%3E%3Cpath d='M150 106l5 12 13 1-10 9 3 13-11-7-11 7 3-13-10-9 13-1z'/%3E%3Cpath d='M112 58v26'/%3E%3Cpath d='M112 58l14-4v26'/%3E%3Ccircle cx='108' cy='86' r='5'/%3E%3Ccircle cx='122' cy='82' r='5'/%3E%3Cpath d='M30 216l16-16a7 7 0 0 1 10 10l-18 18a11 11 0 0 1 -16-16l16-16'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* Rabinho do balão (só no primeiro de um grupo). Triângulo na cor do balão. */
+.wa-tail-out::after,
+.wa-tail-in::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 13px;
+}
+.wa-tail-out::after {
+  right: -8px;
+  background: var(--wa-out);
+  clip-path: polygon(0 0, 0 100%, 100% 0);
+}
+.wa-tail-in::after {
+  left: -8px;
+  background: var(--wa-in);
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+}

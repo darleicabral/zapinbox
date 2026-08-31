@@ -116,9 +116,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   }
 
   return (
-    <div className="border-t border-border bg-surface px-3 py-2.5">
+    <div className="border-t border-border bg-[var(--wa-bar)] px-3 py-2">
       {attachment && (
-        <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-field p-2">
+        <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-[var(--wa-in)] p-2 shadow-sm">
           {attachment.previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={attachment.previewUrl} alt="" className="size-10 rounded-md object-cover" />
@@ -147,7 +147,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         </div>
       )}
 
-      <div className="flex items-end gap-2">
+      <div className="flex items-end gap-1.5">
         <input
           ref={fileRef}
           type="file"
@@ -159,16 +159,16 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           type="button"
           size="icon"
           variant="ghost"
-          className="h-9 w-9 shrink-0"
+          className="h-9 w-9 shrink-0 text-text-subtle"
           aria-label="Anexar arquivo"
           title="Anexar imagem, PDF ou documento (até 2,8 MB)"
           onClick={() => fileRef.current?.click()}
           disabled={isDisabled || preparing}
         >
           {preparing ? (
-            <CircleNotch size={16} weight="bold" className="animate-spin" aria-hidden />
+            <CircleNotch size={18} weight="bold" className="animate-spin" aria-hidden />
           ) : (
-            <Paperclip size={16} weight="regular" aria-hidden />
+            <Paperclip size={20} weight="regular" aria-hidden />
           )}
         </Button>
         <textarea
@@ -180,11 +180,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           }}
           onKeyDown={onKeyDown}
           rows={1}
-          placeholder="Escreva uma mensagem… (Enter envia, Shift+Enter quebra linha)"
+          placeholder="Digite uma mensagem"
           className={cn(
-            "max-h-40 min-h-9 flex-1 resize-none rounded-lg border border-border bg-field px-3 py-2 text-sm text-text",
-            "transition-colors duration-fast ease-out placeholder:text-text-subtle hover:border-border-strong",
-            "focus:ring-accent/20 focus:border-accent focus:bg-surface focus:outline-none focus:ring-2",
+            "max-h-40 min-h-9 flex-1 resize-none rounded-lg bg-[var(--wa-in)] px-3.5 py-2 text-sm text-[var(--wa-in-fg)]",
+            "shadow-sm transition-colors duration-fast ease-out placeholder:text-text-subtle focus:outline-none",
           )}
           disabled={isDisabled}
           aria-label="Mensagem"
@@ -192,12 +191,12 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         <Button
           type="button"
           size="icon"
-          className="h-9 w-9 shrink-0"
+          className="h-10 w-10 shrink-0 rounded-full"
           onClick={handleSubmit}
           disabled={isDisabled || preparing || (!text.trim() && !attachment)}
           aria-label="Enviar"
         >
-          <PaperPlaneTilt size={16} weight="fill" aria-hidden />
+          <PaperPlaneTilt size={18} weight="fill" aria-hidden />
         </Button>
       </div>
     </div>

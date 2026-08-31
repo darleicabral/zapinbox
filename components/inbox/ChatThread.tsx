@@ -92,7 +92,7 @@ export function ChatThread({ conversationId }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="wa-chat-bg flex-1 overflow-y-auto py-3">
         {q.hasNextPage && (
           <div className="flex justify-center py-2">
             <Button
@@ -107,15 +107,27 @@ export function ChatThread({ conversationId }: Props) {
         )}
 
         {groups.map((g) => (
-          <div key={g.key} className="space-y-1">
-            <div className="sticky top-0 z-10 flex justify-center py-1">
-              <span className="bg-surface/90 rounded-full border border-border px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted shadow-xs backdrop-blur">
+          <div key={g.key}>
+            <div className="sticky top-0 z-10 flex justify-center py-2">
+              <span
+                className="rounded-lg px-3 py-1 text-[11px] font-medium uppercase tracking-wide shadow-sm"
+                style={{ background: "var(--wa-chip-bg)", color: "var(--wa-chip-fg)" }}
+              >
                 {dayLabel(g.date)}
               </span>
             </div>
-            {g.items.map((m) => (
-              <MessageBubble key={m.id} message={m} debugCitations={debugCitations} />
-            ))}
+            {g.items.map((m, i) => {
+              const prev = g.items[i - 1];
+              const tail = !prev || prev.direction !== m.direction;
+              return (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  debugCitations={debugCitations}
+                  tail={tail}
+                />
+              );
+            })}
           </div>
         ))}
 
