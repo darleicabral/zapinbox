@@ -191,8 +191,12 @@ export function AgentForm(props: Props) {
     if (form.name.length > 120) errors.name = "Nome até 120 caracteres.";
     if (form.system_prompt.trim().length < 10)
       errors.system_prompt = "Prompt mínimo de 10 caracteres.";
-    if (form.system_prompt.length > 20000)
-      errors.system_prompt = "Prompt máximo de 20.000 caracteres.";
+    // 40.000 é o limite REAL, o do servidor (versionCreateSchema em
+    // lib/ai/agents/validation.ts). O client dizia 20.000 e barrava prompt que o
+    // backend aceita: o prompt da Avant publicado em 12/07 tinha 33.480 caracteres,
+    // ou seja, a tela recusava republicar a própria versão que estava no ar.
+    if (form.system_prompt.length > 40000)
+      errors.system_prompt = "Prompt máximo de 40.000 caracteres.";
     if (!form.model) errors.model = "Selecione um modelo.";
     if (!form.credential_id) errors.credential_id = "Selecione uma credencial.";
     if (!form.channel_session_id) errors.channel_session_id = "Selecione um número de WhatsApp.";
