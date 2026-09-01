@@ -343,12 +343,21 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
 // Candidate loading
 // ---------------------------------------------------------------------------
 
-async function loadCandidates(
+/** Exportada só pro teste de regressão do `is_active` (tests/unit/dispatcher-agente-inativo.test.ts). */
+export async function loadCandidates(
   orgId: string,
   channelSessionId: string,
 ): Promise<CandidateRow[]> {
   const admin = createAdminClient();
 
+  // `is_active` é o botão "Ativo" da tela de Agentes. Ele NÃO era checado aqui:
+  // desativar o agente na interface não desligava o bot, porque só o
+  // workers/ai-response-worker.ts (caminho legado) respeitava o campo, e quem
+  // decide de verdade é este despachante. Pior, a tool crm_search_knowledge
+  // resolve a KB com `.eq("is_active", true)`, então um agente desativado que
+  // fosse despachado responderia SEM base de conhecimento — falando no escuro em
+  // vez de calar. Quem desliga o agente espera que ele pare, não que ele piore.
+  //
   // Two-step join — supabase-js inner joins on FK aliases work, but the
   // database.types.ts has not been regenerated for the new ai_agents columns
   // yet, so we cast the response shape and filter by channel_session_id in
@@ -360,6 +369,7 @@ async function loadCandidates(
       "id, organization_id, priority, created_at, archived_at, published_version_id, version:ai_agent_versions!ai_agents_published_version_id_fkey(id, organization_id, status, channel_session_id, trigger_config)",
     )
     .eq("organization_id", orgId)
+    .eq("is_active", true)
     .is("archived_at", null)
     .not("published_version_id", "is", null)
     .order("priority", { ascending: false })
