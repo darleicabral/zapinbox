@@ -7,6 +7,10 @@
  * — este aviso interno NÃO deve virar conversa/mensagem no inbox do tenant.
  * Fire-and-forget: qualquer falha aqui nunca pode derrubar a atribuição.
  *
+ * Conteúdo do aviso (pedido do cliente): nome do lead, link clicável pro
+ * WhatsApp do lead (wa.me), resumo da conversa gerado pela IA (C2) e o imóvel
+ * de interesse vinculado (C3). Degrada com elegância se algum dado faltar.
+ *
  * ⚠️ Limitação conhecida: o aviso sai do MESMO número do tenant (sessão WAHA).
  * Se o corretor responder nesse número, o webhook cria uma conversa. Aceitável
  * no piloto; futuramente usar uma sessão dedicada a notificações internas.
@@ -20,6 +24,24 @@ import { resolveWahaChatId, sendWAHA } from "@/lib/waha/send";
 
 export type NotifyKind = "assigned" | "reassigned" | "escalated" | "sla_alert";
 
+function formatBRL(cents: number | null, currency: string | null): string {
+  if (cents == null) return "";
+  const cur = currency ?? "BRL";
+  try {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: cur }).format(cents / 100);
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${cur}`;
+  }
+}
+
+interface LinkedProperty {
+  title: string;
+  location: string | null;
+  price_cents: number | null;
+  currency: string | null;
+  url: string | null;
+}
+
 export async function notifyAssigneeNewLead(
   admin: SupabaseClient,
   args: {
@@ -30,28 +52,70 @@ export async function notifyAssigneeNewLead(
   },
 ): Promise<boolean> {
   try {
-    // 1) Resumo do lead: nome do contato + última mensagem inbound (interesse).
-    //    Usado pelos DOIS canais (push nativo + WhatsApp).
+    // 1) Contato do lead: nome + telefone (p/ montar o link clicável do WhatsApp).
     const { data: conv } = await admin
       .from("conversations")
-      .select("id, contacts:contact_id(display_name, phone_number)")
+      .select("id, contact_id, contacts:contact_id(display_name, phone_number)")
       .eq("id", args.conversationId)
       .maybeSingle();
+    const contactId = (conv as { contact_id: string | null } | null)?.contact_id ?? null;
     const contact = (conv as unknown as {
       contacts: { display_name: string | null; phone_number: string | null } | null;
     } | null)?.contacts;
     const contactName = contact?.display_name || contact?.phone_number || "Novo contato";
+    const leadPhone = contact?.phone_number ?? null;
+    // wa.me só com dígitos (sem "+"): o corretor toca e abre a conversa com o lead.
+    const waLink = leadPhone ? `https://wa.me/${leadPhone.replace(/\D/g, "")}` : null;
 
-    const { data: lastMsg } = await admin
-      .from("messages")
-      .select("body")
-      .eq("organization_id", args.organizationId)
-      .eq("conversation_id", args.conversationId)
-      .eq("direction", "inbound")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const interest = ((lastMsg as { body: string | null } | null)?.body ?? "").trim().slice(0, 140);
+    // 2) Lead do contato: `description` = resumo do interesse escrito pela IA (C2);
+    //    `id` p/ buscar o imóvel de interesse (C3).
+    let leadId: string | null = null;
+    let leadDescription: string | null = null;
+    if (contactId) {
+      const { data: lead } = await admin
+        .from("crm_leads")
+        .select("id, description")
+        .eq("organization_id", args.organizationId)
+        .eq("contact_id", contactId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      leadId = (lead as { id: string } | null)?.id ?? null;
+      leadDescription = (lead as { description: string | null } | null)?.description ?? null;
+    }
+
+    // 3) Fallback do resumo: última mensagem do lead, se a IA ainda não resumiu.
+    let interest = "";
+    if (!leadDescription) {
+      const { data: lastMsg } = await admin
+        .from("messages")
+        .select("body")
+        .eq("organization_id", args.organizationId)
+        .eq("conversation_id", args.conversationId)
+        .eq("direction", "inbound")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      interest = ((lastMsg as { body: string | null } | null)?.body ?? "").trim().slice(0, 140);
+    }
+    const resumo = (leadDescription?.trim() || interest).slice(0, 320);
+
+    // 4) Imóvel de interesse vinculado ao lead (C3), o mais recente.
+    let property: LinkedProperty | null = null;
+    if (leadId) {
+      const { data: lp } = await admin
+        .from("crm_lead_products")
+        .select("product:crm_products(title, location, price_cents, currency, url)")
+        // organization_id explícito: o admin client ignora RLS (doutrina do CLAUDE.md).
+        // O lead_id já é tenant-scoped, então isto é trava redundante, e é de propósito.
+        .eq("organization_id", args.organizationId)
+        .eq("lead_id", leadId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const p = (lp as unknown as { product: LinkedProperty | LinkedProperty[] | null } | null)?.product;
+      property = Array.isArray(p) ? (p[0] ?? null) : (p ?? null);
+    }
 
     const header =
       args.kind === "sla_alert"
@@ -62,16 +126,20 @@ export async function notifyAssigneeNewLead(
             ? "🔁 Lead repassado pra você"
             : "🔔 Novo lead pra você";
 
-    // 2) Push nativo (PWA) — independente do canal WhatsApp; noop sem VAPID
-    //    ou sem assinatura deste usuário.
+    // 5) Push nativo (PWA) — independente do WhatsApp; noop sem VAPID/assinatura.
+    const pushExtra = property?.title
+      ? ` · 🏠 ${property.title}`
+      : resumo
+        ? ` — "${resumo.slice(0, 90)}"`
+        : "";
     const pushed = await sendPushToUser(admin, args.organizationId, args.assigneeUserId, {
       title: header,
-      body: `${contactName}${interest ? ` — "${interest}"` : ""}`,
+      body: `${contactName}${pushExtra}`,
       url: `/app/inbox/${args.conversationId}`,
       tag: `lead-${args.conversationId}`,
     });
 
-    // 3) WhatsApp — gate por tenant.
+    // 6) WhatsApp — gate por tenant.
     const { data: settings } = await admin
       .from("attendance_settings")
       .select("notify_whatsapp")
@@ -81,7 +149,7 @@ export async function notifyAssigneeNewLead(
       return pushed > 0;
     }
 
-    // 4) Número do corretor.
+    // 7) Número do corretor (WhatsApp pessoal de avisos).
     const { data: member } = await admin
       .from("user_organizations")
       .select("notify_whatsapp_e164")
@@ -92,7 +160,7 @@ export async function notifyAssigneeNewLead(
     const phone = (member as { notify_whatsapp_e164: string | null } | null)?.notify_whatsapp_e164;
     if (!phone) return pushed > 0; // sem número cadastrado → só o push
 
-    // 5) Sessão WAHA do tenant que envia (a WORKING mais recente).
+    // 8) Sessão WAHA do tenant que envia (a WORKING mais recente).
     const { data: session } = await admin
       .from("channel_sessions")
       .select("waha_session_name, status, created_at")
@@ -104,12 +172,23 @@ export async function notifyAssigneeNewLead(
     const sessionName = (session as { waha_session_name: string } | null)?.waha_session_name;
     if (!sessionName) return pushed > 0;
 
-    // 6) Texto + deep link.
+    // 9) Monta a mensagem rica: nome + link WhatsApp + resumo IA + imóvel.
     const base = (env.NEXT_PUBLIC_APP_URL || "https://crm.zapinbox.com.br").replace(/\/$/, "");
-    const link = `${base}/app/inbox/${args.conversationId}`;
-    const text = `${header}\n\n👤 ${contactName}${interest ? `\n💬 "${interest}"` : ""}\n\nAbrir e atender:\n${link}`;
+    const crmLink = `${base}/app/inbox/${args.conversationId}`;
+    const lines: string[] = [header, "", `👤 *${contactName}*`];
+    if (waLink) lines.push(`💬 Falar no WhatsApp: ${waLink}`);
+    if (resumo) lines.push("", "📋 Resumo (IA):", resumo);
+    if (property?.title) {
+      const loc = property.location ? ` — ${property.location}` : "";
+      const price =
+        property.price_cents != null ? ` · ${formatBRL(property.price_cents, property.currency)}` : "";
+      lines.push("", "🏠 Imóvel de interesse:", `${property.title}${loc}${price}`);
+      if (property.url) lines.push(property.url);
+    }
+    lines.push("", "📲 Abrir no CRM:", crmLink);
+    const text = lines.join("\n");
 
-    // 7) Envia direto (sem persistir).
+    // 10) Envia direto (sem persistir no inbox).
     const chatId = resolveWahaChatId({
       isGroup: false,
       groupChatId: null,
