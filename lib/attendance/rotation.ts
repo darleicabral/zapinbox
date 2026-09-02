@@ -62,12 +62,6 @@ export async function loadAttendanceSettings(
   return (data as AttendanceSettings | null) ?? null;
 }
 
-function isOnline(m: MemberRow, now: number): boolean {
-  if (m.presence !== "online") return false;
-  if (!m.presence_updated_at) return false;
-  return now - new Date(m.presence_updated_at).getTime() <= PRESENCE_FRESH_MS;
-}
-
 async function loadEligibleMembers(
   admin: SupabaseClient,
   organizationId: string,
@@ -83,9 +77,17 @@ async function loadEligibleMembers(
 }
 
 /**
- * Próximo atendente ONLINE do rodízio circular (ordem estável por user_id,
- * começando após o ponteiro). Retorna null se ninguém elegível está online
- * (decisão aprovada: fila fica sem dono). Avança o ponteiro quando escolhe.
+ * Próximo atendente do rodízio circular (ordem estável por user_id, começando
+ * após o ponteiro). Avança o ponteiro quando escolhe.
+ *
+ * ⚠️ Decisão do Darlei (02/09/2026): distribui pra TODOS os corretores elegíveis,
+ * ONLINE OU NÃO. Antes só escolhia quem estava online (presença fresca), e por
+ * isso corretor com o CRM fechado nunca era escolhido e nunca recebia o aviso no
+ * WhatsApp. O corretor é mobile-first e vive no zap, então quem está na vez do
+ * rodízio deve ser avisado mesmo offline. Custo aceito: a conversa pode cair pra
+ * quem não vai atender agora e ficar parada até ele ver — o SLA (sla.ts) reescala
+ * pro próximo e, no teto de passes, pro gestor. Retorna null só se NÃO houver
+ * nenhum corretor elegível na org (fora os já excluídos).
  */
 export async function pickNextAssignee(
   admin: SupabaseClient,
@@ -93,9 +95,8 @@ export async function pickNextAssignee(
   opts: { excludeUserIds?: string[]; pointer?: string | null } = {},
 ): Promise<string | null> {
   const members = await loadEligibleMembers(admin, organizationId);
-  const now = Date.now();
   const excluded = new Set(opts.excludeUserIds ?? []);
-  const candidates = members.filter((m) => !excluded.has(m.user_id) && isOnline(m, now));
+  const candidates = members.filter((m) => !excluded.has(m.user_id));
   if (candidates.length === 0) return null;
 
   let pointer = opts.pointer;
