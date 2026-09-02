@@ -125,7 +125,18 @@ async function sweepOrg(
   for (const conv of (rows ?? []) as unknown as ConvRow[]) {
     if (!conv.contacts || conv.contacts.is_blocked || conv.contacts.force_human) continue;
     // Transferida pra humano (silenciada) → cadência não roda.
-    if (conv.bot_silenced_until && new Date(conv.bot_silenced_until).getTime() > now) continue;
+    // ⚠️ O handoff grava bot_silenced_until='infinity' (EPIC-06/IA-06). O
+    // PostgREST serializa timestamptz 'infinity' como a STRING "infinity", que
+    // new Date() parseia como NaN — e `NaN > now` é false, então o check antigo
+    // NÃO pegava o handoff e o follow-up cutucava conversa já entregue a humano.
+    // Mesmo tratamento explícito que o dispatcher já faz (dispatcher/index.ts:226).
+    const silencedUntil = conv.bot_silenced_until;
+    if (
+      silencedUntil &&
+      (silencedUntil === "infinity" || new Date(silencedUntil).getTime() > now)
+    ) {
+      continue;
+    }
 
     const lastInbound = new Date(conv.last_inbound_at!).getTime();
 
