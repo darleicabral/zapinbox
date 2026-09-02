@@ -1,4 +1,4 @@
-# CLAUDE.md — DeskcommCRM
+﻿# CLAUDE.md — DeskcommCRM
 
 > Instruções pra futuras sessões Claude trabalhando neste repo. Leitura obrigatória antes de qualquer task de código.
 
@@ -218,3 +218,22 @@ Antes de declarar uma task pronta:
 11. **Mudança de schema saiu como migration versionada + linha no MANIFEST** (ver Doutrina de Migrations) — clones conseguem atualizar
 
 Um staff engineer aprovaria? Se não, itera.
+
+---
+
+## Cérebro — Registro automático de sessão
+
+Ao encerrar qualquer sessão (quando o usuário se despedir, agradecer ou encerrar explicitamente), **sem que o usuário precise pedir**, appenda uma entrada ao arquivo `D:\\cerebro\\INBOX.md` com o seguinte formato exato:
+
+```
+<!-- ENTRADA: YYYY-MM-DD HH:MM | D:\zapinbox-crm -->
+**Projeto:** ZapInbox CRM
+**O que foi feito:** [resumo do trabalho da sessão]
+**Decisões tomadas:** [decisões relevantes, ou "nenhuma"]
+**Problemas encontrados:** [bugs, bloqueios, ou "nenhum"]
+**Aprendizados:** [algo novo sobre arquitetura, tenants ou produto, ou "nenhum"]
+**Próximas ações:** [próximos passos identificados]
+<!-- FIM ENTRADA -->
+```
+
+Escreva de forma compacta — máximo 5 linhas por campo. Use a ferramenta de escrita de arquivo para appender (não sobrescrever) o INBOX.md.
