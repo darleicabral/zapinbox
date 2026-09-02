@@ -588,6 +588,37 @@ async function handleOutboundFromUserPhone(
   if (!conversationId) return;
 
   const now = new Date().toISOString();
+
+  // ── Eco da própria plataforma ─────────────────────────────────────────────
+  // Toda mensagem que o CRM/bot/follow-up envia volta pelo webhook como evento
+  // fromMe. A dedupe por (org, external_id) NÃO pega esse eco porque o envio da
+  // plataforma grava external_id=NULL (o retorno do WAHA/NOWEB `/api/sendText`
+  // não expõe o id no formato que `_handler.ts` extrai — provado no banco:
+  // 100% das msgs sent_via ai/user com external_id null). Sem esta guarda o eco
+  // entra como `external_device`, e o follow-up passa a ler isso como "humano
+  // respondeu" e para de cutucar leads que ninguém atendeu — o oposto do certo.
+  // Assinatura do eco (medida): mesma conversa + mesmo body + outbound da
+  // plataforma (external_id null) surgido há segundos. Janela de 30s cobre com
+  // folga o atraso de rede/processamento (o observado foi ≤1,5s) sem esticar a
+  // ponto de engolir o corretor que, por acaso, digite a MESMA frase do bot pelo
+  // celular logo depois — falso positivo que descartaria mensagem legítima.
+  if (p.body) {
+    const since = new Date(Date.now() - 30_000).toISOString();
+    const { data: echoOf } = await admin
+      .from("messages")
+      .select("id")
+      .eq("organization_id", session.organization_id)
+      .eq("conversation_id", conversationId)
+      .eq("direction", "outbound")
+      .in("sent_via", ["ai", "user"])
+      .is("external_id", null)
+      .eq("body", p.body)
+      .gte("sent_at", since)
+      .limit(1)
+      .maybeSingle();
+    if (echoOf) return; // é eco do que a plataforma acabou de enviar — descarta
+  }
+
   const { error: insertErr } = await admin.from("messages").insert({
     organization_id: session.organization_id,
     conversation_id: conversationId,

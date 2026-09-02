@@ -129,6 +129,26 @@ async function sweepOrg(
 
     const lastInbound = new Date(conv.last_inbound_at!).getTime();
 
+    // Humano já respondeu depois da última mensagem do lead → NÃO cutucar.
+    // Foi a causa do incidente 01/09: `bot_silenced_until` só é preenchido pela
+    // tool de handoff do bot, então corretor que atende direto (pelo celular ou
+    // pelo composer, sem o bot passar o bastão) não silenciava a cadência, e o
+    // lead levava ping durante a negociação. Agora que o eco do WAHA é
+    // descartado no ingest, `user`/`external_device` significam humano DE VERDADE,
+    // então esta checagem é confiável. `sent_via='ai'` fica de fora de propósito
+    // (é o próprio bot/follow-up, não conta como atendimento humano).
+    const { data: humanReply } = await admin
+      .from("messages")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("conversation_id", conv.id)
+      .eq("direction", "outbound")
+      .in("sent_via", ["user", "external_device"])
+      .gt("sent_at", conv.last_inbound_at!)
+      .limit(1)
+      .maybeSingle();
+    if (humanReply) continue;
+
     // Lead respondeu depois do nosso último follow-up → reseta a cadência.
     if (conv.followup_step > 0 && conv.last_followup_at) {
       if (lastInbound > new Date(conv.last_followup_at).getTime()) {
