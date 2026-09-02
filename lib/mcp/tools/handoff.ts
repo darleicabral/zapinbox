@@ -17,7 +17,33 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { triggerHandoff } from "@/lib/ai/handoff/orchestrator";
 import { loadAttendanceSettings, pickNextAssignee } from "@/lib/attendance/rotation";
 import { notifyAssigneeNewLead } from "@/lib/attendance/notify";
+import { listAuthUsersByIds } from "@/lib/auth/admin-users";
 import type { McpToolDefinition } from "../types";
+
+/**
+ * Primeiro nome do corretor escolhido, pra IA citar ao cliente ("vou te passar
+ * pro Robson"). O nome mora em auth.users.raw_user_meta_data.full_name (auth NÃO
+ * é consultável por PostgREST — usar o helper paginado). Só o 1º nome: soa
+ * natural no WhatsApp e evita expor sobrenome sem necessidade. Best-effort:
+ * qualquer falha vira null e a IA cai no texto genérico.
+ */
+async function resolveAssigneeFirstName(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<string | null> {
+  try {
+    const [user] = await listAuthUsersByIds(supabase, [userId]);
+    const meta = user?.raw_user_meta_data ?? null;
+    const full =
+      (typeof meta?.full_name === "string" && meta.full_name) ||
+      (typeof meta?.name === "string" && meta.name) ||
+      "";
+    const first = full.trim().split(/\s+/)[0] ?? "";
+    return first.length >= 2 ? first : null;
+  } catch {
+    return null;
+  }
+}
 
 const inputShape = {
   conversation_id: z.string().uuid(),
@@ -152,14 +178,23 @@ export const crmRequestHumanHandoff: McpToolDefinition<typeof inputShape> = {
       }
     }
 
+    // Nome do corretor pra IA citar ao cliente. Só existe quando ALGUÉM foi
+    // atribuído (rodízio só escolhe quem está online; sem ninguém, volta null e
+    // a IA usa o texto genérico — nunca promete um corretor que não está lá).
+    const assignedFirstName = assignedUserId
+      ? await resolveAssigneeFirstName(ctx.supabase, assignedUserId)
+      : null;
+
     return {
       handoff_recorded: result.triggered,
       conversation_id: input.conversation_id,
       assigned_to_user_id: assignedUserId,
+      assigned_to_name: assignedFirstName,
       rotation_active: rotationActive,
       idempotent: !result.triggered && result.reason === "idempotent_5s",
-      next_action:
-        "Avise o cliente em tom acolhedor que um atendente humano vai assumir em instantes.",
+      next_action: assignedFirstName
+        ? `Avise o cliente, em tom acolhedor, que ${assignedFirstName} vai assumir o atendimento em instantes. Cite o nome ${assignedFirstName}.`
+        : "Avise o cliente em tom acolhedor que um atendente humano vai assumir em instantes.",
     };
   },
 };
