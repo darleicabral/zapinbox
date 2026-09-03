@@ -121,9 +121,43 @@ export interface SendFinalResponseInput {
   requestId: string;
 }
 
+/** No máximo isto de mensagens por resposta, pra não metralhar o cliente. */
+export const MAX_BALOES = 5;
+/** Pausa entre balões: preserva a ordem no WhatsApp e imita digitação. */
+const PAUSA_ENTRE_BALOES_MS = 800;
+
+/**
+ * Divide a resposta do modelo em balões separados de WhatsApp.
+ *
+ * Pedido do Darlei (03/09/2026): a IA já pula uma linha quando troca de assunto,
+ * e o natural é que isso vire OUTRA mensagem, como pessoa digitando, em vez de um
+ * bloco só. O próprio prompt manda "nunca envie um balão com mais de 2 linhas",
+ * mas o runtime enviava tudo junto e a regra não tinha efeito nenhum.
+ *
+ * Corta só em LINHA EM BRANCO. Quebra de linha simples fica junto de propósito:
+ * é o que mantém "Opção 1 📍 Apartamento, Floramar / 2 quartos · R$ 380.000" num
+ * balão só. Acima de MAX_BALOES o resto vai junto no último, pra não virar
+ * enxurrada de notificação no celular do lead.
+ */
+export function splitIntoBalloons(text: string, maxPartes = MAX_BALOES): string[] {
+  const partes = text
+    .split(/\n[ \t]*\n+/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (partes.length <= maxPartes) return partes;
+  const cabeca = partes.slice(0, maxPartes - 1);
+  const resto = partes.slice(maxPartes - 1).join("\n\n");
+  return [...cabeca, resto];
+}
+
+const dorme = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * Inserts an outbound message + dispatches via WAHA via existing
- * sendMessageHandler. Returns the new message id (or null on failure).
+ * sendMessageHandler. Returns the FIRST message id (or null on failure).
+ *
+ * Uma resposta pode virar VÁRIAS mensagens (ver splitIntoBalloons). O id
+ * devolvido é o do primeiro balão, que é o que identifica a resposta no run.
  */
 export async function sendFinalResponse(
   input: SendFinalResponseInput,
@@ -135,24 +169,43 @@ export async function sendFinalResponse(
     id: input.runId,
     role: "agent",
   };
-  try {
-    const message = await sendMessageHandler(
-      input.supabase,
-      {
-        organization_id: input.organizationId,
-        actor,
-        requestId: input.requestId,
-      },
-      {
-        conversation_id: input.conversationId,
-        type: "text",
-        body: input.text,
-        metadata: { run_id: input.runId, ai_actor_id: input.runId },
-      },
-    );
-    return message.id;
-  } catch (err) {
-    console.error("[agent-runtime] sendFinalResponse failed", err);
-    return null;
+  const baloes = splitIntoBalloons(input.text);
+  let primeiroId: string | null = null;
+
+  for (let i = 0; i < baloes.length; i++) {
+    // Pausa só ENTRE balões. A ordem importa: mensagem fora de ordem no
+    // WhatsApp fica pior que bloco único.
+    if (i > 0) await dorme(PAUSA_ENTRE_BALOES_MS);
+    try {
+      const message = await sendMessageHandler(
+        input.supabase,
+        {
+          organization_id: input.organizationId,
+          actor,
+          requestId: i === 0 ? input.requestId : `${input.requestId}-b${i}`,
+        },
+        {
+          conversation_id: input.conversationId,
+          type: "text",
+          body: baloes[i]!,
+          metadata: {
+            run_id: input.runId,
+            ai_actor_id: input.runId,
+            // rastro pra depurar resposta partida em vários balões
+            balloon_index: i,
+            balloon_total: baloes.length,
+          },
+        },
+      );
+      if (i === 0) primeiroId = message.id;
+    } catch (err) {
+      // Falha no 1º balão = resposta perdida, devolve null como antes. Falha num
+      // balão do meio: o que já saiu não volta atrás, então loga e para de
+      // insistir, pra não mandar o fim da conversa sem o começo.
+      console.error(`[agent-runtime] sendFinalResponse falhou no balão ${i + 1}/${baloes.length}`, err);
+      break;
+    }
   }
+
+  return primeiroId;
 }
