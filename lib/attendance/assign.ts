@@ -46,7 +46,8 @@ const ELIGIBLE_ROLES_BY_MIN: Record<string, string[]> = {
  * Fallback quando o rodízio C4 está desligado (attendance_settings.enabled=false):
  * atribuição simples, DETERMINÍSTICA (primeiro elegível por user_id), sem sorteio
  * e sem exigir presença — só pra a conversa não ficar órfã. O rodízio real
- * (online + ponteiro) vive em lib/attendance/rotation.ts e é usado quando C4 liga.
+ * (circular por ponteiro, também sem exigir presença) vive em
+ * lib/attendance/rotation.ts e é usado quando C4 liga.
  */
 async function pickFirstEligible(
   client: SupabaseClient,
@@ -126,8 +127,10 @@ export async function assignAndNotify(
     // atribuição simples pra não deixar a conversa órfã.
     const settings = await loadAttendanceSettings(client, args.organizationId);
     const rotationActive = !!settings?.enabled;
-    // pickNextAssignee pode voltar null (ninguém online) — decisão aprovada:
-    // fila sem dono, bot já silenciado, o worker de SLA escala.
+    // pickNextAssignee distribui pra elegível ONLINE OU NÃO (decisão do Darlei,
+    // 02/09/2026: corretor é mobile-first, recebe o aviso no zap e responde do
+    // próprio número). Só volta null se a org não tiver nenhum corretor elegível;
+    // aí a fila fica sem dono, o bot já está silenciado e o SLA reescala.
     const escolhido = rotationActive
       ? await pickNextAssignee(client, args.organizationId)
       : await pickFirstEligible(client, args.organizationId, args.minRole ?? "agent");

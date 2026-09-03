@@ -159,7 +159,7 @@ describe("assignAndNotify: todo handoff atribui e avisa", () => {
     expect(updates.filter((u) => "assigned_to_user_id" in u)).toHaveLength(0);
   });
 
-  it("rodízio sem ninguém online: fila sem dono, e não inventa aviso", async () => {
+  it("rodízio sem corretor elegível na org: fila sem dono, e não inventa aviso", async () => {
     rodizioLigado = true;
     escolhidoPeloRodizio = null;
     const { assignAndNotify } = await import("@/lib/attendance/assign");
