@@ -1,49 +1,27 @@
 /**
  * MCP special tool — crm_request_human_handoff (Spec 11 §3.3).
  *
- * Side effects (todos via `triggerHandoff` orchestrator + assignment best-effort):
+ * Side effects: TODOS delegados ao `triggerHandoff` (lib/ai/handoff/orchestrator).
+ * Esta tool é uma casca fina: valida a entrada, acha o lead, chama o orquestrador
+ * e traduz o resultado pra IA.
  *   - conversations.status='pending', bot_silenced_until='infinity'
  *   - crm_lead_activities INSERT (type='handoff_triggered') quando há lead vinculado
  *   - event_log INSERT event_type='ai.handoff_triggered'
  *   - Realtime broadcast `org:<org>:queue` event=handoff_pending
  *   - api_audit_log action='ai.handoff_triggered'
- *   - conversations.assigned_to_user_id round-robin entre membros agent+ ativos
+ *   - atribuição do corretor + aviso por WhatsApp/push
+ *
+ * A atribuição e o aviso moravam AQUI, e por isso só o handoff decidido pela IA
+ * avisava alguém: lead que digitava "quero falar com atendente" calava o bot e
+ * ninguém era notificado. Foram pro orquestrador (passo 6) pra valer em todo
+ * gatilho. Não reintroduzir aqui, viraria aviso em dobro.
  *
  * Nenhum mirror REST. Wave 4 introduz como tool MCP only.
  */
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { triggerHandoff } from "@/lib/ai/handoff/orchestrator";
-import { loadAttendanceSettings, pickNextAssignee } from "@/lib/attendance/rotation";
-import { notifyAssigneeNewLead } from "@/lib/attendance/notify";
-import { listAuthUsersByIds } from "@/lib/auth/admin-users";
 import type { McpToolDefinition } from "../types";
-
-/**
- * Primeiro nome do corretor escolhido, pra IA citar ao cliente ("vou te passar
- * pro Robson"). O nome mora em auth.users.raw_user_meta_data.full_name (auth NÃO
- * é consultável por PostgREST — usar o helper paginado). Só o 1º nome: soa
- * natural no WhatsApp e evita expor sobrenome sem necessidade. Best-effort:
- * qualquer falha vira null e a IA cai no texto genérico.
- */
-async function resolveAssigneeFirstName(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<string | null> {
-  try {
-    const [user] = await listAuthUsersByIds(supabase, [userId]);
-    const meta = user?.raw_user_meta_data ?? null;
-    const full =
-      (typeof meta?.full_name === "string" && meta.full_name) ||
-      (typeof meta?.name === "string" && meta.name) ||
-      "";
-    const first = full.trim().split(/\s+/)[0] ?? "";
-    return first.length >= 2 ? first : null;
-  } catch {
-    return null;
-  }
-}
 
 const inputShape = {
   conversation_id: z.string().uuid(),
@@ -55,36 +33,6 @@ const inputShape = {
     .default("agent"),
   metadata: z.record(z.string(), z.unknown()).optional(),
 };
-
-const ELIGIBLE_ROLES_BY_MIN: Record<string, string[]> = {
-  agent: ["agent", "manager", "admin"],
-  manager: ["manager", "admin"],
-  admin: ["admin"],
-};
-
-/**
- * Fallback quando o rodízio C4 está desligado (attendance_settings.enabled=false):
- * atribuição simples, DETERMINÍSTICA (primeiro elegível por user_id), sem sorteio
- * e sem exigir presença — só pra a conversa não ficar órfã. O rodízio real
- * (online + ponteiro) vive em lib/attendance/rotation.ts e é usado quando C4 liga.
- */
-async function pickFirstEligible(
-  supabase: SupabaseClient,
-  organizationId: string,
-  minRole: string,
-): Promise<string | null> {
-  const eligibleRoles = ELIGIBLE_ROLES_BY_MIN[minRole] ?? ["agent", "manager", "admin"];
-  const { data, error } = await supabase
-    .from("user_organizations")
-    .select("user_id, role")
-    .eq("organization_id", organizationId)
-    .is("revoked_at", null)
-    .in("role", eligibleRoles)
-    .order("user_id", { ascending: true });
-
-  if (error || !data || data.length === 0) return null;
-  return (data[0] as { user_id: string }).user_id;
-}
 
 export const crmRequestHumanHandoff: McpToolDefinition<typeof inputShape> = {
   name: "crm_request_human_handoff",
@@ -125,6 +73,7 @@ export const crmRequestHumanHandoff: McpToolDefinition<typeof inputShape> = {
       organizationId: ctx.organizationId,
       reason: "requested_human",
       leadId,
+      minAssigneeRole: input.suggested_assignee_role ?? "agent",
       metadata: {
         source: "ai_agent",
         urgency: input.urgency,
@@ -134,56 +83,11 @@ export const crmRequestHumanHandoff: McpToolDefinition<typeof inputShape> = {
       },
     });
 
-    let assignedUserId: string | null = null;
-    let rotationActive = false;
-    if (result.triggered) {
-      // C4: rodízio real (online + ponteiro) quando o tenant habilitou o
-      // atendimento por rodízio; senão, atribuição simples pra não deixar órfã.
-      const settings = await loadAttendanceSettings(ctx.supabase, ctx.organizationId);
-      if (settings?.enabled) {
-        rotationActive = true;
-        // Pode voltar null (ninguém online) — decisão aprovada: fila sem dono,
-        // bot já silenciado; o worker de SLA cuida do escalonamento.
-        assignedUserId = await pickNextAssignee(ctx.supabase, ctx.organizationId);
-      } else {
-        assignedUserId = await pickFirstEligible(
-          ctx.supabase,
-          ctx.organizationId,
-          input.suggested_assignee_role ?? "agent",
-        );
-      }
-      if (assignedUserId) {
-        const { error: assignErr } = await ctx.supabase
-          .from("conversations")
-          .update({
-            assigned_to_user_id: assignedUserId,
-            assigned_at: new Date().toISOString(),
-            // Etapa 1 do SLA começa a contar deste 1º repasse (só relevante com C4 on).
-            ...(rotationActive ? { assignment_passes: 1 } : {}),
-          })
-          .eq("id", input.conversation_id)
-          .eq("organization_id", ctx.organizationId);
-        if (assignErr) {
-          console.error("[mcp.handoff] assignment failed", assignErr.message);
-          assignedUserId = null;
-        } else {
-          // Avisa o corretor por WhatsApp (mobile-first). Fire-and-forget.
-          void notifyAssigneeNewLead(ctx.supabase, {
-            organizationId: ctx.organizationId,
-            conversationId: input.conversation_id,
-            assigneeUserId: assignedUserId,
-            kind: "assigned",
-          });
-        }
-      }
-    }
-
-    // Nome do corretor pra IA citar ao cliente. Só existe quando ALGUÉM foi
-    // atribuído (rodízio só escolhe quem está online; sem ninguém, volta null e
-    // a IA usa o texto genérico — nunca promete um corretor que não está lá).
-    const assignedFirstName = assignedUserId
-      ? await resolveAssigneeFirstName(ctx.supabase, assignedUserId)
-      : null;
+    // Atribuição + aviso ao corretor agora vivem no orquestrador (passo 6), pra
+    // que TODO gatilho de handoff avise, não só este. Aqui só lemos o resultado.
+    const assignedUserId = result.assignedUserId ?? null;
+    const assignedFirstName = result.assignedFirstName ?? null;
+    const rotationActive = result.rotationActive ?? false;
 
     return {
       handoff_recorded: result.triggered,

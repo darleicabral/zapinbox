@@ -14,6 +14,9 @@
  *   3. emit_event('ai.handoff_triggered') no event_log
  *   4. Realtime broadcast no channel 'org:<org>:queue' (event 'handoff_pending')
  *   5. api_audit_log action='ai.handoff_triggered'
+ *   6. Atribui corretor (rodizio C4 ou fallback) e avisa por WhatsApp+push
+ *      (lib/attendance/assign.ts). Conversa que JA tem dono nao e reatribuida,
+ *      so avisada.
  *
  * IMPORTANTE: nunca propaga exceção pro caller. O worker chamador segue feliz.
  *
@@ -22,6 +25,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { assignAndNotify, type AssignAndNotifyResult } from "@/lib/attendance/assign";
 
 export type HandoffReason =
   | "requested_human"
@@ -38,9 +42,16 @@ export interface TriggerHandoffInput {
   reason: HandoffReason;
   leadId?: string | null;
   metadata?: Record<string, unknown>;
+  /** Papel mínimo do corretor no fallback sem rodízio. Default 'agent'. */
+  minAssigneeRole?: string;
 }
 
-export interface TriggerHandoffResult {
+/**
+ * Além de `triggered`, devolve a atribuição feita (quem ficou com a conversa e o
+ * primeiro nome dele) pra IA poder citar o corretor ao cliente. Nos retornos de
+ * falha/idempotência os campos de atribuição vêm ausentes.
+ */
+export interface TriggerHandoffResult extends Partial<AssignAndNotifyResult> {
   triggered: boolean;
   reason: string;
 }
@@ -195,7 +206,20 @@ export async function triggerHandoff(
       });
     }
 
-    return { triggered: true, reason: input.reason };
+    // 6. Atribui um corretor e avisa. Ficava só dentro da tool
+    // crm_request_human_handoff, então os outros gatilhos (sentinela de texto do
+    // lead, sentimento, worker legado) calavam o bot sem avisar ninguém: o lead
+    // pedia atendente e ninguém sabia. Agora todo caminho passa por aqui.
+    // Não lança; falha vira assignedUserId null e o SLA escala.
+    // MUDANCA DE CONTRATO: se remover esta chamada, o handoff volta a calar o bot
+    // sem avisar ninguem. Guardado por tests/unit/handoff-orquestrador-chama-atribuicao.
+    const atribuicao = await assignAndNotify(admin, {
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      minRole: input.minAssigneeRole,
+    });
+
+    return { triggered: true, reason: input.reason, ...atribuicao };
   } catch (err) {
     logger.warn("[handoff-orchestrator] unexpected error", {
       conversation_id: input.conversationId,
