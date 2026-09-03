@@ -273,11 +273,18 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     } else if (run.inbound_message_id) {
       const { data: msg } = await admin
         .from("messages")
-        .select("body")
+        .select("body, metadata")
         .eq("id", run.inbound_message_id)
         .eq("organization_id", run.organization_id)
         .maybeSingle();
       inboundBody = (msg?.body as string | null) ?? null;
+      // Áudio transcrito na chegada (lib/ai/transcribe.ts). Avisar o modelo
+      // importa: a transcrição erra justamente em número e nome próprio, e sem
+      // esse aviso ele trata "290 mil" ouvido como valor confirmado.
+      const metaMsg = (msg?.metadata ?? null) as { transcribed_from?: unknown } | null;
+      if (inboundBody && metaMsg?.transcribed_from === "audio") {
+        inboundBody = `[áudio do cliente, transcrito automaticamente] ${inboundBody}`;
+      }
     }
 
     // For non-dry-run, prefetch session_name + contact phone (chatId).

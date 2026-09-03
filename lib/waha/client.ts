@@ -131,6 +131,33 @@ export class WahaClient {
 }
 
 /**
+ * A mídia recebida vem no endereço INTERNO do WAHA — ele reporta
+ * `http://localhost:3000/api/files/...`, que é o localhost DELE, não o nosso.
+ * De fora isso não resolve (ECONNREFUSED), e a rota de mídia do CRM ainda
+ * rejeitava por origem inválida: foto e áudio de cliente ficavam invisíveis
+ * pro corretor (descoberto em 03/09/2026 medindo os áudios sem resposta).
+ *
+ * Reescreve só a ORIGEM, preservando o caminho, e nunca confia no host que veio
+ * no payload — o que também fecha a porta pra SSRF. Caminho de forma
+ * desconhecida volta cru, pra nunca perder a URL se o WAHA mudar de layout.
+ */
+export function publicWahaMediaUrl(
+  raw: string | null | undefined,
+  base: string,
+): string | null {
+  if (!raw) return null;
+  let caminho: string;
+  try {
+    const u = new URL(raw);
+    caminho = u.pathname + u.search;
+  } catch {
+    return raw;
+  }
+  if (!caminho.startsWith("/api/files/")) return raw;
+  return base.replace(/\/+$/, "") + caminho;
+}
+
+/**
  * Traduz erros crus do WAHA (fetch failed, ECONNREFUSED, timeout) numa
  * mensagem clara para o usuário. Usado quando o container não está no ar.
  */

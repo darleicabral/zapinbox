@@ -18,7 +18,9 @@ import { dispatchAgents } from "@/lib/ai/dispatcher";
 import { hasPosvendaModule } from "@/lib/modules";
 import { sendPushToOrg } from "@/lib/push/send";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { transcreverAudio } from "@/lib/ai/transcribe";
 import { ackToStatus } from "@/lib/types/messaging";
+import { getWahaClient, publicWahaMediaUrl } from "@/lib/waha/client";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -68,7 +70,9 @@ export interface WahaPayload {
  * "Imagem" no chat.
  */
 export function mediaUrlOf(p: WahaPayload): string | null {
-  return p.media?.url ?? p.mediaUrl ?? null;
+  const cru = p.media?.url ?? p.mediaUrl ?? null;
+  const base = getWahaClient()?.origin ?? null;
+  return base ? publicWahaMediaUrl(cru, base) : cru;
 }
 export function mediaMimeOf(p: WahaPayload): string | null {
   return p.media?.mimetype ?? p.mimetype ?? null;
@@ -421,6 +425,13 @@ async function handleInbound(
   if (!conversationId) return;
 
   const now = new Date().toISOString();
+  const metadataMsg: Record<string, unknown> = {
+    raw_type: p.type,
+    ack_name: p.ackName,
+    // Chats @lid: guarda o key cru pra diagnosticar de onde vem o número
+    // real nesta versão do Baileys/WAHA (senderPn vs remoteJidAlt etc.).
+    ...(parsed.kind === "lid" && p._data?.key ? { wa_key: p._data.key } : {}),
+  };
   const { data: insertedMessage, error: insertErr } = await admin
     .from("messages")
     .insert({
@@ -439,13 +450,7 @@ async function handleInbound(
       sent_via: "external_device",
       sent_at: p.timestamp ? new Date(p.timestamp * 1000).toISOString() : now,
       delivered_at: now,
-      metadata: {
-        raw_type: p.type,
-        ack_name: p.ackName,
-        // Chats @lid: guarda o key cru pra diagnosticar de onde vem o número
-        // real nesta versão do Baileys/WAHA (senderPn vs remoteJidAlt etc.).
-        ...(parsed.kind === "lid" && p._data?.key ? { wa_key: p._data.key } : {}),
-      },
+      metadata: metadataMsg,
     })
     .select("id")
     .maybeSingle();
@@ -526,6 +531,38 @@ async function handleInbound(
   if (insertedMessage?.id) {
     const inboundMessageId = insertedMessage.id;
     after(async () => {
+      // Áudio do lead: transcreve ANTES de enfileirar o dispatch. Sem `body` o
+      // run morria em `inbound_missing` e o lead ficava sem NENHUMA resposta (9
+      // casos só em 03/09). E não dá pra deixar pra depois: o arquivo do WAHA é
+      // efêmero — ver o cabeçalho de lib/ai/transcribe.ts.
+      if (messageTypeOf(p) === "audio" && !p.body) {
+        const transcricao = await transcreverAudio({
+          mediaUrl: mediaUrlOf(p),
+          mimeType: mediaMimeOf(p),
+        });
+        if (transcricao) {
+          await admin
+            .from("messages")
+            .update({
+              body: transcricao.texto,
+              metadata: {
+                ...metadataMsg,
+                transcribed_from: "audio",
+                transcription_model: transcricao.modelo,
+              },
+            })
+            .eq("id", inboundMessageId)
+            .eq("organization_id", session.organization_id);
+          // A lista de conversas mostrava só "Áudio"; agora mostra o que ele disse.
+          await markConversation(
+            admin,
+            conversationId,
+            "inbound",
+            transcricao.texto.slice(0, 280),
+            now,
+          );
+        }
+      }
       const { error } = await admin.rpc(
         "emit_event" as never,
         {
