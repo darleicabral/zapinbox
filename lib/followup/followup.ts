@@ -5,6 +5,12 @@
  * Regras (cadencia-reengajamento.md da Avant):
  *  - Só roda com o BOT ainda no comando (conversa 'open'/'ai_handling', não
  *    silenciada). Transferida pra equipe ("Só um momento") → não roda.
+ *  - PARA quando um corretor já foi avisado (conversa com `assigned_to_user_id`):
+ *    o aviso vai pro WhatsApp pessoal dele e ele continua o atendimento do
+ *    próprio número, então cutucar o lead só atrapalha. Atribuído e esquecido é
+ *    problema do SLA (lib/attendance/sla.ts), não do reengajamento.
+ *  - PARA quando um humano respondeu depois da última mensagem do lead (corretor
+ *    que digita direto, sem passar o bastão pelo bot).
  *  - Lead responde → a próxima entrada resetá `followup_step` (last_inbound_at
  *    passa a ser > last_followup_at) e a cadência recomeça.
  *  - Etapas por tenant (`followup_settings.steps`): cada uma dispara quando a
@@ -51,6 +57,8 @@ interface ConvRow {
   last_followup_at: string | null;
   followup_step: number;
   bot_silenced_until: string | null;
+  /** Dono da conversa. Preenchido = corretor já foi avisado, cadência para. */
+  assigned_to_user_id: string | null;
   contacts: { display_name: string | null; is_blocked: boolean; force_human: boolean } | null;
 }
 
@@ -116,7 +124,7 @@ async function sweepOrg(
   const { data: rows } = await admin
     .from("conversations")
     .select(
-      "id, contact_id, status, last_inbound_at, last_followup_at, followup_step, bot_silenced_until, contacts:contact_id(display_name, is_blocked, force_human)",
+      "id, contact_id, status, last_inbound_at, last_followup_at, followup_step, bot_silenced_until, assigned_to_user_id, contacts:contact_id(display_name, is_blocked, force_human)",
     )
     .eq("organization_id", orgId)
     .in("status", ["open", "ai_handling"])
@@ -137,6 +145,15 @@ async function sweepOrg(
     ) {
       continue;
     }
+
+    // Corretor já foi avisado → cadência PARA. Decisão do Darlei (03/09/2026):
+    // o aviso sai no WhatsApp pessoal do corretor e ele continua o atendimento
+    // do próprio número, então de nada serve o sistema seguir cutucando o lead.
+    // A atribuição é exatamente o que dispara a notificação (lib/attendance/
+    // assign.ts), por isso ela é o sinal. Lead atribuído e esquecido não fica
+    // órfão: quem cobra é o SLA (lib/attendance/sla.ts), que reescala e, no teto
+    // de passes, chama o gestor. Não é papel do reengajamento.
+    if (conv.assigned_to_user_id) continue;
 
     const lastInbound = new Date(conv.last_inbound_at!).getTime();
 

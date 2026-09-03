@@ -100,10 +100,17 @@ export async function notifyAssigneeNewLead(
     //    `id` p/ buscar o imóvel de interesse (C3).
     let leadId: string | null = null;
     let leadDescription: string | null = null;
+    // Reserva pro bloco do imóvel: o bot quase nunca chama crm_link_lead_product,
+    // então crm_lead_products vem vazio e o corretor recebia aviso sem saber de
+    // QUAL imóvel se tratava (reclamação do Darlei em 03/09/2026). O título do
+    // lead já carrega o interesse ("Marina — Apto 2 qts Santa Amélia", formato
+    // que o próprio prompt manda usar) e o value_cents o preço. Servem de rede.
+    let leadTitle: string | null = null;
+    let leadValueCents: number | null = null;
     if (contactId) {
       const { data: lead } = await admin
         .from("crm_leads")
-        .select("id, description")
+        .select("id, description, title, value_cents")
         .eq("organization_id", args.organizationId)
         .eq("contact_id", contactId)
         .order("updated_at", { ascending: false })
@@ -111,6 +118,9 @@ export async function notifyAssigneeNewLead(
         .maybeSingle();
       leadId = (lead as { id: string } | null)?.id ?? null;
       leadDescription = (lead as { description: string | null } | null)?.description ?? null;
+      const l = lead as { title: string | null; value_cents: number | null } | null;
+      leadTitle = l?.title ?? null;
+      leadValueCents = l?.value_cents ?? null;
     }
 
     // 3) Fallback do resumo: última mensagem do lead, se a IA ainda não resumiu.
@@ -158,6 +168,8 @@ export async function notifyAssigneeNewLead(
     // 5) Push nativo (PWA) — independente do WhatsApp; noop sem VAPID/assinatura.
     const pushExtra = property?.title
       ? ` · 🏠 ${property.title}`
+      : leadTitle
+      ? ` · 🏠 ${leadTitle}`
       : resumo
         ? ` — "${resumo.slice(0, 90)}"`
         : "";
@@ -213,6 +225,13 @@ export async function notifyAssigneeNewLead(
         property.price_cents != null ? ` · ${formatBRL(property.price_cents, property.currency)}` : "";
       lines.push("", "🏠 Imóvel de interesse:", `${property.title}${loc}${price}`);
       if (property.url) lines.push(property.url);
+    } else if (leadTitle) {
+      // Rede: sem imóvel VINCULADO (o bot quase nunca chama crm_link_lead_product,
+      // então crm_lead_products vem vazio), o título do lead já diz o interesse —
+      // o prompt manda escrever "Nome — Apto 2 qts Santa Amélia". Sem isto o
+      // corretor recebia o aviso sem saber de qual imóvel se tratava.
+      const price = leadValueCents != null ? ` · ${formatBRL(leadValueCents, "BRL")}` : "";
+      lines.push("", "🏠 Interesse (do lead):", `${leadTitle}${price}`);
     }
     lines.push("", "📲 Abrir no CRM:", crmLink);
     const text = lines.join("\n");
