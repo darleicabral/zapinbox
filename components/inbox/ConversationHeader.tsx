@@ -4,10 +4,19 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Phone, ArrowRight } from "@/lib/ui/icons";
+import { Phone, ArrowRight, CaretDown, Check } from "@/lib/ui/icons";
 import { useAuth, useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { hasPosvendaModule } from "@/lib/modules";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAssignConversation } from "@/hooks/inbox/useAssignConversation";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
+import { useTeamMembers } from "@/hooks/team/useTeamMembers";
 import { useReleaseConversation } from "@/hooks/inbox/useReleaseConversation";
 import { useCloseConversation } from "@/hooks/inbox/useCloseConversation";
 import { useOpenLead } from "@/hooks/inbox/useOpenLead";
@@ -45,6 +54,8 @@ export function ConversationHeader({ conversation }: Props) {
   const isPosvenda = hasPosvendaModule(activeOrg?.orgId);
   const router = useRouter();
   const claim = useClaimConversation();
+  const assign = useAssignConversation();
+  const { data: equipe } = useTeamMembers();
   const release = useReleaseConversation();
   const close = useCloseConversation();
   const openLead = useOpenLead();
@@ -55,6 +66,15 @@ export function ConversationHeader({ conversation }: Props) {
   const status = conversation.status;
   const isMineAssigned = conversation.assigned_to_user_id === user.id;
   const isOpen = status === "open" || conversation.assigned_to_user_id == null;
+
+  // Quem pode receber lead: membro ativo que ATENDE. Admin fica fora — "o dono
+  // não é corretor" (Darlei, 03/09/2026). Pra assumir você mesmo tem o Assumir.
+  const corretores = (equipe?.data ?? []).filter(
+    (m) => !m.revoked_at && (m.role === "agent" || m.role === "manager"),
+  );
+  const donoAtual = corretores.find((m) => m.user_id === conversation.assigned_to_user_id);
+  const nomeCurto = (m: { full_name: string | null; email: string | null }) =>
+    m.full_name?.trim().split(/\s+/)[0] || m.email?.split("@")[0] || "sem nome";
 
   const triagem = (conversation as unknown as { metadata?: { triagem?: Triagem } }).metadata
     ?.triagem;
@@ -97,6 +117,49 @@ export function ConversationHeader({ conversation }: Props) {
             <Button size="sm" variant="default" disabled={openLead.isPending} onClick={onOpenLead}>
               {openLead.isPending ? "Abrindo…" : "Abrir atendimento"}
             </Button>
+          )}
+          {/* Atribuir a OUTRA pessoa. O rodízio automático só pega conversa
+              nova; isto é o que aciona um corretor pra lead parado no acervo, e
+              manda o mesmo aviso no WhatsApp dele. */}
+          {!isPosvenda && corretores.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" disabled={assign.isPending}>
+                  {assign.isPending
+                    ? "Atribuindo…"
+                    : donoAtual
+                      ? `Com ${nomeCurto(donoAtual)}`
+                      : "Atribuir"}
+                  <CaretDown size={12} weight="regular" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Atribuir e avisar no WhatsApp</DropdownMenuLabel>
+                {corretores.map((m) => {
+                  const ehDono = m.user_id === conversation.assigned_to_user_id;
+                  return (
+                    <DropdownMenuItem
+                      key={m.user_id}
+                      onSelect={() =>
+                        assign.mutate({
+                          conversation_id: conversation.id,
+                          user_id: m.user_id,
+                          nome_do_corretor: nomeCurto(m),
+                        })
+                      }
+                    >
+                      <span className="flex-1 truncate">
+                        {m.full_name?.trim() || m.email || m.user_id.slice(0, 8)}
+                      </span>
+                      {ehDono && <Check size={12} weight="bold" aria-hidden />}
+                      {!m.notify_whatsapp_e164 && (
+                        <span className="text-xs text-muted-foreground">sem zap</span>
+                      )}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {/* Assumir/Liberar só fazem sentido com vários atendentes disputando a
               fila. Em tenant de atendente único (pós-venda Itaville) some. */}

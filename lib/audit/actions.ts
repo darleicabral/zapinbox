@@ -50,6 +50,7 @@ export type AuditAction =
   | "onboarding.completed"
   | "tenant.onboarded"
   | "conversation.created"
+  | "conversation.assigned"
   | "conversation.claimed"
   | "conversation.released"
   | "conversation.closed"
