@@ -197,6 +197,27 @@ function notifyNameOf(p: WahaPayload): string | null {
 }
 
 /**
+ * Nome pro contato a partir do payload.
+ *
+ * 🐛 03/09/2026 — 50 contatos da Avant estavam com o nome da PRÓPRIA
+ * imobiliária. Causa: em mensagem `fromMe` (corretor respondendo do celular, o
+ * eco do que o CRM enviou) o `notifyName` do payload é O NOSSO push name, não o
+ * do cliente. O ingest gravava isso como display_name do lead, e a notificação
+ * chegava pro corretor dizendo "👤 *Avant Negócios Imobiliários*" em vez do nome
+ * de quem procurou.
+ *
+ * Provado em 12 de 12: todo contato com o nome errado tinha como PRIMEIRA
+ * mensagem um outbound `external_device`. Contato com nome de pessoa começou
+ * com entrada do cliente.
+ *
+ * No eco não há nome do cliente pra aproveitar: melhor deixar null (a UI cai no
+ * telefone) e esperar a primeira mensagem dele, que traz o push name certo.
+ */
+export function nomeParaContato(p: WahaPayload, ehEcoDeSaida: boolean): string | null {
+  return ehEcoDeSaida ? null : notifyNameOf(p);
+}
+
+/**
  * Número real do contato quando o chat é @lid (número protegido): o NOWEB
  * entrega o phone-number-jid em `_data.key.senderPn`/`participantPn`
  * (ex.: "5531999999999@s.whatsapp.net"). Retorna E.164 ou null.
@@ -411,7 +432,7 @@ async function handleInbound(
     session.organization_id,
     parsed,
     chatId,
-    notifyNameOf(p),
+    nomeParaContato(p, false),
     session.id,
     phoneHintOf(p),
   );
@@ -643,7 +664,7 @@ async function handleOutboundFromUserPhone(
     session.organization_id,
     parsed,
     chatId,
-    notifyNameOf(p),
+    nomeParaContato(p, true),
     session.id,
   );
   if (!contactId) return;

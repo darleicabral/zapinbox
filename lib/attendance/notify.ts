@@ -55,14 +55,19 @@ export async function notifyAssigneeNewLead(
     // 1) Contato do lead: nome + telefone (p/ montar o link clicável do WhatsApp).
     const { data: conv } = await admin
       .from("conversations")
-      .select("id, contact_id, contacts:contact_id(display_name, phone_number)")
+      .select("id, contact_id, contacts:contact_id(name, display_name, phone_number)")
       .eq("id", args.conversationId)
       .maybeSingle();
     const contactId = (conv as { contact_id: string | null } | null)?.contact_id ?? null;
     const contact = (conv as unknown as {
-      contacts: { display_name: string | null; phone_number: string | null } | null;
+      contacts: { name: string | null; display_name: string | null; phone_number: string | null } | null;
     } | null)?.contacts;
-    const contactName = contact?.display_name || contact?.phone_number || "Novo contato";
+    // `name` primeiro: é o que alguém digitou. `display_name` vem do push name
+    // do WhatsApp, que em 03/09/2026 estava errado em 50 contatos (nome da
+    // própria imobiliária, ver nomeParaContato no ingest). Telefone é melhor
+    // aviso que nome errado.
+    const contactName =
+      contact?.name?.trim() || contact?.display_name?.trim() || contact?.phone_number || "Novo contato";
     let leadPhone = contact?.phone_number ?? null;
     // Fallback p/ contatos @lid: o WhatsApp oculta o número no contato (LID), mas o
     // número real vem no wa_key da última mensagem inbound (o ingest guarda em
