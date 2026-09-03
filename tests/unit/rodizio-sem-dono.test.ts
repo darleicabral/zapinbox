@@ -7,8 +7,12 @@
  * nome dele no cadastro é literalmente "Dono".
  *
  * Cuidado com o que NÃO muda: gerente continua no rodízio (na Avant o Cleber é
- * manager e atende), e o admin segue recebendo a escalada do SLA via
- * pickFallbackManager, que é o papel de quem supervisiona.
+ * manager e atende), e presença não filtra ninguém (corretor offline recebe o
+ * aviso no WhatsApp e responde do próprio número).
+ *
+ * Reforçado no mesmo dia: "em nenhum momento, em hipótese alguma você
+ * encaminhará para o dono. Ele não é corretor." Por isso a escalada do SLA
+ * também deixou de cair no admin — ela ATRIBUI a conversa, não só avisa.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -95,7 +99,7 @@ describe("pickNextAssignee: o dono fica fora", () => {
     expect(escolhido).toBe("u1-agent-gilvam"); // volta ao início, sem parar no admin
   });
 
-  it("org só com admin não atribui ninguém (SLA escala pra ele depois)", async () => {
+  it("org só com admin não atribui ninguém, e a escalada também não", async () => {
     membros = [{ user_id: "u2-admin-dono", organization_id: ORG, role: "admin", revoked_at: null }];
     const { pickNextAssignee } = await import("@/lib/attendance/rotation");
     expect(await pickNextAssignee(cliente, ORG, { pointer: null })).toBeNull();
@@ -108,25 +112,54 @@ describe("pickNextAssignee: o dono fica fora", () => {
   });
 });
 
-describe("pickFallbackManager: o dono AINDA recebe a escalada", () => {
+describe("pickFallbackManager: a escalada NUNCA cai no dono", () => {
   beforeEach(() => {
     updates.length = 0;
     settings = { organization_id: ORG, enabled: true, last_assigned_user_id: null };
   });
 
-  it("sem gerente na org, a escalada cai no admin", async () => {
+  it("com gerente, a escalada vai pro gerente", async () => {
+    membros = [
+      { user_id: "u2-admin-dono", organization_id: ORG, role: "admin", revoked_at: null },
+      { user_id: "u3-manager-cleber", organization_id: ORG, role: "manager", revoked_at: null },
+    ];
+    const { pickFallbackManager } = await import("@/lib/attendance/rotation");
+    expect(await pickFallbackManager(cliente, ORG)).toBe("u3-manager-cleber");
+  });
+
+  it("SEM gerente, devolve null em vez de cair no admin", async () => {
+    // "em nenhum momento, em hipótese alguma você encaminhará para o dono"
+    // (Darlei, 03/09/2026). A escalada ATRIBUI a conversa, não só avisa — era
+    // isso que fazia o bot prometer "vou te encaminhar pro Dono".
     membros = [
       { user_id: "u1-agent-gilvam", organization_id: ORG, role: "agent", revoked_at: null },
       { user_id: "u2-admin-dono", organization_id: ORG, role: "admin", revoked_at: null },
     ];
     const { pickFallbackManager } = await import("@/lib/attendance/rotation");
-    expect(await pickFallbackManager(cliente, ORG)).toBe("u2-admin-dono");
+    expect(await pickFallbackManager(cliente, ORG)).toBeNull();
+  });
+});
+
+describe("presença não filtra: corretor offline recebe do mesmo jeito", () => {
+  beforeEach(() => {
+    updates.length = 0;
+    settings = { organization_id: ORG, enabled: true, last_assigned_user_id: null };
   });
 
-  it("com gerente, a escalada prefere o gerente", async () => {
+  it("rodízio escolhe corretor OFFLINE (ele recebe o aviso no zap)", async () => {
+    // pedido do Darlei: o corretor é mobile-first, responde do próprio número,
+    // então estar com o CRM fechado não pode tirá-lo da fila.
     membros = [
-      { user_id: "u2-admin-dono", organization_id: ORG, role: "admin", revoked_at: null },
-      { user_id: "u3-manager-cleber", organization_id: ORG, role: "manager", revoked_at: null },
+      { user_id: "u1-agent-gilvam", organization_id: ORG, role: "agent", revoked_at: null, presence: "offline" },
+      { user_id: "u4-agent-robson", organization_id: ORG, role: "agent", revoked_at: null, presence: "offline" },
+    ];
+    const { pickNextAssignee } = await import("@/lib/attendance/rotation");
+    expect(await pickNextAssignee(cliente, ORG, { pointer: null })).toBe("u1-agent-gilvam");
+  });
+
+  it("escalada também ignora presença do gerente", async () => {
+    membros = [
+      { user_id: "u3-manager-cleber", organization_id: ORG, role: "manager", revoked_at: null, presence: "offline" },
     ];
     const { pickFallbackManager } = await import("@/lib/attendance/rotation");
     expect(await pickFallbackManager(cliente, ORG)).toBe("u3-manager-cleber");

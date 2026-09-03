@@ -125,15 +125,26 @@ export async function pickNextAssignee(
 }
 
 /**
- * Fallback após max_passes: gestor (manager; senão admin) do tenant,
- * independente de presença — alguém precisa ficar como dono com alerta.
+ * Fallback após max_passes: o GERENTE do tenant, independente de presença.
+ *
+ * ⚠️ Decisão do Darlei (03/09/2026): "em nenhum momento, em hipótese alguma você
+ * encaminhará para o dono. Ele não é corretor." Antes esta função caía no ADMIN
+ * quando não havia manager, e a escalada não só avisa — ela ATRIBUI a conversa.
+ * Era isso que fazia o bot dizer ao cliente "vou te encaminhar pro Dono", já que
+ * o nome no cadastro é literalmente "Dono".
+ *
+ * Sem gerente na org, devolve null e o SLA NÃO reatribui: a conversa fica com
+ * quem já estava e o alerta segue aparecendo na fila do CRM (emitAlert +
+ * realtime), que é como o dono continua sabendo sem receber lead no WhatsApp.
+ * Consequência aceita: org sem nenhum manager perde a escalada automática.
  */
 export async function pickFallbackManager(
   admin: SupabaseClient,
   organizationId: string,
 ): Promise<string | null> {
   const members = await loadEligibleMembers(admin, organizationId);
-  const manager = members.find((m) => m.role === "manager") ?? members.find((m) => m.role === "admin");
+  // Só manager. NUNCA admin — ver a nota acima.
+  const manager = members.find((m) => m.role === "manager");
   return manager?.user_id ?? null;
 }
 
