@@ -210,6 +210,33 @@ function phoneHintOf(p: WahaPayload): string | null {
 }
 
 /**
+ * IDENTIDADE CANÔNICA DO CONTATO = TELEFONE, sempre que ele for conhecido.
+ *
+ * O mesmo remetente chega ora como chat `@c.us` (identidade `phone:`) ora como
+ * `@lid` (identidade `lid:`), e o `fn_upsert_wa_contact` keya pela identidade.
+ * Resultado medido em 03/09/2026: DOIS contatos pra mesma pessoa criados 41s um
+ * do outro (`phone:+553196829676` e `lid:260094914756808`, mesmo remetente
+ * `260094914756808@lid` em todos os external_id). Como a conversa é keyada por
+ * contato+sessão, viraram duas conversas, a segunda sem histórico, e o bot
+ * cumprimentou e se apresentou de novo no meio do atendimento.
+ *
+ * O `phoneHint` (de `key.senderPn`) já era extraído, mas só preenchia
+ * `phone_number` DEPOIS, no contato duplicado — cosmético, não resolvia a
+ * identidade. Agora ele decide a chave: com telefone conhecido, o upsert vai
+ * como `phone:` e as duas formas de chegada caem no MESMO contato.
+ *
+ * Pura de propósito, pra ser testável sem banco.
+ */
+export function canonicalContactIdentity(
+  parsed: Extract<ChatIdentity, { kind: "phone" } | { kind: "lid" }>,
+  phoneHint: string | null,
+): { kind: "phone" | "lid"; phone: string | null; lid: string | null } {
+  const phone = parsed.kind === "phone" ? parsed.phone : phoneHint;
+  if (phone) return { kind: "phone", phone, lid: null };
+  return { kind: "lid", phone: null, lid: parsed.kind === "lid" ? parsed.lid : null };
+}
+
+/**
  * Upsert atômico de contato pela identidade canônica. Retorna null se a
  * identidade for de grupo ou a RPC falhar.
  */
@@ -224,11 +251,12 @@ async function upsertContact(
   phoneHint: string | null = null,
 ): Promise<string | null> {
   if (parsed.kind === "group") return null;
+  const ident = canonicalContactIdentity(parsed, phoneHint);
   const base = {
     p_org: orgId,
-    p_kind: parsed.kind,
-    p_phone: parsed.kind === "phone" ? parsed.phone : null,
-    p_lid: parsed.kind === "lid" ? parsed.lid : null,
+    p_kind: ident.kind,
+    p_phone: ident.phone,
+    p_lid: ident.lid,
     p_chat_id: chatId,
     p_notify: notifyName,
   };
@@ -255,6 +283,9 @@ async function upsertContact(
 
   // Chat @lid esconde o número, mas o payload traz o real em key.senderPn —
   // preenche phone_number se ainda estiver vazio (não sobrescreve edição manual).
+  // Com a identidade canônica acima o upsert já manda o telefone, então aqui só
+  // sobra o caso LEGADO: contato criado como `lid:` ANTES deste conserto, que o
+  // upsert reencontra por lid e segue sem telefone. Não é código morto.
   if (contactId && parsed.kind === "lid" && phoneHint) {
     const { error: phoneErr } = await admin
       .from("contacts")
