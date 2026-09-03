@@ -60,10 +60,31 @@ export async function updateAtendimento(
   );
   if (attErr) return { ok: false, error: attErr.message };
 
+  // ⚠️ Ao ATIVAR, marca o instante: a cadência vale só pra conversa criada depois
+  // dele (decisão do Darlei em 03/09/2026, após ligar o reengajamento ter
+  // disparado 116 mensagens pra 34 conversas paradas em cinco minutos).
+  // Só estampa na TRANSIÇÃO desligado→ligado. Salvar a tela com o reengajamento
+  // já ligado (mexendo num texto, por exemplo) não pode reiniciar o corte, senão
+  // as conversas em cadência sairiam dela no meio.
+  const { data: fuAtual } = await supabase
+    .from("followup_settings")
+    .select("enabled, enabled_at")
+    .eq("organization_id", activeOrg.orgId)
+    .maybeSingle();
+  const estavaLigado = (fuAtual as { enabled: boolean } | null)?.enabled === true;
+  const enabledAtAtual = (fuAtual as { enabled_at: string | null } | null)?.enabled_at ?? null;
+  const vaiLigar = parsed.data.followup.enabled;
+  const enabledAt = vaiLigar
+    ? estavaLigado && enabledAtAtual
+      ? enabledAtAtual // já estava ligado: mantém o corte original
+      : new Date().toISOString() // ligando agora (ou sem corte gravado)
+    : enabledAtAtual; // desligando: preserva pra histórico
+
   const { error: fuErr } = await supabase.from("followup_settings").upsert(
     {
       organization_id: activeOrg.orgId,
       enabled: parsed.data.followup.enabled,
+      enabled_at: enabledAt,
       throttle_seconds: parsed.data.followup.throttle_seconds,
       steps,
       business_hours: bh,

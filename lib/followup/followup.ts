@@ -36,6 +36,8 @@ export interface FollowupStep {
 interface FollowupSettings {
   organization_id: string;
   enabled: boolean;
+  /** Instante da última ATIVAÇÃO. A cadência só pega conversa criada depois. */
+  enabled_at: string | null;
   throttle_seconds: number;
   business_hours: BusinessHours | null;
   steps: FollowupStep[];
@@ -51,6 +53,7 @@ export interface FollowupSweepSummary {
 
 interface ConvRow {
   id: string;
+  created_at: string;
   contact_id: string | null;
   status: string;
   last_inbound_at: string | null;
@@ -72,6 +75,26 @@ interface ConvRow {
  * nunca pega: a cadência começa poucos minutos depois do silêncio.
  */
 const MAX_IDADE_PARA_INICIAR_MIN = 180;
+
+/**
+ * A conversa entra na cadência, dado o instante da ATIVAÇÃO do reengajamento?
+ *
+ * Decisão do Darlei (03/09/2026): ao ativar, a cadência vale APENAS pra lead
+ * novo, criado a partir daquele momento. Conversa que já existia fica fora pra
+ * sempre, mesmo que o lead volte a escrever — o corte é a CRIAÇÃO da conversa,
+ * não a última mensagem. Sem isso, ligar varre o acervo: em 03/09 foram 116
+ * mensagens pra 34 conversas paradas, em cinco minutos.
+ *
+ * `enabledAt` nulo (tenant legado) devolve false de propósito: melhor exigir que
+ * o gestor ative de novo, marcando o corte, do que mandar em massa.
+ */
+export function conversaElegivelPorAtivacao(
+  conversaCriadaEm: string,
+  enabledAt: string | null,
+): boolean {
+  if (!enabledAt) return false;
+  return new Date(conversaCriadaEm).getTime() > new Date(enabledAt).getTime();
+}
 
 /**
  * A etapa `indice` pode disparar agora? Pura, pra ser testável sem banco.
@@ -170,16 +193,29 @@ async function sweepOrg(
   if (!Array.isArray(steps) || steps.length === 0) return;
   if (!inBusinessHours(settings.business_hours, new Date(now))) return; // fora do expediente
 
+  // ⚠️ SÓ LEAD NOVO (decisão do Darlei, 03/09/2026). A cadência vale apenas pra
+  // conversa criada DEPOIS da ativação. Sem isto, ligar o reengajamento varre o
+  // acervo: em 03/09 foram 116 mensagens pra 34 conversas paradas em 5 minutos,
+  // porque conversa antiga já cruzou o prazo de todas as etapas.
+  // Sem enabled_at (tenant legado) o worker NÃO varre nada de propósito: melhor
+  // exigir que o gestor ative de novo, marcando o corte, que mandar em massa.
+  if (!settings.enabled_at) {
+    logger.warn("[followup] sem enabled_at, pulando org", { organization_id: orgId });
+    return;
+  }
+
   const { data: rows } = await admin
     .from("conversations")
     .select(
-      "id, contact_id, status, last_inbound_at, last_followup_at, followup_step, bot_silenced_until, assigned_to_user_id, contacts:contact_id(display_name, is_blocked, force_human)",
+      "id, created_at, contact_id, status, last_inbound_at, last_followup_at, followup_step, bot_silenced_until, assigned_to_user_id, contacts:contact_id(display_name, is_blocked, force_human)",
     )
     .eq("organization_id", orgId)
     .in("status", ["open", "ai_handling"])
     .not("last_inbound_at", "is", null);
 
   for (const conv of (rows ?? []) as unknown as ConvRow[]) {
+    // Conversa que já existia quando o reengajamento foi ativado nunca entra.
+    if (!conversaElegivelPorAtivacao(conv.created_at, settings.enabled_at)) continue;
     if (!conv.contacts || conv.contacts.is_blocked || conv.contacts.force_human) continue;
     // Transferida pra humano (silenciada) → cadência não roda.
     // ⚠️ O handoff grava bot_silenced_until='infinity' (EPIC-06/IA-06). O
@@ -329,7 +365,7 @@ export async function sweepFollowups(
 
   const { data: enabledOrgs, error } = await admin
     .from("followup_settings")
-    .select("organization_id, enabled, throttle_seconds, business_hours, steps")
+    .select("organization_id, enabled, throttle_seconds, business_hours, steps, enabled_at")
     .eq("enabled", true);
   if (error) {
     summary.errors.push(`load_settings: ${error.message}`);

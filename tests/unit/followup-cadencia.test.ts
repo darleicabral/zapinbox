@@ -30,7 +30,11 @@ vi.mock("@/lib/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { podeDisparar, type FollowupStep } from "@/lib/followup/followup";
+import {
+  conversaElegivelPorAtivacao,
+  podeDisparar,
+  type FollowupStep,
+} from "@/lib/followup/followup";
 
 // a cadência que o Darlei definiu
 const CADENCIA: FollowupStep[] = [
@@ -95,5 +99,32 @@ describe("podeDisparar: as etapas seguintes respeitam o intervalo", () => {
 
   it("etapa inexistente não dispara", () => {
     expect(podeDisparar(CADENCIA, 9, { inactivityMin: 99999, desdeUltimoFollowupMin: 99999 })).toBe(false);
+  });
+});
+
+describe("corte por ativação: só conversa criada depois entra", () => {
+  const entra = conversaElegivelPorAtivacao;
+
+  const ATIVACAO = "2026-09-03T17:00:00Z";
+
+  it("conversa criada 1 min DEPOIS da ativação entra", () => {
+    expect(entra("2026-09-03T17:01:00Z", ATIVACAO)).toBe(true);
+  });
+
+  it("conversa criada 1 min ANTES fica fora pra sempre (as 34 do incidente)", () => {
+    expect(entra("2026-09-03T16:59:00Z", ATIVACAO)).toBe(false);
+  });
+
+  it("conversa criada no mesmo instante fica fora (corte exclusivo)", () => {
+    expect(entra(ATIVACAO, ATIVACAO)).toBe(false);
+  });
+
+  it("conversa de dias antes fica fora, mesmo se o lead voltar a escrever", () => {
+    // decisão do Darlei: o corte é a CRIAÇÃO da conversa, não a última mensagem
+    expect(entra("2026-08-30T10:00:00Z", ATIVACAO)).toBe(false);
+  });
+
+  it("sem enabled_at (tenant legado) NADA entra — exige reativar", () => {
+    expect(entra("2026-09-03T17:01:00Z", null)).toBe(false);
   });
 });
