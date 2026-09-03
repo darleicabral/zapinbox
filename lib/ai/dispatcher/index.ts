@@ -38,9 +38,38 @@ export const DISPATCHER_KEY = "worker.agent-dispatcher.v1";
 export const DISPATCH_EVENT_TYPE = "ai_agent.dispatch_requested";
 
 const DEFAULT_BATCH_SIZE = 100;
+// Janela em que a última fala humana ainda significa "o corretor está no comando".
+// 60min é folgado perto do SLA da casa (assumir em 5min, 1a resposta em 10min).
+const HUMAN_ACTIVE_WINDOW_MIN = 60;
 const RATE_LIMIT_PER_MIN = 60;
 const RATE_LIMIT_WINDOW_SEC = 60;
 const REQUEUE_DELAY_MS = 5_000;
+
+/**
+ * O corretor humano está no comando desta conversa?
+ *
+ * Recebe a ÚLTIMA mensagem de saída da conversa. Se ela é humana e recente, o
+ * bot não responde por cima. Pura de propósito, pra ser testável sem banco.
+ *
+ * `sent_via`: 'ai' é o próprio bot/follow-up; 'user' é humano pelo composer do
+ * CRM; 'external_device' é humano pelo celular. Desde e38639e o eco do WAHA é
+ * descartado no ingest, então 'external_device' significa humano DE VERDADE e
+ * esta checagem é confiável.
+ *
+ * Devolve null quando o bot pode seguir, ou os dados do bloqueio pra auditoria.
+ */
+export function humanIsHandling(
+  ultimaSaida: { sent_via: string | null; sent_at: string | null } | null,
+  agoraMs: number,
+): { via: string; minutosAtras: number } | null {
+  if (!ultimaSaida) return null;
+  const via = ultimaSaida.sent_via ?? "";
+  if (via !== "user" && via !== "external_device") return null; // bot falou por último
+  if (!ultimaSaida.sent_at) return null;
+  const minutosAtras = (agoraMs - new Date(ultimaSaida.sent_at).getTime()) / 60_000;
+  if (minutosAtras >= HUMAN_ACTIVE_WINDOW_MIN) return null; // humano respondeu e sumiu
+  return { via, minutosAtras: Math.round(minutosAtras) };
+}
 
 export type DispatchOutcome =
   | "dispatched"
@@ -51,6 +80,7 @@ export type DispatchOutcome =
   | "skipped_invalid_payload"
   | "skipped_missing_message"
   | "skipped_silenced"
+  | "skipped_human_active"
   | "error";
 
 export interface DispatchSummary {
@@ -95,6 +125,7 @@ const EMPTY_OUTCOMES = (): Record<DispatchOutcome, number> => ({
   skipped_invalid_payload: 0,
   skipped_missing_message: 0,
   skipped_silenced: 0,
+  skipped_human_active: 0,
   error: 0,
 });
 
@@ -229,6 +260,43 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
   if (isSilenced) {
     await markEventProcessed(event, "skipped_silenced");
     return "skipped_silenced";
+  }
+
+  // Corretor humano no comando → o bot não responde por cima.
+  //
+  // `bot_silenced_until` só é preenchido pela tool de handoff. Corretor que
+  // simplesmente começa a digitar (pelo composer ou pelo celular) não silencia
+  // nada, e o bot entrava no meio da conversa. Medido em produção 03/09/2026:
+  // conversa 3456e9ba, Robson respondendo à mão 13:07:09 e 13:07:21, e o bot
+  // cortando 13:07:58 com "Olá! Tudo bem? 😊 Aqui é o consultor da Avant".
+  // Mesma família do incidente do follow-up de 01/09 (lib/followup/followup.ts).
+  //
+  // Regra: se a ÚLTIMA saída da conversa é humana e recente, o humano é o dono.
+  // Olhar "quem falou por último" e não "humano falou depois do lead" é de
+  // propósito: o despachante roda POR CAUSA de uma mensagem que acabou de
+  // chegar, então comparar com last_inbound_at nunca pegaria nada.
+  // A janela deixa a regra se curar sozinha (corretor que respondeu e sumiu não
+  // congela a conversa pra sempre) e não briga com o botão "devolver ao bot",
+  // que zera o bot_silenced_until sem stampar timestamp nenhum.
+  const { data: ultimaSaida } = await admin
+    .from("messages")
+    .select("sent_via, sent_at")
+    .eq("organization_id", orgId)
+    .eq("conversation_id", conversationId)
+    .eq("direction", "outbound")
+    .order("sent_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const humanoNoComando = humanIsHandling(
+    ultimaSaida as { sent_via: string | null; sent_at: string | null } | null,
+    Date.now(),
+  );
+  if (humanoNoComando) {
+    await markEventProcessed(event, "skipped_human_active", {
+      last_outbound_via: humanoNoComando.via,
+      minutes_ago: humanoNoComando.minutosAtras,
+    });
+    return "skipped_human_active";
   }
 
   const conversation: DispatchConversation = {
