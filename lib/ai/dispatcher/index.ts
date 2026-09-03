@@ -44,6 +44,10 @@ const HUMAN_ACTIVE_WINDOW_MIN = 60;
 const RATE_LIMIT_PER_MIN = 60;
 const RATE_LIMIT_WINDOW_SEC = 60;
 const REQUEUE_DELAY_MS = 5_000;
+// Quantas vezes reenfileirar quando a conversa tem run em voo. 5 × 5s = 25s,
+// folgado pro run normal (poucos segundos) e curto o bastante pra run travado
+// não reenfileirar pra sempre.
+const CONV_BUSY_MAX_ATTEMPTS = 5;
 
 /**
  * O corretor humano está no comando desta conversa?
@@ -324,19 +328,31 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
     return "no_match";
   }
 
-  // Concurrency pre-check: any running run for this conversation?
-  const { data: running } = await admin
+  // Concurrency pre-check: já existe run EM VOO (pending ou running) nesta
+  // conversa? Cobria só 'running', mas o insert abaixo é 'pending': dois
+  // despachos no mesmo tique passavam os dois. Medido em 03/09/2026 na conversa
+  // bb7cd91b — o lead mandou 2 mensagens no mesmo segundo e o bot deu a abertura
+  // completa DUAS vezes, porque nenhum run viu a resposta do outro.
+  const { data: emVoo } = await admin
     .from("ai_agent_runs")
     .select("id")
     .eq("organization_id", orgId)
     .eq("conversation_id", conversationId)
-    .eq("status", "running")
+    .in("status", ["pending", "running"])
     .eq("is_dry_run", false)
     .limit(1)
     .maybeSingle();
 
-  if (running) {
-    await markEventProcessed(event, "conv_busy");
+  if (emVoo) {
+    // REENFILEIRA em vez de descartar: a 2ª mensagem do lead não pode ser
+    // perdida. Ela roda depois que o 1º run terminar, e aí o modelo vê a
+    // resposta anterior no histórico e não repete a abertura.
+    // Teto de tentativas pra run travado não gerar reenfileiramento eterno.
+    if ((event.attempts ?? 0) < CONV_BUSY_MAX_ATTEMPTS) {
+      await requeueEvent(event, REQUEUE_DELAY_MS, { reason: "conv_busy", run_in_flight: true });
+    } else {
+      await markEventProcessed(event, "conv_busy", { reason: "max_attempts", attempts: event.attempts });
+    }
     return "conv_busy";
   }
 
@@ -369,10 +385,10 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
     return "rate_limited";
   }
 
-  // Insert run row. Partial unique index covers `status='running'`; we insert
-  // pending, so the index will only fire if a parallel dispatcher inserted
-  // first AND the runner already promoted it to running. In that race we
-  // surface as conv_busy.
+  // Insert run row. O índice único parcial cobre status IN ('pending','running')
+  // desde a migration 0031, então corrida entre dois despachantes colide aqui e
+  // sai como conv_busy (reenfileirado). Antes o índice cobria só 'running' e a
+  // corrida passava, gerando resposta dupla.
   const runId = randomUUID();
   const { error: insertErr } = await admin.from("ai_agent_runs").insert({
     id: runId,
