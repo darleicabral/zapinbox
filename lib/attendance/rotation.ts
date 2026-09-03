@@ -96,7 +96,14 @@ export async function pickNextAssignee(
 ): Promise<string | null> {
   const members = await loadEligibleMembers(admin, organizationId);
   const excluded = new Set(opts.excludeUserIds ?? []);
-  const candidates = members.filter((m) => !excluded.has(m.user_id));
+  // ⚠️ Decisão do Darlei (03/09/2026): o DONO não entra no rodízio. Ele é admin e
+  // só supervisiona, não atende lead. Antes ele era sorteado como qualquer um, e
+  // o bot chegou a prometer ao cliente "vou te encaminhar pro Dono, nosso
+  // corretor" (o nome no cadastro é literalmente "Dono").
+  // Gerente CONTINUA no rodízio: na Avant o Cleber é manager e atende.
+  // O admin segue recebendo a escalada do SLA por pickFallbackManager, que é o
+  // papel dele — supervisionar quando ninguém assume, não estar na fila.
+  const candidates = members.filter((m) => !excluded.has(m.user_id) && m.role !== "admin");
   if (candidates.length === 0) return null;
 
   let pointer = opts.pointer;

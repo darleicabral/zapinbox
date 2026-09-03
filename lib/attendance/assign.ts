@@ -36,9 +36,13 @@ const VAZIO: AssignAndNotifyResult = {
   keptExistingAssignee: false,
 };
 
+// O DONO (admin) não entra na distribuição normal — decisão do Darlei
+// (03/09/2026): ele supervisiona, não atende. Mesma regra do rodízio em
+// lib/attendance/rotation.ts. Quem pedir explicitamente minRole 'admin' ainda
+// recebe admin, e a escalada do SLA (pickFallbackManager) também.
 const ELIGIBLE_ROLES_BY_MIN: Record<string, string[]> = {
-  agent: ["agent", "manager", "admin"],
-  manager: ["manager", "admin"],
+  agent: ["agent", "manager"],
+  manager: ["manager"],
   admin: ["admin"],
 };
 
