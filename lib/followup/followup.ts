@@ -62,7 +62,13 @@ interface ConvRow {
   bot_silenced_until: string | null;
   /** Dono da conversa. Preenchido = corretor já foi avisado, cadência para. */
   assigned_to_user_id: string | null;
-  contacts: { display_name: string | null; is_blocked: boolean; force_human: boolean } | null;
+  contacts: {
+    display_name: string | null;
+    is_blocked: boolean;
+    force_human: boolean;
+    /** Telefone da equipe: a conversa existe pro histórico, mas não é lead. */
+    is_internal: boolean | null;
+  } | null;
 }
 
 /**
@@ -207,7 +213,7 @@ async function sweepOrg(
   const { data: rows } = await admin
     .from("conversations")
     .select(
-      "id, created_at, contact_id, status, last_inbound_at, last_followup_at, followup_step, bot_silenced_until, assigned_to_user_id, contacts:contact_id(display_name, is_blocked, force_human)",
+      "id, created_at, contact_id, status, last_inbound_at, last_followup_at, followup_step, bot_silenced_until, assigned_to_user_id, contacts:contact_id(display_name, is_blocked, force_human, is_internal)",
     )
     .eq("organization_id", orgId)
     .in("status", ["open", "ai_handling"])
@@ -217,6 +223,7 @@ async function sweepOrg(
     // Conversa que já existia quando o reengajamento foi ativado nunca entra.
     if (!conversaElegivelPorAtivacao(conv.created_at, settings.enabled_at)) continue;
     if (!conv.contacts || conv.contacts.is_blocked || conv.contacts.force_human) continue;
+    if (conv.contacts.is_internal) continue; // corretor não recebe cadência de lead
     // Transferida pra humano (silenciada) → cadência não roda.
     // ⚠️ O handoff grava bot_silenced_until='infinity' (EPIC-06/IA-06). O
     // PostgREST serializa timestamptz 'infinity' como a STRING "infinity", que

@@ -89,6 +89,7 @@ export type DispatchOutcome =
   | "skipped_missing_message"
   | "skipped_silenced"
   | "skipped_human_active"
+  | "skipped_internal_contact"
   | "error";
 
 export interface DispatchSummary {
@@ -134,6 +135,7 @@ const EMPTY_OUTCOMES = (): Record<DispatchOutcome, number> => ({
   skipped_missing_message: 0,
   skipped_silenced: 0,
   skipped_human_active: 0,
+  skipped_internal_contact: 0,
   error: 0,
 });
 
@@ -286,7 +288,9 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
 
   const { data: convRow } = await admin
     .from("conversations")
-    .select("id, organization_id, is_group, group_chat_id, bot_silenced_until")
+    .select(
+      "id, organization_id, is_group, group_chat_id, bot_silenced_until, contacts:contact_id (is_internal)",
+    )
     .eq("id", conversationId)
     .eq("organization_id", orgId)
     .maybeSingle();
@@ -294,6 +298,19 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
   if (!convRow) {
     await markEventProcessed(event, "skipped_missing_message", { reason: "conv_missing" });
     return "skipped_missing_message";
+  }
+
+  // Conversa que é de alguém da EQUIPE não é lead: nasceu do eco do aviso que o
+  // CRM manda pro WhatsApp do corretor. Sem esta guarda o bot atende o próprio
+  // corretor (aconteceu: 42 mensagens da IA na conversa de um deles).
+  const contatoEmbutido = (convRow as { contacts?: unknown }).contacts;
+  const contatoDaConversa = (Array.isArray(contatoEmbutido) ? contatoEmbutido[0] : contatoEmbutido) as
+    | { is_internal?: boolean | null }
+    | null
+    | undefined;
+  if (contatoDaConversa?.is_internal) {
+    await markEventProcessed(event, "skipped_internal_contact");
+    return "skipped_internal_contact";
   }
 
   // Pós-handoff o bot fica mudo: bot_silenced_until='infinity' (EPIC-06/IA-06).

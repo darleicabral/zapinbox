@@ -19,6 +19,11 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  carregarTelefonesDaEquipe,
+  ehTelefoneDaEquipe,
+  marcarContatoInterno,
+} from "./interno";
 import { notifyAssigneeNewLead } from "./notify";
 import {
   inBusinessHours,
@@ -37,18 +42,33 @@ export interface SlaSweepSummary {
   errors: string[];
 }
 
+interface ContatoDaConversa {
+  id: string;
+  is_internal: boolean | null;
+  phone_number: string | null;
+}
+
+/** PostgREST tipa relação embutida como array; na prática vem um só. */
+type ContatoEmbutido = ContatoDaConversa | ContatoDaConversa[] | null;
+
+function primeiroContato(c: ContatoEmbutido): ContatoDaConversa | null {
+  return Array.isArray(c) ? (c[0] ?? null) : c;
+}
+
 interface PendingConv {
   id: string;
   assigned_to_user_id: string | null;
   assigned_at: string | null;
   status_changed_at: string;
   assignment_passes: number;
+  contacts: ContatoEmbutido;
 }
 
 interface ClaimedConv {
   id: string;
   assigned_to_user_id: string | null;
   status_changed_at: string;
+  contacts: ContatoEmbutido;
 }
 
 function emptySummary(): SlaSweepSummary {
@@ -107,11 +127,29 @@ async function sweepOrg(
   // ── Etapa 1 — claim SLA ────────────────────────────────────────────────
   const { data: pendingRows } = await admin
     .from("conversations")
-    .select("id, assigned_to_user_id, assigned_at, status_changed_at, assignment_passes")
+    .select(
+      "id, assigned_to_user_id, assigned_at, status_changed_at, assignment_passes, contacts:contact_id (id, is_internal, phone_number)",
+    )
     .eq("organization_id", orgId)
     .eq("status", "pending");
 
-  for (const conv of (pendingRows ?? []) as PendingConv[]) {
+  // Telefones de aviso da equipe: uma query por passada. Serve pra reconhecer
+  // a conversa que e do PROPRIO corretor (nasceu do eco da notificacao) e que
+  // por isso nao pode entrar no rodizio.
+  const telefonesDaEquipe = await carregarTelefonesDaEquipe(admin, orgId);
+
+  for (const conv of (pendingRows ?? []) as unknown as PendingConv[]) {
+    // A conversa do PROPRIO corretor nao e lead (decisao do Darlei, 03/09/2026:
+    // "marcar como interna"). Sem esta guarda o aviso que o CRM manda pro
+    // WhatsApp dele volta como eco, cria conversa `pending`, e o rodizio a
+    // repassa pra outro corretor: laco.
+    const contato = primeiroContato(conv.contacts);
+    if (contato?.is_internal) continue;
+    if (contato && ehTelefoneDaEquipe(contato.phone_number, telefonesDaEquipe)) {
+      // Auto-cura: marca na primeira vez que o laço tentaria começar.
+      await marcarContatoInterno(admin, orgId, contato.id);
+      continue;
+    }
     // Relógio da etapa 1: quando foi atribuída (ou, sem dono, quando virou pending).
     const clock = new Date(conv.assigned_at ?? conv.status_changed_at).getTime();
     if (clock > claimCutoff) continue; // ainda dentro do SLA
@@ -176,12 +214,13 @@ async function sweepOrg(
   // ── Etapa 2 — 1ª resposta SLA ──────────────────────────────────────────
   const { data: claimedRows } = await admin
     .from("conversations")
-    .select("id, assigned_to_user_id, status_changed_at")
+    .select("id, assigned_to_user_id, status_changed_at, contacts:contact_id (id, is_internal, phone_number)")
     .eq("organization_id", orgId)
     .eq("status", "claimed")
     .is("first_response_alerted_at", null);
 
-  for (const conv of (claimedRows ?? []) as ClaimedConv[]) {
+  for (const conv of (claimedRows ?? []) as unknown as ClaimedConv[]) {
+    if (primeiroContato(conv.contacts)?.is_internal) continue; // equipe não gera alerta
     const claimedAt = new Date(conv.status_changed_at).getTime();
     if (claimedAt > respCutoff) continue;
 

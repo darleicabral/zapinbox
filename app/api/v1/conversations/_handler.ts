@@ -19,7 +19,7 @@ const SELECT_COLS = `
   last_outbound_at, last_message_at, last_message_preview,
   unread_count_for_assignee, is_group, group_chat_id, metadata,
   created_at, updated_at,
-  contacts:contact_id (id, display_name, name, phone_number, is_anonymized, tags, is_blocked)
+  contacts:contact_id (id, display_name, name, phone_number, is_anonymized, tags, is_blocked, is_internal)
 `;
 
 interface CursorPayload {
@@ -73,6 +73,21 @@ export async function listConversationsHandler(
   ctx: HandlerCtx,
   q: ListConversationsQuery,
 ): Promise<ListConversationsResult> {
+  // Conversa de quem é da EQUIPE fica fora da lista de atendimento (decisão do
+  // Darlei, 03/09/2026). Ela nasce do eco do aviso que o CRM manda pro WhatsApp
+  // do corretor, e estava aparecendo como lead — o número do Cleber, por
+  // exemplo. Continua acessível abrindo pelo id: o histórico do aviso importa.
+  //
+  // Filtro por contact_id em vez de join interno de propósito: `!inner` no
+  // embed derrubaria conversa sem contato, e a lista de internos é do tamanho
+  // da equipe (índice parcial contacts_org_interno_idx).
+  const { data: internos } = await supabase
+    .from("contacts")
+    .select("id")
+    .eq("organization_id", ctx.organization_id)
+    .eq("is_internal", true);
+  const idsInternos = ((internos ?? []) as { id: string }[]).map((c) => c.id);
+
   let query = supabase
     .from("conversations")
     .select(SELECT_COLS)
@@ -80,6 +95,10 @@ export async function listConversationsHandler(
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: false })
     .limit(q.limit + 1);
+
+  if (idsInternos.length > 0) {
+    query = query.not("contact_id", "in", `(${idsInternos.join(",")})`);
+  }
 
   if (q.status) query = query.eq("status", q.status);
   if (q.exclude_status?.length) {
