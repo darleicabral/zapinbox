@@ -20,7 +20,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { sendPushToUser } from "@/lib/push/send";
-import { resolveWahaChatId, sendWAHA } from "@/lib/waha/send";
+import { resolveChatIdChecked, sendWAHA } from "@/lib/waha/send";
 
 export type NotifyKind = "assigned" | "reassigned" | "escalated" | "sla_alert";
 
@@ -237,13 +237,19 @@ export async function notifyAssigneeNewLead(
     const text = lines.join("\n");
 
     // 10) Envia direto (sem persistir no inbox).
-    const chatId = resolveWahaChatId({
-      isGroup: false,
-      groupChatId: null,
-      phoneNumber: phone,
-      waIdentity: null,
-    });
-    if (!chatId) return pushed > 0;
+    // CONFERINDO no WhatsApp qual e o chatId real. O numero do corretor foi
+    // digitado a mao, e conta brasileira antiga tem JID sem o nono digito: em
+    // 03/09/2026 as 31 notificacoes do dia sairam pra 5531992953088@c.us
+    // quando o JID verdadeiro era 553192953088@c.us. A tela mostrava
+    // "enviada", o eco voltava pelo webhook, e nenhum corretor recebeu nada.
+    const chatId = await resolveChatIdChecked({ sessionName, phoneNumber: phone });
+    if (!chatId) {
+      logger.warn("[attendance.notify] numero do corretor nao esta no WhatsApp", {
+        organization_id: args.organizationId,
+        assignee_user_id: args.assigneeUserId,
+      });
+      return pushed > 0;
+    }
     const res = await sendWAHA({ sessionName, chatId, text });
     return res !== null || pushed > 0; // null = WAHA não configurado (noop)
   } catch (err) {

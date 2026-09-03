@@ -73,6 +73,31 @@ export class WahaClient {
     return (await res.json()) as { qr?: string; status: string };
   }
 
+  /**
+   * Pergunta ao WhatsApp qual e o chatId REAL de um numero.
+   *
+   * Existe por causa do nono digito brasileiro: conta registrada antes de 2012
+   * tem JID sem o 9 (5531992953088 -> 553192953088@c.us). Mandar pro JID com o
+   * 9 nao da erro: o WhatsApp cria a mensagem, o eco volta pelo webhook, a tela
+   * mostra "enviada" e NINGUEM recebe (ack fica 0). Foi o que aconteceu com as
+   * 31 notificacoes dos corretores da Avant em 03/09/2026.
+   */
+  async checkExists(
+    session: string,
+    phone: string,
+  ): Promise<{ numberExists: boolean; chatId: string | null } | null> {
+    const url = `${this.baseUrl}/api/contacts/check-exists?phone=${encodeURIComponent(
+      phone,
+    )}&session=${encodeURIComponent(session)}`;
+    const res = await fetch(url, { headers: { "X-Api-Key": this.apiKey } });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { numberExists?: boolean; chatId?: string | null };
+    return {
+      numberExists: json.numberExists === true,
+      chatId: typeof json.chatId === "string" ? json.chatId : null,
+    };
+  }
+
   async sendMessage(session: string, chatId: string, text: string): Promise<unknown> {
     const res = await fetch(`${this.baseUrl}/api/sendText`, {
       method: "POST",
