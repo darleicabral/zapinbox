@@ -63,7 +63,36 @@ export async function notifyAssigneeNewLead(
       contacts: { display_name: string | null; phone_number: string | null } | null;
     } | null)?.contacts;
     const contactName = contact?.display_name || contact?.phone_number || "Novo contato";
-    const leadPhone = contact?.phone_number ?? null;
+    let leadPhone = contact?.phone_number ?? null;
+    // Fallback p/ contatos @lid: o WhatsApp oculta o número no contato (LID), mas o
+    // número real vem no wa_key da última mensagem inbound (o ingest guarda em
+    // messages.metadata.wa_key — remoteJidAlt/senderPn tipo "5531...@s.whatsapp.net").
+    // Sem isto a notificação sai sem o link clicável pro WhatsApp do lead.
+    if (!leadPhone) {
+      const { data: lastIn } = await admin
+        .from("messages")
+        .select("metadata")
+        .eq("organization_id", args.organizationId)
+        .eq("conversation_id", args.conversationId)
+        .eq("direction", "inbound")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const key = (lastIn as { metadata?: { wa_key?: Record<string, unknown> } } | null)?.metadata
+        ?.wa_key;
+      if (key) {
+        for (const f of ["senderPn", "remoteJidAlt", "participantPn", "participantAlt"] as const) {
+          const raw = key[f];
+          if (typeof raw === "string") {
+            const m = raw.match(/^(\d{6,15})@/);
+            if (m) {
+              leadPhone = "+" + m[1];
+              break;
+            }
+          }
+        }
+      }
+    }
     // wa.me só com dígitos (sem "+"): o corretor toca e abre a conversa com o lead.
     const waLink = leadPhone ? `https://wa.me/${leadPhone.replace(/\D/g, "")}` : null;
 
