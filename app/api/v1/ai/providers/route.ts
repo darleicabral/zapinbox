@@ -30,8 +30,8 @@ const PROVIDERS = [
   },
   {
     id: "opencode",
-    display_name: "OpenCode Zen",
-    docs_url: "https://opencode.ai/docs/zen/",
+    display_name: "OpenCode Go",
+    docs_url: "https://opencode.ai/docs/go/",
     key_prefix_hint: "sk-",
   },
 ];

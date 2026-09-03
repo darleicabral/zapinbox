@@ -144,7 +144,7 @@ export function AddCredentialDialog({ open, onOpenChange }: Props) {
                 <SelectItem value="anthropic">Anthropic</SelectItem>
                 <SelectItem value="openai">OpenAI</SelectItem>
                 <SelectItem value="google">Google</SelectItem>
-                <SelectItem value="opencode">OpenCode Zen</SelectItem>
+                <SelectItem value="opencode">OpenCode Go</SelectItem>
               </SelectContent>
             </Select>
             {errors.provider && (

@@ -18,7 +18,7 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   google: "Google",
-  opencode: "OpenCode Zen",
+  opencode: "OpenCode Go",
 };
 
 const PROVIDER_ORDER: Provider[] = ["anthropic", "openai", "google", "opencode"];

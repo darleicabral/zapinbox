@@ -104,10 +104,10 @@ export async function validateGoogleKey(apiKey: string): Promise<ValidationResul
 }
 
 export async function validateOpenCodeKey(apiKey: string): Promise<ValidationResult> {
-  // OpenCode Zen — gateway compatível OpenAI. O discovery de modelos é o endpoint
-  // OpenAI-style /models com Bearer. Serve pra marcar validated_at da credencial.
+  // OpenCode Go — gateway compatível OpenAI (cobrado pela assinatura Go). Discovery
+  // de modelos é o endpoint OpenAI-style /models com Bearer. Marca validated_at.
   try {
-    const res = await timedFetch("https://opencode.ai/zen/v1/models", {
+    const res = await timedFetch("https://opencode.ai/zen/go/v1/models", {
       method: "GET",
       headers: { Authorization: `Bearer ${apiKey}` },
     });
