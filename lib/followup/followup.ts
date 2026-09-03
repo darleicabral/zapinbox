@@ -62,6 +62,55 @@ interface ConvRow {
   contacts: { display_name: string | null; is_blocked: boolean; force_human: boolean } | null;
 }
 
+/**
+ * Idade máxima da última mensagem do lead pra a cadência COMEÇAR.
+ *
+ * Existe por causa do incidente de 03/09/2026: ligar o reengajamento sobre o
+ * acervo mandou 116 mensagens pra 34 conversas em 5 minutos, porque conversa
+ * parada há horas já cruzou o prazo de todas as etapas. "Oi, ainda tá por aí?"
+ * só faz sentido minutos depois do lead sumir, não dias. Em operação normal isto
+ * nunca pega: a cadência começa poucos minutos depois do silêncio.
+ */
+const MAX_IDADE_PARA_INICIAR_MIN = 180;
+
+/**
+ * A etapa `indice` pode disparar agora? Pura, pra ser testável sem banco.
+ *
+ * Duas regras nasceram do incidente de 03/09/2026 (116 mensagens em 34 conversas
+ * em 5 minutos ao ligar a cadência sobre o acervo):
+ *
+ *  1. `after_minutes` sozinho não basta. Ele mede o silêncio DO LEAD, e lead
+ *     parado há dias tem TODAS as etapas vencidas ao mesmo tempo — cada passada
+ *     do cron mandava a próxima, e a cadência inteira saía em minutos. Daí o
+ *     INTERVALO entre a etapa anterior e esta ter de ter passado desde o nosso
+ *     último envio.
+ *  2. Cadência não ressuscita conversa velha: só COMEÇA (etapa 0) se o lead
+ *     falou há menos de `maxIdadeParaIniciarMin`. Cadência em andamento segue,
+ *     senão a última etapa (24h) nunca aconteceria.
+ */
+export function podeDisparar(
+  steps: FollowupStep[],
+  indice: number,
+  ctx: {
+    inactivityMin: number;
+    /** minutos desde o NOSSO último follow-up; null se nunca mandamos */
+    desdeUltimoFollowupMin: number | null;
+    maxIdadeParaIniciarMin?: number;
+  },
+): boolean {
+  const step = steps[indice];
+  if (!step) return false;
+  if (ctx.inactivityMin < step.after_minutes) return false;
+
+  const maxIdade = ctx.maxIdadeParaIniciarMin ?? MAX_IDADE_PARA_INICIAR_MIN;
+  if (indice === 0) return ctx.inactivityMin <= maxIdade;
+
+  if (ctx.desdeUltimoFollowupMin == null) return true;
+  const anterior = steps[indice - 1]!;
+  const intervaloMin = Math.max(step.after_minutes - anterior.after_minutes, 0);
+  return ctx.desdeUltimoFollowupMin >= intervaloMin;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function firstName(displayName: string | null): string {
@@ -195,6 +244,31 @@ async function sweepOrg(
     const inactivityMin = (now - lastInbound) / 60_000;
     if (inactivityMin < step.after_minutes) continue; // ainda dentro do prazo
 
+    // Trava de idade (não ressuscitar conversa velha) + espaçamento entre etapas.
+    // As duas nasceram do incidente de 03/09/2026 — ver podeDisparar().
+    const desdeUltimoFollowupMin = conv.last_followup_at
+      ? (now - new Date(conv.last_followup_at).getTime()) / 60_000
+      : null;
+    if (!podeDisparar(steps, conv.followup_step, { inactivityMin, desdeUltimoFollowupMin })) continue;
+
+    // ⚠️ RESERVA A ETAPA ANTES DE ENVIAR (mesmo incidente: a Norma recebeu a
+    // MESMA frase 3x em 35s). Antes o código enviava e só depois avançava, então
+    // duas passadas concorrentes do cron liam o mesmo followup_step e as duas
+    // enviavam. O update condicional em followup_step é a reserva: quem não
+    // atualizar nenhuma linha perdeu a corrida e não envia.
+    const { data: reservou } = await admin
+      .from("conversations")
+      .update({
+        followup_step: conv.followup_step + 1,
+        last_followup_at: new Date(now).toISOString(),
+        ...(step.discard ? { status: "resolved", status_changed_at: new Date(now).toISOString() } : {}),
+      })
+      .eq("id", conv.id)
+      .eq("organization_id", orgId)
+      .eq("followup_step", conv.followup_step)
+      .select("id");
+    if (!reservou || reservou.length === 0) continue; // outra passada já pegou
+
     // Envia a mensagem da etapa (persiste + WAHA via sendMessageHandler).
     const body = step.message.replace(/\{nome\}/g, firstName(conv.contacts.display_name));
     try {
@@ -209,18 +283,17 @@ async function sweepOrg(
       );
     } catch (err) {
       summary.errors.push(`${conv.id}: send ${err instanceof Error ? err.message : String(err)}`);
-      continue; // não avança a etapa se o envio falhou
+      // Devolve a etapa: com a reserva feita antes do envio, falhar aqui sem
+      // desfazer pularia a etapa pra sempre. Preferimos tentar de novo na
+      // próxima passada a perder o toque — e mandar 2x é pior que mandar tarde,
+      // por isso a reserva vem antes mesmo assim.
+      await admin
+        .from("conversations")
+        .update({ followup_step: conv.followup_step, last_followup_at: conv.last_followup_at })
+        .eq("id", conv.id)
+        .eq("organization_id", orgId);
+      continue;
     }
-
-    await admin
-      .from("conversations")
-      .update({
-        followup_step: conv.followup_step + 1,
-        last_followup_at: new Date(now).toISOString(),
-        ...(step.discard ? { status: "resolved", status_changed_at: new Date(now).toISOString() } : {}),
-      })
-      .eq("id", conv.id)
-      .eq("organization_id", orgId);
 
     await admin.rpc("emit_event" as never, {
       p_event_type: "followup.sent",

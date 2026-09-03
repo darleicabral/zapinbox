@@ -1,0 +1,99 @@
+/**
+ * @vitest-environment node
+ *
+ * Incidente de 03/09/2026: ligar o reengajamento sobre o acervo disparou **116
+ * mensagens em 34 conversas em 5 minutos**. Três causas:
+ *
+ *  1. Todas as conversas estavam paradas há horas, então TODAS já tinham cruzado
+ *     os 5min da 1ª etapa no instante em que a cadência foi ligada.
+ *  2. `after_minutes` mede o silêncio DO LEAD. Lead parado há dias tem TODAS as
+ *     etapas vencidas ao mesmo tempo, e cada passada do cron mandava a próxima:
+ *     a cadência inteira saía em minutos em vez de um dia. A Norma recebeu 5.
+ *  3. O código enviava e só depois avançava a etapa, então duas passadas
+ *     concorrentes do cron mandavam a MESMA frase (a Norma recebeu uma delas 3x
+ *     em 35 segundos). Isso virou reserva-antes-de-enviar no sweep, coberto pelo
+ *     update condicional em followup_step.
+ *
+ * Aqui testamos as regras de tempo (1 e 2), que é o que dá pra isolar.
+ */
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/env", () => ({
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: "https://exemplo.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "teste",
+    NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+    INTERNAL_SECRET: "teste",
+  },
+}));
+vi.mock("@/lib/logger", () => ({
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+import { podeDisparar, type FollowupStep } from "@/lib/followup/followup";
+
+// a cadência que o Darlei definiu
+const CADENCIA: FollowupStep[] = [
+  { after_minutes: 5, message: "Oi, ainda tá por aí?" },
+  { after_minutes: 10, message: "Notei que você não pode responder no momento." },
+  { after_minutes: 120, message: "Esse imóvel ainda tem ótimas condições." },
+  { after_minutes: 1440, message: "Oi, {nome}! Voltando aqui." },
+];
+
+describe("podeDisparar: a 1ª etapa não ressuscita conversa velha", () => {
+  it("lead sumiu há 6 min: dispara", () => {
+    expect(podeDisparar(CADENCIA, 0, { inactivityMin: 6, desdeUltimoFollowupMin: null })).toBe(true);
+  });
+
+  it("lead sumiu há 3 min: ainda no prazo, não dispara", () => {
+    expect(podeDisparar(CADENCIA, 0, { inactivityMin: 3, desdeUltimoFollowupMin: null })).toBe(false);
+  });
+
+  it("lead sumiu há 5 HORAS: não começa cadência (o caso do incidente)", () => {
+    expect(podeDisparar(CADENCIA, 0, { inactivityMin: 300, desdeUltimoFollowupMin: null })).toBe(false);
+  });
+
+  it("lead sumiu há 3 dias: não começa", () => {
+    expect(podeDisparar(CADENCIA, 0, { inactivityMin: 4320, desdeUltimoFollowupMin: null })).toBe(false);
+  });
+
+  it("na borda de 180 min ainda começa; um minuto depois, não", () => {
+    expect(podeDisparar(CADENCIA, 0, { inactivityMin: 180, desdeUltimoFollowupMin: null })).toBe(true);
+    expect(podeDisparar(CADENCIA, 0, { inactivityMin: 181, desdeUltimoFollowupMin: null })).toBe(false);
+  });
+});
+
+describe("podeDisparar: as etapas seguintes respeitam o intervalo", () => {
+  it("etapa 2 exige 5 min desde a etapa 1, não só os 10 de silêncio", () => {
+    // lead parado há 4h: os 10min da etapa 2 estão vencidos, mas mandamos agora
+    expect(podeDisparar(CADENCIA, 1, { inactivityMin: 240, desdeUltimoFollowupMin: 1 })).toBe(false);
+    expect(podeDisparar(CADENCIA, 1, { inactivityMin: 240, desdeUltimoFollowupMin: 5 })).toBe(true);
+  });
+
+  it("etapa 3 exige 110 min desde a etapa 2 (120 − 10)", () => {
+    expect(podeDisparar(CADENCIA, 2, { inactivityMin: 4320, desdeUltimoFollowupMin: 30 })).toBe(false);
+    expect(podeDisparar(CADENCIA, 2, { inactivityMin: 4320, desdeUltimoFollowupMin: 110 })).toBe(true);
+  });
+
+  it("etapa 4 exige 22h desde a etapa 3 (1440 − 120)", () => {
+    expect(podeDisparar(CADENCIA, 3, { inactivityMin: 10000, desdeUltimoFollowupMin: 600 })).toBe(false);
+    expect(podeDisparar(CADENCIA, 3, { inactivityMin: 10000, desdeUltimoFollowupMin: 1320 })).toBe(true);
+  });
+
+  it("lead parado há dias NÃO recebe a cadência toda de uma vez", () => {
+    // era exatamente isto que acontecia: uma etapa por passada do cron
+    const semEspera = { inactivityMin: 4320, desdeUltimoFollowupMin: 1 };
+    expect(podeDisparar(CADENCIA, 1, semEspera)).toBe(false);
+    expect(podeDisparar(CADENCIA, 2, semEspera)).toBe(false);
+    expect(podeDisparar(CADENCIA, 3, semEspera)).toBe(false);
+  });
+
+  it("a trava de idade NÃO se aplica às etapas seguintes (senão a de 24h nunca sairia)", () => {
+    // 1440min de silêncio é muito mais que os 180 da trava, e tem de disparar
+    expect(podeDisparar(CADENCIA, 3, { inactivityMin: 1440, desdeUltimoFollowupMin: 1320 })).toBe(true);
+  });
+
+  it("etapa inexistente não dispara", () => {
+    expect(podeDisparar(CADENCIA, 9, { inactivityMin: 99999, desdeUltimoFollowupMin: 99999 })).toBe(false);
+  });
+});
