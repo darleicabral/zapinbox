@@ -48,6 +48,10 @@ const REQUEUE_DELAY_MS = 5_000;
 // folgado pro run normal (poucos segundos) e curto o bastante pra run travado
 // não reenfileirar pra sempre.
 const CONV_BUSY_MAX_ATTEMPTS = 5;
+// Run em voo mais velho que isto é considerado MORTO, não ocupado. Existe porque
+// o banco acumula 'pending' órfão quando o POST pro runner falha (56 deles em
+// 03/09/2026, um de 51 dias). Sem a janela, resíduo silencia a conversa.
+const RUN_INFLIGHT_WINDOW_MIN = 5;
 
 /**
  * O corretor humano está no comando desta conversa?
@@ -169,6 +173,17 @@ export async function dispatchAgents(opts: DispatchOptions = {}): Promise<Dispat
   const candidateEvents = (rawEvents ?? []) as EventRow[];
   if (candidateEvents.length === 0) return summary;
 
+  // 1.5. Mata run MORTO antes de decidir qualquer coisa.
+  //
+  // O POST pro runner é fire-and-forget: se ele falha, a linha fica em 'pending'
+  // pra sempre. Em 03/09/2026 havia 56 dessas, a mais antiga de 13/07 (51 dias),
+  // e 12 conversas com mais de uma. Isso quebrava a trava de concorrência nos
+  // dois sentidos: run órfão não impedia resposta dupla (o índice cobria só
+  // 'running') e, com a trava nova, passaria a silenciar a conversa pra sempre.
+  // Limpar aqui resolve o acervo sozinho e mantém a trava confiável sem depender
+  // de limpeza manual nem de índice único, que com resíduo vira mordaça.
+  await abortStaleRuns();
+
   // 2. Claim each event optimistically (CAS on status='pending'). Skip when
   //    another worker already processed/claimed it in this tick.
   for (const event of candidateEvents) {
@@ -193,6 +208,34 @@ export async function dispatchAgents(opts: DispatchOptions = {}): Promise<Dispat
   }
 
   return summary;
+}
+
+/**
+ * Marca como 'aborted' os runs em voo que passaram da janela. Sem isto o banco
+ * acumula 'pending' órfão (POST pro runner falhou) e a trava de concorrência
+ * fica furada ou vira mordaça — ver a nota no passo 1.5.
+ */
+async function abortStaleRuns(): Promise<void> {
+  const admin = createAdminClient();
+  const limite = new Date(Date.now() - RUN_INFLIGHT_WINDOW_MIN * 60_000).toISOString();
+  const { data, error } = await admin
+    .from("ai_agent_runs")
+    .update({
+      status: "aborted",
+      abort_reason: "stale_inflight",
+      completed_at: new Date().toISOString(),
+    })
+    .in("status", ["pending", "running"])
+    .eq("is_dry_run", false)
+    .lt("created_at", limite)
+    .select("id");
+  if (error) {
+    logger.warn("[agent-dispatcher] abortStaleRuns falhou", { error: error.message });
+    return;
+  }
+  if (data && data.length > 0) {
+    logger.warn("[agent-dispatcher] runs órfãos abortados", { count: data.length });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +376,13 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
   // despachos no mesmo tique passavam os dois. Medido em 03/09/2026 na conversa
   // bb7cd91b — o lead mandou 2 mensagens no mesmo segundo e o bot deu a abertura
   // completa DUAS vezes, porque nenhum run viu a resposta do outro.
+  // ⚠️ Só conta run em voo RECENTE. Em 03/09/2026 o banco tinha 56 runs presos em
+  // 'pending' — o mais antigo de 13/07, 51 dias — porque o POST fire-and-forget
+  // pro runner pode falhar e ninguém limpa a linha. Sem esta janela, a trava
+  // nova silenciaria o bot PARA SEMPRE nessas conversas. Resíduo não pode virar
+  // mordaça: run que não terminou em RUN_INFLIGHT_WINDOW_MIN está morto, não
+  // ocupado.
+  const desdeIso = new Date(Date.now() - RUN_INFLIGHT_WINDOW_MIN * 60_000).toISOString();
   const { data: emVoo } = await admin
     .from("ai_agent_runs")
     .select("id")
@@ -340,6 +390,7 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
     .eq("conversation_id", conversationId)
     .in("status", ["pending", "running"])
     .eq("is_dry_run", false)
+    .gte("created_at", desdeIso)
     .limit(1)
     .maybeSingle();
 
