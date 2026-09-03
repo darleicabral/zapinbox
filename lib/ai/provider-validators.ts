@@ -9,7 +9,7 @@
  * Timeout 5s, sem retry. Erros 401 são distintos de erros de rede.
  */
 
-export type Provider = "anthropic" | "openai" | "google";
+export type Provider = "anthropic" | "openai" | "google" | "opencode";
 
 export interface ValidationOk {
   ok: true;
@@ -103,6 +103,29 @@ export async function validateGoogleKey(apiKey: string): Promise<ValidationResul
   }
 }
 
+export async function validateOpenCodeKey(apiKey: string): Promise<ValidationResult> {
+  // OpenCode Zen — gateway compatível OpenAI. O discovery de modelos é o endpoint
+  // OpenAI-style /models com Bearer. Serve pra marcar validated_at da credencial.
+  try {
+    const res = await timedFetch("https://opencode.ai/zen/v1/models", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, error: "auth_failed_401" };
+    }
+    if (!res.ok) {
+      return { ok: false, error: `provider_status_${res.status}` };
+    }
+    const json = (await res.json()) as { data?: { id: string }[]; models?: { id: string }[] };
+    const list = json.data ?? json.models ?? [];
+    const models = list.map((m) => m.id).filter(Boolean);
+    return { ok: true, models };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.name : "network_error" };
+  }
+}
+
 export function validateProviderKey(
   provider: Provider,
   apiKey: string,
@@ -114,6 +137,8 @@ export function validateProviderKey(
       return validateOpenAIKey(apiKey);
     case "google":
       return validateGoogleKey(apiKey);
+    case "opencode":
+      return validateOpenCodeKey(apiKey);
     default: {
       const exhaustive: never = provider;
       return Promise.resolve({ ok: false, error: `unknown_provider:${exhaustive}` });

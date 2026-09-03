@@ -34,7 +34,7 @@ import {
 } from "@/hooks/ai/useCredentials";
 
 const formSchema = z.object({
-  provider: z.enum(["anthropic", "openai", "google"]),
+  provider: z.enum(["anthropic", "openai", "google", "opencode"]),
   label: z.string().trim().min(1, "Obrigatório").max(80),
   api_key: z.string().trim().min(8, "API key muito curta").max(2048),
 });
@@ -144,6 +144,7 @@ export function AddCredentialDialog({ open, onOpenChange }: Props) {
                 <SelectItem value="anthropic">Anthropic</SelectItem>
                 <SelectItem value="openai">OpenAI</SelectItem>
                 <SelectItem value="google">Google</SelectItem>
+                <SelectItem value="opencode">OpenCode Zen</SelectItem>
               </SelectContent>
             </Select>
             {errors.provider && (

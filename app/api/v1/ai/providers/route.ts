@@ -28,6 +28,12 @@ const PROVIDERS = [
     docs_url: "https://ai.google.dev/gemini-api/docs/api-key",
     key_prefix_hint: "AIza",
   },
+  {
+    id: "opencode",
+    display_name: "OpenCode Zen",
+    docs_url: "https://opencode.ai/docs/zen/",
+    key_prefix_hint: "sk-",
+  },
 ];
 
 export async function GET(): Promise<Response> {

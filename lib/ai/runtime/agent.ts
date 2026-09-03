@@ -130,6 +130,12 @@ function buildModel(provider: string, apiKey: string, modelId: string): Language
       return createOpenAI({ apiKey })(modelId);
     case "google":
       return createGoogleGenerativeAI({ apiKey })(modelId);
+    case "opencode":
+      // OpenCode Zen: gateway compatível OpenAI. Os modelos "openai-compatible"
+      // (DeepSeek, GLM, Kimi, MiniMax) são servidos no endpoint /chat/completions,
+      // por isso `.chat(modelId)` em vez do default `(modelId)` — o default do
+      // @ai-sdk/openai fala com /responses, que o Zen só expõe pra família GPT.
+      return createOpenAI({ apiKey, baseURL: "https://opencode.ai/zen/v1" }).chat(modelId);
     default:
       throw new Error(`unsupported_provider: ${provider}`);
   }
