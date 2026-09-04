@@ -24,7 +24,12 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
-import { inBusinessHours, type BusinessHours } from "@/lib/attendance/rotation";
+import {
+  inBusinessHours,
+  minutosDesdeAberturaDaJanela,
+  type BusinessHours,
+} from "@/lib/attendance/rotation";
+
 import { logger } from "@/lib/logger";
 
 export interface FollowupStep {
@@ -116,6 +121,10 @@ export function conversaElegivelPorAtivacao(
  *  2. Cadência não ressuscita conversa velha: só COMEÇA (etapa 0) se o lead
  *     falou há menos de `maxIdadeParaIniciarMin`. Cadência em andamento segue,
  *     senão a última etapa (24h) nunca aconteceria.
+ *
+ * A idade da etapa 0 é EFETIVA (04/09/2026): vale o menor entre o silêncio do
+ * lead e o tempo desde a abertura do expediente. Sem isso quem escrevia de
+ * madrugada nunca recebia nada — às 9h já estava fora da trava.
  */
 export function podeDisparar(
   steps: FollowupStep[],
@@ -125,6 +134,13 @@ export function podeDisparar(
     /** minutos desde o NOSSO último follow-up; null se nunca mandamos */
     desdeUltimoFollowupMin: number | null;
     maxIdadeParaIniciarMin?: number;
+    /**
+     * Minutos desde a ABERTURA do expediente; null fora dele ou sem janela.
+     * Quem escreveu de madrugada não é lead velho, é lead que chegou fora do
+     * horário: sem isto ele nunca entrava na cadência (às 9h já tinha 6h de
+     * silêncio e a trava de idade barrava). Eram 4 numa noite só.
+     */
+    minutosDesdeAberturaMin?: number | null;
   },
 ): boolean {
   const step = steps[indice];
@@ -132,7 +148,12 @@ export function podeDisparar(
   if (ctx.inactivityMin < step.after_minutes) return false;
 
   const maxIdade = ctx.maxIdadeParaIniciarMin ?? MAX_IDADE_PARA_INICIAR_MIN;
-  if (indice === 0) return ctx.inactivityMin <= maxIdade;
+  if (indice === 0) {
+    const desdeAbertura = ctx.minutosDesdeAberturaMin;
+    const idadeEfetiva =
+      desdeAbertura == null ? ctx.inactivityMin : Math.min(ctx.inactivityMin, desdeAbertura);
+    return idadeEfetiva <= maxIdade;
+  }
 
   if (ctx.desdeUltimoFollowupMin == null) return true;
   const anterior = steps[indice - 1]!;
@@ -198,6 +219,8 @@ async function sweepOrg(
   const steps = settings.steps;
   if (!Array.isArray(steps) || steps.length === 0) return;
   if (!inBusinessHours(settings.business_hours, new Date(now))) return; // fora do expediente
+  // Quanto faz que o expediente abriu — entra na trava de idade da etapa 0.
+  const desdeAberturaMin = minutosDesdeAberturaDaJanela(settings.business_hours, new Date(now));
 
   // ⚠️ SÓ LEAD NOVO (decisão do Darlei, 03/09/2026). A cadência vale apenas pra
   // conversa criada DEPOIS da ativação. Sem isto, ligar o reengajamento varre o
@@ -292,7 +315,14 @@ async function sweepOrg(
     const desdeUltimoFollowupMin = conv.last_followup_at
       ? (now - new Date(conv.last_followup_at).getTime()) / 60_000
       : null;
-    if (!podeDisparar(steps, conv.followup_step, { inactivityMin, desdeUltimoFollowupMin })) continue;
+    if (
+      !podeDisparar(steps, conv.followup_step, {
+        inactivityMin,
+        desdeUltimoFollowupMin,
+        minutosDesdeAberturaMin: desdeAberturaMin,
+      })
+    )
+      continue;
 
     // ⚠️ RESERVA A ETAPA ANTES DE ENVIAR (mesmo incidente: a Norma recebeu a
     // MESMA frase 3x em 35s). Antes o código enviava e só depois avançava, então

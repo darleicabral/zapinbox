@@ -148,6 +148,16 @@ export async function pickFallbackManager(
   return manager?.user_id ?? null;
 }
 
+/** "HH:MM" -> minutos desde a meia-noite. -1 se vier torto. */
+function minutosDoDia(hhmm: string): number {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return -1;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return -1;
+  return h * 60 + min;
+}
+
 function inWindow(w: BusinessWindow, dayIdx: number, cur: string): boolean {
   if (!w.days.includes(dayIdx)) return false;
   if (w.start <= w.end) return cur >= w.start && cur <= w.end;
@@ -184,5 +194,61 @@ export function inBusinessHours(cfg: BusinessHours | null, at: Date): boolean {
     return true; // config sem janelas não restringe
   } catch {
     return true; // config inválida não pode travar o atendimento
+  }
+}
+
+/**
+ * Há quantos minutos o expediente abriu? null quando está fechado.
+ *
+ * Existe pro follow-up: a trava de idade media o silêncio DESDE A ÚLTIMA
+ * MENSAGEM do lead, então quem escrevia de madrugada nunca recebia cadência —
+ * às 9h já estava com 6h de silêncio e a trava barrava. Eram 4 leads só na
+ * noite de 03/09. Contando a idade a partir da ABERTURA, o lead das 3h vira
+ * recém-chegado às 9h e entra na cadência normalmente.
+ *
+ * Janela que cruza a meia-noite conta a partir da abertura de ontem (por isso o
+ * +24h). Sem janela configurada devolve null: aí não há "abertura" e a regra
+ * antiga vale sozinha.
+ */
+export function minutosDesdeAberturaDaJanela(cfg: BusinessHours | null, at: Date): number | null {
+  if (!cfg) return null;
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: cfg.timezone,
+      hour12: false,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const parts = fmt.formatToParts(at);
+    const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+    const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
+    const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
+    const dayIdx = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
+    if (dayIdx === -1) return null;
+    const cur = `${hour}:${minute}`;
+    const agoraMin = minutosDoDia(cur);
+    if (agoraMin < 0) return null;
+
+    const janelas: BusinessWindow[] =
+      Array.isArray(cfg.windows) && cfg.windows.length > 0
+        ? cfg.windows
+        : Array.isArray(cfg.days) && cfg.start && cfg.end
+          ? [{ days: cfg.days, start: cfg.start, end: cfg.end }]
+          : [];
+    if (janelas.length === 0) return null;
+
+    let melhor: number | null = null;
+    for (const w of janelas) {
+      if (!inWindow(w, dayIdx, cur)) continue;
+      const inicio = minutosDoDia(w.start);
+      if (inicio < 0) continue;
+      // Janela que cruza a meia-noite e já viramos o dia: abriu ontem.
+      const desde = agoraMin >= inicio ? agoraMin - inicio : agoraMin + 24 * 60 - inicio;
+      if (melhor == null || desde < melhor) melhor = desde;
+    }
+    return melhor;
+  } catch {
+    return null;
   }
 }

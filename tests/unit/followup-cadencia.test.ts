@@ -102,6 +102,87 @@ describe("podeDisparar: as etapas seguintes respeitam o intervalo", () => {
   });
 });
 
+describe("idade efetiva: lead da madrugada entra quando o expediente abre", () => {
+  // 04/09/2026 — o corte de idade media o silêncio desde a última mensagem do
+  // lead, então quem escrevia de madrugada NUNCA recebia cadência: às 9h já
+  // estava com 6h de silêncio e a trava de 180min barrava. Foram 4 leads só na
+  // noite de 03/09 (03h25 a 03h45). Agora a idade da etapa 0 é a MENOR entre o
+  // silêncio do lead e o tempo desde a abertura do expediente.
+
+  it("lead das 3h dispara às 9h em ponto (abertura = idade 0)", () => {
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 360,
+        desdeUltimoFollowupMin: null,
+        minutosDesdeAberturaMin: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("mas não vira passe livre: às 12h30 o mesmo lead já está velho de novo", () => {
+    // 210 min desde a abertura > 180 da trava
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 570,
+        desdeUltimoFollowupMin: null,
+        minutosDesdeAberturaMin: 210,
+      }),
+    ).toBe(false);
+  });
+
+  it("na borda: 180 min depois da abertura ainda entra", () => {
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 540,
+        desdeUltimoFollowupMin: null,
+        minutosDesdeAberturaMin: 180,
+      }),
+    ).toBe(true);
+  });
+
+  it("lead do meio do expediente continua medido pelo próprio silêncio", () => {
+    // escreveu 10h, agora 10h06: 6 min de silêncio, 66 desde a abertura
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 6,
+        desdeUltimoFollowupMin: null,
+        minutosDesdeAberturaMin: 66,
+      }),
+    ).toBe(true);
+  });
+
+  it("ainda respeita o prazo da etapa: 3 min de silêncio não dispara nem na abertura", () => {
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 3,
+        desdeUltimoFollowupMin: null,
+        minutosDesdeAberturaMin: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("sem janela configurada (null) mantém a regra antiga", () => {
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 360,
+        desdeUltimoFollowupMin: null,
+        minutosDesdeAberturaMin: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("a abertura NÃO afrouxa as etapas seguintes", () => {
+    // etapa 2 exige 110 min desde a etapa 1; abrir o expediente não pula isso
+    expect(
+      podeDisparar(CADENCIA, 2, {
+        inactivityMin: 4320,
+        desdeUltimoFollowupMin: 30,
+        minutosDesdeAberturaMin: 0,
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("corte por ativação: só conversa criada depois entra", () => {
   const entra = conversaElegivelPorAtivacao;
 
