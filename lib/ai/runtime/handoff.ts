@@ -2,15 +2,66 @@
  * Handoff finalizer for the agent runtime (S-13.08).
  *
  * Wraps lib/ai/handoff/orchestrator.triggerHandoff and stamps the run row with
- * status='handoff'. Two sources:
+ * status='handoff'. Três origens:
  *   - 'sentinel'         keyword regex on inbound (no LLM call, cost=0)
  *   - 'tool'             agent invoked crm_request_human_handoff during the loop
+ *   - 'promessa'         o modelo PROMETEU humano e não chamou a tool (abaixo)
  */
 import { triggerHandoff, type HandoffReason } from "@/lib/ai/handoff/orchestrator";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { finalizeRun, type FinalizeRunInput } from "./finalize";
 
-export type HandoffSource = "sentinel" | "tool";
+export type HandoffSource = "sentinel" | "tool" | "promessa";
+
+/**
+ * Frases em que o bot promete que OUTRA PESSOA (ou ele mesmo, depois) resolve.
+ *
+ * 🐛 04/09/2026 — o lead perguntou sobre permuta e o bot respondeu "Boa
+ * pergunta, deixa eu confirmar isso certinho com a equipe" SEM chamar a tool de
+ * encaminhamento: `last_handoff_at` nulo, nenhum corretor avisado, zero
+ * ferramenta no run. O lead esperou 33 minutos, o follow-up o trouxe de volta,
+ * ele disse "Sim" e o bot enrolou de novo ("Já te retorno, tô finalizando uma
+ * coisa aqui"). Ninguém foi chamado nas duas vezes.
+ *
+ * É o sintoma da aderência a ferramenta que medimos em 03/09 (~25% de uso no
+ * DeepSeek contra ~75% no Sonnet). Outra regra no prompt não resolve: quem
+ * promete humano aqui passa a ser honrado pelo SISTEMA.
+ */
+const ESPERA_SEM_VOLTA: RegExp[] = [
+  /s[oó] um momento/i,
+  /j[aá] te retorno/i,
+  /j[aá] confirmo isso/i,
+  /com a equipe/i,
+  /prefiro que o corretor/i,
+  /quem te (passa|explica) certinho/i,
+  /ficar[aá] pronta em instantes/i,
+  // "pro" além de "pra/para": o bot escreve "vou te encaminhar PRO Gilvam"
+  /vou (te )?(encaminhar|passar) (pro|pra|para)/i,
+  /vou chamar (o|a) (corretor|consultor)/i,
+];
+
+/**
+ * Só olha o ÚLTIMO parágrafo, e é isso que separa promessa de muleta.
+ *
+ * Nos dados: quando é muleta o bot continua e responde ("Deixa eu confirmar
+ * certinho essa casa no catálogo." + "Confirmei aqui: é ..."), e a espera fica
+ * no meio. Quando é abandono, a espera é a última coisa dita. Sem esse recorte,
+ * 24 de 27 execuções cairiam aqui e o bot seria silenciado à toa.
+ */
+export function prometeuHumano(texto: string): boolean {
+  const partes = texto
+    .split(/\n[ \t]*\n+/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  const ultima = partes[partes.length - 1] ?? "";
+  if (!ESPERA_SEM_VOLTA.some((rx) => rx.test(ultima))) return false;
+  // Terminar PERGUNTANDO não é prometer: "quem te passa certinho é o corretor.
+  // Quer que eu chame ele agora?" espera a resposta do lead. Acionar ali
+  // silenciaria o bot antes de o cliente dizer se quer, e um "não, deixa"
+  // ficaria sem resposta. Emoji no fim é comum, então sai antes de olhar o "?".
+  const semEmoji = ultima.replace(/[\s\p{Extended_Pictographic}️‍]+$/gu, "");
+  return !semEmoji.endsWith("?");
+}
 
 export interface FinalizeHandoffInput {
   runId: string;

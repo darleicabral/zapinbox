@@ -31,7 +31,7 @@ import type { McpContext } from "@/lib/mcp/types";
 import { computeCostCents } from "./cost";
 import { finalizeRun } from "./finalize";
 import { sendFinalResponse } from "./finalize";
-import { finalizeHandoff } from "./handoff";
+import { finalizeHandoff, prometeuHumano } from "./handoff";
 import { loadHistoryWithBudget } from "./history";
 import { mintEphemeralToken, revokeEphemeralToken } from "./mcp_token";
 import { pickToolsFromMcp, type RuntimeHandoffSignal } from "./tools";
@@ -487,7 +487,18 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     // 13) Handoff via tool call? Envia o texto final ao cliente ANTES de
     // silenciar o bot — sem isso a tool de handoff deixaria o cliente sem
     // resposta nenhuma (a conversa é silenciada com bot_silenced_until=inf).
-    if (handoffSignal.triggered) {
+    //
+    // PROMESSA VAZIA (04/09/2026): o modelo termina dizendo "só um momento" ou
+    // "deixa eu confirmar com a equipe" e NÃO chama a tool — o lead do Ronaldo
+    // esperou 33 minutos por alguém que nunca foi avisado. Quem promete humano
+    // aqui é honrado pelo sistema, não pela boa vontade do modelo. Ver
+    // prometeuHumano: só o último parágrafo conta, senão muleta viraria handoff.
+    const promessaSemTool = !handoffSignal.triggered && prometeuHumano(result.text ?? "");
+    if (handoffSignal.triggered || promessaSemTool) {
+      const motivo = handoffSignal.triggered
+        ? ((handoffSignal.reason as never) ?? "requested_human")
+        : ("requested_human" as never);
+      const origem = handoffSignal.triggered ? "tool" : "promessa";
       const farewell = (result.text ?? "").trim();
       if (!run.is_dry_run && farewell && run.conversation_id && replyMode !== "silent") {
         await sendFinalResponse({
@@ -503,8 +514,8 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
         runId: run.id,
         organizationId: run.organization_id,
         conversationId: conversationIdForHandoff,
-        reason: (handoffSignal.reason as never) ?? "requested_human",
-        source: "tool",
+        reason: motivo,
+        source: origem,
         latencyMs,
         tokensIn: usage.inputTokens,
         tokensOut: usage.outputTokens,
@@ -516,7 +527,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       return {
         run_id: run.id,
         status: "handoff",
-        abort_reason: `tool:${handoffSignal.reason ?? "requested_human"}`,
+        abort_reason: `${origem}:${handoffSignal.reason ?? "promessa_de_humano"}`,
         tokens_in: usage.inputTokens,
         tokens_out: usage.outputTokens,
         cost_cents: cost,
