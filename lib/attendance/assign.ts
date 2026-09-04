@@ -72,7 +72,7 @@ async function pickFirstEligible(
 }
 
 /** Primeiro nome do corretor pra IA citar. Qualquer falha vira null. */
-async function resolveAssigneeFirstName(
+export async function resolveAssigneeFirstName(
   client: SupabaseClient,
   userId: string,
 ): Promise<string | null> {

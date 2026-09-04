@@ -22,6 +22,12 @@ import { logger } from "@/lib/logger";
 import { sendPushToUser } from "@/lib/push/send";
 import { resolveChatIdChecked, sendWAHA } from "@/lib/waha/send";
 
+/**
+ * 'assigned' e 'reassigned' sao os que saem hoje. 'escalated' e 'sla_alert'
+ * ficaram sem uso em 04/09/2026, quando o repasse e a cobranca de 1a resposta
+ * foram removidos ("o lead nunca deve passar adiante" / "nao precisa alertar").
+ * Ficam no tipo porque o texto deles ja esta escrito e revisado.
+ */
 export type NotifyKind = "assigned" | "reassigned" | "escalated" | "sla_alert";
 
 function formatBRL(cents: number | null, currency: string | null): string {
@@ -169,7 +175,10 @@ export async function notifyAssigneeNewLead(
 
     const header =
       args.kind === "sla_alert"
-        ? "🚨 Lead assumido e sem resposta — cobre o atendimento"
+        // "cobre o atendimento" era de COBRAR, mas lê igual a COBRIR e o Darlei
+        // perguntou o que significava. O texto agora diz o fato, e a
+        // `observacao` completa com quem está com o lead e há quanto tempo.
+        ? "🚨 Cliente esperando resposta"
         : args.kind === "escalated"
           ? "⚠️ Lead sem atendimento — assumiu o comando"
           : args.kind === "reassigned"

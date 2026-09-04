@@ -1,20 +1,28 @@
 /**
- * C4 — Varredura de SLA de atendimento (2 etapas), consumida pelo cron
- * `/api/v1/cron/attendance-sla`. Decisões aprovadas (ESTADO.md):
+ * C4 — Distribuição de lead, consumida pelo cron `/api/v1/cron/attendance-sla`.
  *
- *   Etapa 1 (distribuição): conversa `pending` SEM dono → atribui ao próximo do
- *     rodízio e avisa ele. Conversa que JÁ TEM dono não é tocada.
+ * Faz UMA coisa: conversa `pending` SEM dono → atribui ao próximo do rodízio e
+ * avisa ele. Conversa que JÁ TEM dono não é tocada, nunca.
  *
- *   Etapa 2 (cobrança): conversa com dono e sem resposta humana em
- *     `first_response_sla_minutes` → alerta o gestor, UMA vez, sem mexer no dono.
+ * SÓ ISSO. Nao ha etapa 2.
  *
- * ⚠️ Mudou em 04/09/2026 (Darlei): "o lead nunca deve passar adiante" + "a IA vai
- * dizer para o lead quem vai atender ele e isso não deve mudar". O repasse por
- * claim e a escalada que trocava o dono foram REMOVIDOS — o bot cita o nome do
- * corretor pro cliente, então trocar depois faz o bot mentir. `max_passes` e
- * `assignment_passes` ficaram sem uso, e `escalated_to_manager` não incrementa
- * mais. Também mudou o que conta como atendimento: responder ao lead do próprio
- * celular (`external_device`), porque o corretor não abre o CRM.
+ * ⚠️ Reescrito em 04/09/2026, por tres decisoes do Darlei no mesmo dia:
+ *
+ *  1. "O lead nunca deve passar adiante" + "a IA vai dizer para o lead quem vai
+ *     atender ele e isso nao deve mudar". O bot cita o NOME do corretor pro
+ *     cliente, entao trocar de dono depois faz o bot mentir. O repasse por claim
+ *     e a escalada que trocava o dono foram REMOVIDOS. Antes disso a "Cris"
+ *     trocou de dono 6 vezes em 28 minutos, cada passe com um aviso.
+ *
+ *  2. Responder ao lead do PROPRIO CELULAR conta como assumir (`external_device`):
+ *     o corretor nunca abre o CRM pra clicar "Assumir".
+ *
+ *  3. "Nao precisa alertar". A cobranca de 1a resposta foi REMOVIDA inteira. Ela
+ *     media "ninguem respondeu no sistema", que e a coisa errada quando o
+ *     atendimento acontece no celular do corretor — e o Cleber levou 12 alertas
+ *     num dia, metade deles sem ninguem esperando nada. `max_passes`,
+ *     `assignment_passes`, `first_response_sla_minutes` e
+ *     `first_response_alerted_at` ficaram sem uso.
  *
  * Alertas: emit_event no event_log + broadcast realtime em `org:<org>:queue`
  * (mesmo canal que o handoff usa pra acender a UI da fila). Sem tabela de
@@ -33,7 +41,6 @@ import { notifyAssigneeNewLead } from "./notify";
 import {
   inBusinessHours,
   loadAttendanceSettings,
-  pickFallbackManager,
   pickNextAssignee,
   type AttendanceSettings,
 } from "./rotation";
@@ -66,14 +73,6 @@ interface PendingConv {
   assigned_at: string | null;
   status_changed_at: string;
   assignment_passes: number;
-  contacts: ContatoEmbutido;
-}
-
-interface ClaimedConv {
-  id: string;
-  assigned_to_user_id: string | null;
-  assigned_at: string | null;
-  status_changed_at: string;
   contacts: ContatoEmbutido;
 }
 
@@ -128,9 +127,8 @@ async function sweepOrg(
 ): Promise<void> {
   const orgId = settings.organization_id;
   const claimCutoff = now - settings.claim_sla_minutes * 60_000;
-  const respCutoff = now - settings.first_response_sla_minutes * 60_000;
 
-  // ── Etapa 1 — claim SLA ────────────────────────────────────────────────
+  // ── Distribuição: só conversa sem dono ─────────────────────────────────
   const { data: pendingRows } = await admin
     .from("conversations")
     .select(
@@ -232,62 +230,6 @@ async function sweepOrg(
     summary.reassigned += 1;
   }
 
-  // ── Etapa 2 — corretor não respondeu: AVISA, não tira o lead ───────────
-  //
-  // Como o lead nunca passa adiante (etapa 1), esta é a única cobrança que
-  // existe. Ela olha TODA conversa com dono, não só `status='claimed'`: o
-  // corretor atende do celular e nunca clica "Assumir", então a conversa dele
-  // fica em `pending` — filtrar por 'claimed' deixaria justamente o caso que
-  // importa (atribuído e sem resposta) fora do alerta.
-  const { data: claimedRows } = await admin
-    .from("conversations")
-    .select(
-      "id, assigned_to_user_id, assigned_at, status_changed_at, contacts:contact_id (id, is_internal, phone_number)",
-    )
-    .eq("organization_id", orgId)
-    .not("assigned_to_user_id", "is", null)
-    .is("first_response_alerted_at", null);
-
-  for (const conv of (claimedRows ?? []) as unknown as ClaimedConv[]) {
-    if (primeiroContato(conv.contacts)?.is_internal) continue; // equipe não gera alerta
-    const desde = conv.assigned_at ?? conv.status_changed_at;
-    if (new Date(desde).getTime() > respCutoff) continue;
-
-    // Resposta HUMANA depois da atribuição. Só 'external_device' (celular do
-    // corretor) e 'user' (composer do CRM) contam: a conversa pode seguir
-    // atribuída com o bot ainda falando, e mensagem de bot não é atendimento.
-    const { count } = await admin
-      .from("messages")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId)
-      .eq("conversation_id", conv.id)
-      .eq("direction", "outbound")
-      .in("sent_via", ["external_device", "user"])
-      .gt("created_at", desde);
-    if ((count ?? 0) > 0) continue; // já respondeu
-
-    await admin
-      .from("conversations")
-      .update({ first_response_alerted_at: new Date(now).toISOString() })
-      .eq("id", conv.id)
-      .eq("organization_id", orgId);
-    await emitAlert(admin, orgId, "attendance.first_response_breached", conv.id, {
-      assigned_to_user_id: conv.assigned_to_user_id,
-      sla_minutes: settings.first_response_sla_minutes,
-    });
-    // Alerta ativo pro gestor (push + WhatsApp) — o event_log/realtime só
-    // aparece pra quem está com o app aberto; o gestor precisa saber fora dele.
-    const manager = await pickFallbackManager(admin, orgId);
-    if (manager && manager !== conv.assigned_to_user_id) {
-      await notifyAssigneeNewLead(admin, {
-        organizationId: orgId,
-        conversationId: conv.id,
-        assigneeUserId: manager,
-        kind: "sla_alert",
-      });
-    }
-    summary.first_response_alerts += 1;
-  }
 }
 
 export async function sweepAttendanceSla(
