@@ -18,7 +18,7 @@ import { dispatchAgents } from "@/lib/ai/dispatcher";
 import { hasPosvendaModule } from "@/lib/modules";
 import { sendPushToOrg } from "@/lib/push/send";
 import type { createAdminClient } from "@/lib/supabase/admin";
-import { transcreverAudio } from "@/lib/ai/transcribe";
+import { descreverImagem, transcreverAudio } from "@/lib/ai/transcribe";
 import { ackToStatus } from "@/lib/types/messaging";
 import { getWahaClient, publicWahaMediaUrl } from "@/lib/waha/client";
 
@@ -552,36 +552,50 @@ async function handleInbound(
   if (insertedMessage?.id) {
     const inboundMessageId = insertedMessage.id;
     after(async () => {
-      // Áudio do lead: transcreve ANTES de enfileirar o dispatch. Sem `body` o
-      // run morria em `inbound_missing` e o lead ficava sem NENHUMA resposta (9
-      // casos só em 03/09). E não dá pra deixar pra depois: o arquivo do WAHA é
-      // efêmero — ver o cabeçalho de lib/ai/transcribe.ts.
-      if (messageTypeOf(p) === "audio" && !p.body) {
-        const transcricao = await transcreverAudio({
-          mediaUrl: mediaUrlOf(p),
-          mimeType: mediaMimeOf(p),
-        });
-        if (transcricao) {
+      // Mídia do lead: entende ANTES de enfileirar o dispatch. Sem `body` o run
+      // morria em `inbound_missing` e o lead ficava sem NENHUMA resposta (9
+      // áudios e 2 imagens entre 03 e 04/09). E não dá pra deixar pra depois: o
+      // arquivo do WAHA é efêmero — ver o cabeçalho de lib/ai/transcribe.ts.
+      const tipoRecebido = messageTypeOf(p);
+      const legenda = (p.body ?? "").trim();
+      // Imagem é lida SEMPRE, mesmo com legenda: print de anúncio quase sempre
+      // vem com um "esse ainda tá disponível?" do lado, e o dado que importa
+      // (bairro, preço, referência) está na imagem, não na legenda.
+      const precisaLer =
+        tipoRecebido === "image" || (tipoRecebido === "audio" && !legenda);
+      if (precisaLer) {
+        const ehAudio = tipoRecebido === "audio";
+        const midia = { mediaUrl: mediaUrlOf(p), mimeType: mediaMimeOf(p) };
+        const lido = ehAudio ? await transcreverAudio(midia) : await descreverImagem(midia);
+        if (lido) {
+          // Áudio é o que ele DISSE, então entra cru. Imagem é a NOSSA leitura,
+          // então vai marcada: quem abre o inbox precisa ver na hora que aquilo é
+          // descrição, não frase do cliente. Com legenda, a fala dele vem antes.
+          const descricao = `🖼️ (descrição automática da imagem) ${lido.texto}`;
+          const corpo = ehAudio
+            ? lido.texto
+            : legenda
+              ? `${legenda}\n\n${descricao}`
+              : descricao;
           await admin
             .from("messages")
             .update({
-              body: transcricao.texto,
+              body: corpo,
               metadata: {
                 ...metadataMsg,
-                transcribed_from: "audio",
-                transcription_model: transcricao.modelo,
+                ...(ehAudio
+                  ? { transcribed_from: "audio", transcription_model: lido.modelo }
+                  : {
+                      described_from: "image",
+                      vision_model: lido.modelo,
+                      ...(legenda ? { image_caption: legenda } : {}),
+                    }),
               },
             })
             .eq("id", inboundMessageId)
             .eq("organization_id", session.organization_id);
-          // A lista de conversas mostrava só "Áudio"; agora mostra o que ele disse.
-          await markConversation(
-            admin,
-            conversationId,
-            "inbound",
-            transcricao.texto.slice(0, 280),
-            now,
-          );
+          // A lista de conversas mostrava só "Áudio"/"Imagem"; agora diz o que é.
+          await markConversation(admin, conversationId, "inbound", corpo.slice(0, 280), now);
         }
       }
       const { error } = await admin.rpc(

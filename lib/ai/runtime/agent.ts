@@ -281,9 +281,16 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       // Áudio transcrito na chegada (lib/ai/transcribe.ts). Avisar o modelo
       // importa: a transcrição erra justamente em número e nome próprio, e sem
       // esse aviso ele trata "290 mil" ouvido como valor confirmado.
-      const metaMsg = (msg?.metadata ?? null) as { transcribed_from?: unknown } | null;
+      const metaMsg = (msg?.metadata ?? null) as {
+        transcribed_from?: unknown;
+        described_from?: unknown;
+      } | null;
       if (inboundBody && metaMsg?.transcribed_from === "audio") {
         inboundBody = `[áudio do cliente, transcrito automaticamente] ${inboundBody}`;
+      } else if (inboundBody && metaMsg?.described_from === "image") {
+        // Imagem é a NOSSA leitura, não fala dele: sem este aviso o modelo
+        // responde como se o cliente tivesse escrito a descrição.
+        inboundBody = `[o cliente mandou uma IMAGEM. O trecho marcado com 🖼️ é a descrição automática dela, não fala dele; o resto, se houver, é a legenda que ele escreveu] ${inboundBody}`;
       }
     }
 
