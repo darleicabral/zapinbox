@@ -23,7 +23,7 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-import { MAX_BALOES, splitIntoBalloons } from "@/lib/ai/runtime/finalize";
+import { MAX_BALOES, pareceRaciocinio, splitIntoBalloons } from "@/lib/ai/runtime/finalize";
 
 describe("splitIntoBalloons", () => {
   it("a abertura do lead de campanha vira 3 balões", () => {
@@ -70,5 +70,83 @@ describe("splitIntoBalloons", () => {
 
   it("texto vazio não gera balão", () => {
     expect(splitIntoBalloons("   \n\n  ")).toEqual([]);
+  });
+});
+
+/**
+ * 🐛 04/09/2026 — o lead recebeu o RACIOCÍNIO do modelo no WhatsApp, entre a
+ * saudação e a resposta. Texto real, tirado do run 3f09214c:
+ *
+ *   "Olá, tudo bem? 😊"
+ *   "O cliente falou genericamente "fazendinhas", sem especificar qual. Tenho
+ *    duas opções de fazendinhas no catálogo. Vou esclarecer qual ele quer antes
+ *    de mandar o roteiro fixo."
+ *   "As Fazendinhas Lago dos Sonhos..."
+ *
+ * O DeepSeek delibera dentro do próprio texto da resposta. O divisor mandava os
+ * 4 parágrafos fielmente, e o do meio era pensamento.
+ */
+describe("pareceRaciocinio: pensamento não vai pro cliente", () => {
+  it("pega o parágrafo real que vazou", () => {
+    expect(
+      pareceRaciocinio(
+        'O cliente falou genericamente "fazendinhas", sem especificar qual. Tenho duas opções de fazendinhas no catálogo. Vou esclarecer qual ele quer antes de mandar o roteiro fixo.',
+      ),
+    ).toBe(true);
+  });
+
+  it("pega nome de ferramenta vazando", () => {
+    expect(pareceRaciocinio("Vou chamar crm_search_catalog para confirmar.")).toBe(true);
+  });
+
+  it("pega jargão interno", () => {
+    expect(pareceRaciocinio("Seguindo o roteiro fixo da seção de exemplos.")).toBe(true);
+    expect(pareceRaciocinio("Não achei na base de conhecimento.")).toBe(true);
+  });
+
+  it("pega planejamento do próprio turno", () => {
+    expect(pareceRaciocinio("Preciso esclarecer qual das duas antes de responder.")).toBe(true);
+  });
+
+  // Falso positivo é o risco real: derrubar fala legítima deixa o lead no vácuo.
+  it("NÃO derruba fala normal com o cliente", () => {
+    for (const frase of [
+      "Olá, tudo bem? 😊",
+      "As Fazendinhas Lago dos Sonhos, em Três Marias, possuem terrenos a partir de 20mil m².",
+      "Qual das duas te chamou mais atenção?",
+      "Vou te encaminhar pro Gilvam, nosso corretor, ele já te chama aqui 👍",
+      "A escritura e a documentação ficam por conta do cliente.",
+      "Você quer agendar a visita pra amanhã?",
+      "Nesse tipo de imóvel o financiamento é direto com o proprietário, com entrada de 10%.",
+    ]) {
+      expect(pareceRaciocinio(frase), frase).toBe(false);
+    }
+  });
+});
+
+describe("splitIntoBalloons descarta o raciocínio", () => {
+  const REAL = [
+    "Olá, tudo bem? 😊",
+    'O cliente falou genericamente "fazendinhas", sem especificar qual. Tenho duas opções de fazendinhas no catálogo. Vou esclarecer qual ele quer antes de mandar o roteiro fixo.',
+    "As Fazendinhas Lago dos Sonhos, em Três Marias, possuem terrenos a partir de 20mil m², com financiamento próprio em até 210 meses.",
+    "Mas também temos as Fazendinhas Hectares, na zona rural de Santa Luzia. Qual das duas te chamou mais atenção?",
+  ].join("\n\n");
+
+  it("manda 3 balões em vez de 4, sem o do meio", () => {
+    const baloes = splitIntoBalloons(REAL);
+    expect(baloes).toHaveLength(3);
+    expect(baloes[0]).toContain("Olá");
+    expect(baloes.join(" ")).not.toContain("O cliente falou");
+    expect(baloes[2]).toContain("Qual das duas");
+  });
+
+  it("se TUDO parecer raciocínio, manda mesmo assim (nunca silêncio)", () => {
+    const so = "O cliente quer saber do preço.\n\nO lead perguntou sobre a visita.";
+    expect(splitIntoBalloons(so)).toHaveLength(2);
+  });
+
+  it("resposta normal segue intacta", () => {
+    const normal = "Olá! 😊\n\nEsse é o apartamento de 2 quartos, R$ 190.000.\n\nQuer visitar?";
+    expect(splitIntoBalloons(normal)).toHaveLength(3);
   });
 });

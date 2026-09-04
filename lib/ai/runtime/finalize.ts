@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import type { Actor } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SerializedStep } from "./serialize";
 
@@ -139,11 +140,49 @@ const PAUSA_ENTRE_BALOES_MS = 800;
  * balão só. Acima de MAX_BALOES o resto vai junto no último, pra não virar
  * enxurrada de notificação no celular do lead.
  */
+/**
+ * Marcadores de RACIOCÍNIO do modelo — texto que ele escreveu pensando, não
+ * falando com o cliente.
+ *
+ * 🐛 04/09/2026 — o lead recebeu isto no WhatsApp, entre a saudação e a
+ * resposta: "O cliente falou genericamente 'fazendinhas', sem especificar qual.
+ * Tenho duas opções de fazendinhas no catálogo. Vou esclarecer qual ele quer
+ * antes de mandar o roteiro fixo." O DeepSeek delibera dentro do próprio texto
+ * da resposta, e o divisor mandava os parágrafos fielmente.
+ *
+ * Os padrões são conservadores de propósito. O bot fala COM o cliente ("você"),
+ * nunca SOBRE ele em terceira pessoa, e nunca cita nome de ferramenta nem termo
+ * interno do prompt. Um "por conta do cliente" solto NÃO cai aqui: exige verbo
+ * de fala ou de vontade por perto, que é o que caracteriza a deliberação.
+ */
+const MARCADORES_DE_RACIOCINIO: RegExp[] = [
+  /\b[oa]s? (cliente|lead|usuári[oa])\b[^.!?]{0,80}\b(falou|disse|pediu|perguntou|mencionou|quer|queria|escolheu|especificou|respondeu)\b/i,
+  /\b(falou|disse|pediu|perguntou|mencionou|quer|queria)\b[^.!?]{0,40}\b[oa]s? (cliente|lead|usuári[oa])\b/i,
+  /\bcrm_[a-z_]+\b/i,
+  /\broteiro fixo\b|\bbase de conhecimento\b|\bhandoff\b|\bprompt\b/i,
+  /\b(vou|preciso|devo)\b[^.!?]{0,40}\b(antes de (mandar|responder|enviar)|esclarecer qual|confirmar qual)\b/i,
+];
+
+/** Pura, pra dar pra testar sem banco. */
+export function pareceRaciocinio(paragrafo: string): boolean {
+  return MARCADORES_DE_RACIOCINIO.some((rx) => rx.test(paragrafo));
+}
+
 export function splitIntoBalloons(text: string, maxPartes = MAX_BALOES): string[] {
-  const partes = text
+  const brutas = text
     .split(/\n[ \t]*\n+/)
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
+  const limpas = brutas.filter((p) => !pareceRaciocinio(p));
+  // Se TUDO pareceu raciocínio, manda como veio: um balão estranho é melhor
+  // que silêncio, e o falso positivo geral vira bug visível em vez de mudo.
+  const partes = limpas.length > 0 ? limpas : brutas;
+  if (partes.length !== brutas.length) {
+    logger.warn("[finalize] parágrafo de raciocínio descartado", {
+      descartados: brutas.length - partes.length,
+      total: brutas.length,
+    });
+  }
   if (partes.length <= maxPartes) return partes;
   const cabeca = partes.slice(0, maxPartes - 1);
   const resto = partes.slice(maxPartes - 1).join("\n\n");
