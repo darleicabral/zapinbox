@@ -40,27 +40,45 @@ export function InboxFilters({ value, onChange }: Props) {
   // Tenant de atendente único (pós-venda): "Não atribuídos"/"Meus" não fazem
   // sentido (tudo é do mesmo atendente) e "Todos" misturava conversa fechada na
   // fila de trabalho. Sobram 3 abas: Mensagens (em aberto), Fechadas e IA.
-  const isPosvenda = hasPosvendaModule(useActiveOrg()?.orgId);
+  const orgAtiva = useActiveOrg();
+  const isPosvenda = hasPosvendaModule(orgAtiva?.orgId);
   const POSVENDA_TABS: InboxTab[] = ["open", "closed", "ai"];
+
+  // CORRETOR SÓ VÊ O QUE É DELE (decisão do Darlei, 04/09/2026: "quando o
+  // corretor loga, quero que ele veja apenas os leads destinados a eles").
+  // Sobra "Meus" e "Fechados" — as outras abas devolveriam a mesma lista, porque
+  // a trava de verdade está no servidor (ver listConversationsHandler), e aba que
+  // mostra o mesmo conteúdo com nome diferente só confunde.
+  const soOsMeus = orgAtiva?.role === "agent";
   const TABS: Array<{ v: InboxTab; label: string }> = isPosvenda
     ? [
         { v: "open", label: "Mensagens" },
         { v: "closed", label: "Fechadas" },
         { v: "ai", label: "IA" },
       ]
-    : [
-        { v: "unassigned", label: "Não atribuídos" },
-        { v: "mine", label: "Meus" },
-        { v: "all", label: "Todos" },
-        { v: "closed", label: "Fechados" },
-        { v: "ai", label: "IA" },
-      ];
+    : soOsMeus
+      ? [
+          { v: "mine", label: "Meus" },
+          { v: "closed", label: "Fechados" },
+        ]
+      : [
+          { v: "unassigned", label: "Não atribuídos" },
+          { v: "mine", label: "Meus" },
+          { v: "all", label: "Todos" },
+          { v: "closed", label: "Fechados" },
+          { v: "ai", label: "IA" },
+        ];
   useEffect(() => {
     if (isPosvenda && !POSVENDA_TABS.includes(value.tab)) {
       onChange({ ...value, tab: "open" });
+      return;
+    }
+    // Corretor que caiu numa aba que não existe mais pra ele volta pra "Meus".
+    if (soOsMeus && !TABS.some((t) => t.v === value.tab)) {
+      onChange({ ...value, tab: "mine" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPosvenda, value.tab]);
+  }, [isPosvenda, soOsMeus, value.tab]);
 
   // Debounce search input → propagate to parent.
   useEffect(() => {

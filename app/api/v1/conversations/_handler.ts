@@ -106,7 +106,16 @@ export async function listConversationsHandler(
   }
   if (q.channel_session_id) query = query.eq("channel_session_id", q.channel_session_id);
 
-  if (q.assigned_to === "me") {
+  // CORRETOR VÊ SÓ O QUE É DELE (decisão do Darlei, 04/09/2026: "quando o
+  // corretor loga, quero que ele veja apenas os leads destinados a eles").
+  //
+  // A trava fica AQUI, no servidor, não só nas abas da tela: esconder o botão
+  // deixaria a lista completa a um parâmetro de distância. Gerente e admin
+  // continuam vendo tudo, que é o trabalho deles.
+  const soOsMeus = ctx.actor.type === "user" && ctx.actor.role === "agent";
+  if (soOsMeus) {
+    query = query.eq("assigned_to_user_id", ctx.actor.id);
+  } else if (q.assigned_to === "me") {
     if (ctx.actor.type !== "user") {
       throw new ApiError(
         400,

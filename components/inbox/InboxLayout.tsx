@@ -46,11 +46,16 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   const { activeOrg } = useAuth();
   const orgId = activeOrg?.orgId ?? null;
 
-  // Pós-venda (atendente único) abre direto em "Mensagens"; os demais tenants
-  // seguem em "Não atribuídos". Sem isto o primeiro fetch seria de uma aba que
-  // nem existe pro pós-venda (o InboxFilters corrige depois, com 1 ida à toa).
+  // Pós-venda (atendente único) abre direto em "Mensagens"; CORRETOR abre em
+  // "Meus", que é a única lista dele (decisão do Darlei, 04/09/2026); os demais
+  // seguem em "Não atribuídos". Escolher aqui evita o primeiro fetch numa aba
+  // que nem existe pro papel (o InboxFilters corrige depois, com 1 ida à toa).
   const [filterValue, setFilterValue] = useState<InboxFiltersValue>({
-    tab: hasPosvendaModule(activeOrg?.orgId) ? "open" : "unassigned",
+    tab: hasPosvendaModule(activeOrg?.orgId)
+      ? "open"
+      : activeOrg?.role === "agent"
+        ? "mine"
+        : "unassigned",
     search: "",
     onlyUnread: false,
   });
