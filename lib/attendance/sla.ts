@@ -154,6 +154,38 @@ async function sweepOrg(
     const clock = new Date(conv.assigned_at ?? conv.status_changed_at).getTime();
     if (clock > claimCutoff) continue; // ainda dentro do SLA
 
+    // 🐛 04/09/2026 — a "Cris" foi repassada SEIS vezes em 28 minutos, cada
+    // passe avisando um corretor diferente, e o Darlei viu o aviso no zap do
+    // Gilvam enquanto o sistema já tinha movido o lead pro Cleber.
+    //
+    // Premissa errada minha: o relógio de claim esperava alguém clicar
+    // "Assumir" no CRM. Mas o desenho é o oposto — o corretor recebe o aviso e
+    // responde do PRÓPRIO WhatsApp, sem abrir o CRM (decisão do Darlei em
+    // 03/09: "o corretor recebe a notificação mesmo estando off"). Ninguém
+    // clicava, o claim nunca era satisfeito, e a conversa girava pra sempre.
+    //
+    // Responder ao lead É assumir. `external_device` é exatamente a mensagem
+    // que saiu do celular dele (o que o CRM manda entra como 'ai' ou 'user').
+    if (conv.assigned_to_user_id && conv.assigned_at) {
+      const { count: respostasDoCorretor } = await admin
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("conversation_id", conv.id)
+        .eq("direction", "outbound")
+        .eq("sent_via", "external_device")
+        .gt("created_at", conv.assigned_at);
+      if ((respostasDoCorretor ?? 0) > 0) {
+        // Sai do bolo de `pending`: quem está atendendo não volta pro rodízio.
+        await admin
+          .from("conversations")
+          .update({ status: "claimed", status_changed_at: new Date(now).toISOString() })
+          .eq("id", conv.id)
+          .eq("organization_id", orgId);
+        continue;
+      }
+    }
+
     const passes = conv.assignment_passes ?? 0;
 
     if (conv.assigned_to_user_id && passes >= settings.max_passes) {
