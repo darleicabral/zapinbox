@@ -155,17 +155,22 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   // "me chama à noite"), o recado vai no aviso — igual ao handoff automático.
   // Sem isto a atribuição manual chegaria mais pobre que a do bot, e é
   // justamente à mão que a gente resgata o lead que ficou esperando.
+  // As TRÊS últimas, não só a última: o Marcos disse "Eu estou no trabalho" e
+  // depois pediu o endereço, então olhar só a última perdia justamente o recado
+  // que motivou o resgate. Vale a mais recente que for aviso de agenda.
   const admin = createAdminClient();
-  const { data: ultimaDoLead } = await admin
+  const { data: ultimasDoLead } = await admin
     .from("messages")
     .select("body")
     .eq("organization_id", orgId)
     .eq("conversation_id", conv.id)
     .eq("direction", "inbound")
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const recado = avisoDeAgenda((ultimaDoLead as { body: string | null } | null)?.body ?? "");
+    .limit(3);
+  const recado =
+    ((ultimasDoLead ?? []) as { body: string | null }[])
+      .map((m) => avisoDeAgenda(m.body ?? ""))
+      .find((r) => r !== null) ?? null;
 
   // Aviso no WhatsApp do corretor. Client ADMIN: a notificação lê contato,
   // lead e imóvel e manda pelo WAHA — fora do alcance do RLS do caller.
