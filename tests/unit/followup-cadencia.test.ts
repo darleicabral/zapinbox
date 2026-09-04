@@ -33,6 +33,7 @@ vi.mock("@/lib/logger", () => ({
 import {
   conversaElegivelPorAtivacao,
   podeDisparar,
+  respondeuAoUltimoFollowup,
   type FollowupStep,
 } from "@/lib/followup/followup";
 
@@ -180,6 +181,83 @@ describe("idade efetiva: lead da madrugada entra quando o expediente abre", () =
         minutosDesdeAberturaMin: 0,
       }),
     ).toBe(false);
+  });
+});
+
+describe("quem respondeu nao e cobrado de novo em 5 minutos", () => {
+  // 04/09/2026 — o Marcos recebeu 4 mensagens da cadencia. Respondeu "Eu estou
+  // no trabalho" as 09h09 e as 09h15 o sistema perguntou "ainda ta por ai?",
+  // por cima de uma pergunta que o bot tinha acabado de fazer. Dos 9 leads que
+  // receberam follow-up, 2 responderam, e os DOIS foram cobrados de novo.
+
+  it("respondeu 6 min atras: NAO cobra (o caso do Marcos)", () => {
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 6,
+        desdeUltimoFollowupMin: 9,
+        respondeuAoUltimoFollowup: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("respondeu e sumiu de novo por 1 hora: cobra", () => {
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 60,
+        desdeUltimoFollowupMin: 70,
+        respondeuAoUltimoFollowup: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("na borda de 59 min ainda espera", () => {
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 59,
+        desdeUltimoFollowupMin: 70,
+        respondeuAoUltimoFollowup: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("quem NUNCA respondeu segue nos 5 minutos", () => {
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 6,
+        desdeUltimoFollowupMin: null,
+        respondeuAoUltimoFollowup: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("a barra nao afrouxa por causa da abertura do expediente", () => {
+    // idade efetiva zeraria a trava de idade, mas quem respondeu continua fora
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 6,
+        desdeUltimoFollowupMin: 9,
+        minutosDesdeAberturaMin: 0,
+        respondeuAoUltimoFollowup: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("respondeuAoUltimoFollowup", () => {
+  it("entrada depois do nosso follow-up = respondeu", () => {
+    expect(respondeuAoUltimoFollowup("2026-09-04T12:09:00Z", "2026-09-04T12:06:00Z")).toBe(true);
+  });
+
+  it("entrada ANTES do follow-up = nao respondeu (foi o que motivou a cobranca)", () => {
+    expect(respondeuAoUltimoFollowup("2026-09-04T12:00:00Z", "2026-09-04T12:06:00Z")).toBe(false);
+  });
+
+  it("sem follow-up enviado ainda, nao ha o que responder", () => {
+    expect(respondeuAoUltimoFollowup("2026-09-04T12:09:00Z", null)).toBe(false);
+  });
+
+  it("sem entrada nenhuma, false", () => {
+    expect(respondeuAoUltimoFollowup(null, "2026-09-04T12:06:00Z")).toBe(false);
   });
 });
 

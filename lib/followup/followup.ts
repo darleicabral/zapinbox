@@ -88,6 +88,36 @@ interface ConvRow {
 const MAX_IDADE_PARA_INICIAR_MIN = 180;
 
 /**
+ * Silêncio mínimo pra cobrar DE NOVO quem já respondeu a um follow-up.
+ *
+ * 🐛 04/09/2026 — o Marcos recebeu 4 mensagens da cadência. Ele respondeu "Eu
+ * estou no trabalho" às 09h09, e às 09h15 o sistema perguntou "Oi, ainda tá por
+ * aí?" — passando por cima de uma pergunta que o bot tinha acabado de fazer.
+ * Dos 9 leads que receberam follow-up naquela manhã, 2 responderam, e os DOIS
+ * foram cobrados de novo.
+ *
+ * Causa: quando o lead responde, a cadência reinicia do zero, e a etapa 1 exige
+ * só 5 minutos. Esses 5 minutos servem pra quem clicou no anúncio e desapareceu,
+ * não pra quem está conversando e respondendo do trabalho. Quem respondeu não é
+ * lead silencioso: a barra sobe pra uma hora.
+ */
+const MIN_SILENCIO_APOS_RESPOSTA_MIN = 60;
+
+/**
+ * O lead respondeu DEPOIS do nosso último follow-up? Pura, pra ser testável.
+ *
+ * Sem `last_followup_at` a cadência ainda não falou com ele, então não há o que
+ * "responder" — e a etapa 1 segue valendo com o prazo normal.
+ */
+export function respondeuAoUltimoFollowup(
+  lastInboundAt: string | null,
+  lastFollowupAt: string | null,
+): boolean {
+  if (!lastFollowupAt || !lastInboundAt) return false;
+  return new Date(lastInboundAt).getTime() > new Date(lastFollowupAt).getTime();
+}
+
+/**
  * A conversa entra na cadência, dado o instante da ATIVAÇÃO do reengajamento?
  *
  * Decisão do Darlei (03/09/2026): ao ativar, a cadência vale APENAS pra lead
@@ -141,11 +171,24 @@ export function podeDisparar(
      * silêncio e a trava de idade barrava). Eram 4 numa noite só.
      */
     minutosDesdeAberturaMin?: number | null;
+    /**
+     * O lead respondeu ao nosso último follow-up? Aí ele NÃO está silencioso, e
+     * a barra sobe pra `MIN_SILENCIO_APOS_RESPOSTA_MIN` — ver o comentário da
+     * constante (o caso do Marcos, cobrado 6 min depois de dizer que estava no
+     * trabalho).
+     */
+    respondeuAoUltimoFollowup?: boolean;
   },
 ): boolean {
   const step = steps[indice];
   if (!step) return false;
   if (ctx.inactivityMin < step.after_minutes) return false;
+
+  // Quem respondeu está conversando, não sumido: espera uma hora antes de
+  // cobrar de novo, em vez dos 5 minutos da etapa 1.
+  if (ctx.respondeuAoUltimoFollowup && ctx.inactivityMin < MIN_SILENCIO_APOS_RESPOSTA_MIN) {
+    return false;
+  }
 
   const maxIdade = ctx.maxIdadeParaIniciarMin ?? MAX_IDADE_PARA_INICIAR_MIN;
   if (indice === 0) {
@@ -320,6 +363,10 @@ async function sweepOrg(
         inactivityMin,
         desdeUltimoFollowupMin,
         minutosDesdeAberturaMin: desdeAberturaMin,
+        respondeuAoUltimoFollowup: respondeuAoUltimoFollowup(
+          conv.last_inbound_at,
+          conv.last_followup_at,
+        ),
       })
     )
       continue;
