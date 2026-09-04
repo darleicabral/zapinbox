@@ -56,6 +56,9 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: "/app/kanban", label: "Atendimentos", icon: Kanban },
       { href: "/app/agenda", label: "Agenda", icon: Calendar, module: "posvenda" },
       { href: "/app/contacts", label: "Contatos", icon: AddressBook },
+      // Gestor pra cima: o corretor não vê o número dos colegas (mesma
+      // decisão que deixou o inbox dele só com "Meus").
+      { href: "/app/distribuicao", label: "Distribuição", icon: ChartLineUp, minRole: "manager" },
       { href: "/app/manual", label: "Manuais", icon: BookOpen, module: "posvenda" },
     ],
   },
