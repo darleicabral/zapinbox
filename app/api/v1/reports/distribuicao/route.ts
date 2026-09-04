@@ -1,8 +1,8 @@
 /**
  * GET /api/v1/reports/distribuicao?dias=0|7|30
  *
- * Quantos leads cada corretor recebeu (via notificação). Pedido do Darlei
- * (04/09/2026), pra acompanhar em tempo real.
+ * Funil: quantos leads chegaram, quantos a IA encaminhou, e quanto cada corretor
+ * recebeu. Pedido do Darlei (04/09/2026), pra acompanhar em tempo real.
  *
  * NÃO mede resposta do corretor: ele atende do WhatsApp PESSOAL e isso não passa
  * pelo CRM — ver o cabeçalho de lib/reports/distribuicao.ts.
@@ -25,7 +25,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   computeDistribuicao,
-  type ConversaAtribuida,
+  type ConversaChegada,
   type Corretor,
 } from "@/lib/reports/distribuicao";
 
@@ -70,15 +70,34 @@ export async function GET(req: NextRequest): Promise<Response> {
   const dias = [0, 7, 30].includes(diasBruto) ? diasBruto : 0;
   const desde = dias === 0 ? inicioDoDiaEmBrasilia() : new Date(Date.now() - dias * 24 * 3_600_000).toISOString();
 
+  // Janela pela CHEGADA da conversa: "encaminhados" e o pedaco dela que ganhou
+  // dono. Filtrar um numero por created_at e o outro por assigned_at deixaria
+  // encaminhado > chegou, e a taxa viraria ficcao.
   const { data: convRows, error: convErr } = await supabase
     .from("conversations")
-    .select("id, assigned_to_user_id, assigned_at")
+    .select(
+      "id, assigned_to_user_id, last_inbound_at, contacts:contact_id (is_internal)",
+    )
     .eq("organization_id", activeOrg.orgId)
-    .not("assigned_to_user_id", "is", null)
-    .gte("assigned_at", desde)
+    .gte("created_at", desde)
     .limit(5000);
   if (convErr) return fail("query_failed", convErr.message, 500, { requestId });
-  const conversas = (convRows ?? []) as unknown as ConversaAtribuida[];
+  type LinhaCrua = {
+    id: string;
+    assigned_to_user_id: string | null;
+    last_inbound_at: string | null;
+    contacts: { is_internal: boolean | null } | { is_internal: boolean | null }[] | null;
+  };
+  const conversas: ConversaChegada[] = ((convRows ?? []) as unknown as LinhaCrua[]).map((c) => {
+    // PostgREST tipa relacao embutida como array; na pratica vem um so.
+    const contato = Array.isArray(c.contacts) ? (c.contacts[0] ?? null) : c.contacts;
+    return {
+      id: c.id,
+      assigned_to_user_id: c.assigned_to_user_id,
+      interno: contato?.is_internal === true,
+      temEntrada: !!c.last_inbound_at,
+    };
+  });
 
   // Equipe: quem atende, ativo. Entra mesmo com zero lead — corretor de fora da
   // lista pareceria "sem lead nenhum" quando o caso é não estar no rodízio.

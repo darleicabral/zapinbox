@@ -59,6 +59,9 @@ export function DistribuicaoClient() {
   const max = Math.max(0, ...linhas.map((c) => c.recebidos));
   const semTelefone = linhas.filter((c) => c.semTelefone).length;
   const comLead = linhas.filter((c) => c.recebidos > 0).length;
+  // Taxa de encaminhamento: o que a IA conseguiu passar pro corretor.
+  const taxa =
+    data && data.chegaram > 0 ? Math.round((data.encaminhados / data.chegaram) * 100) : null;
 
   return (
     <div className="space-y-6 p-6">
@@ -66,7 +69,7 @@ export function DistribuicaoClient() {
         <div>
           <h1 className="text-xl font-semibold">Distribuição de leads</h1>
           <p className="text-sm text-muted-foreground">
-            Quantos leads foram enviados para cada corretor. Atualiza sozinho.
+            Quantos leads chegaram, quantos a IA encaminhou e para quem. Atualiza sozinho.
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -84,17 +87,25 @@ export function DistribuicaoClient() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tile label="Leads enviados" value={data?.total ?? (isLoading ? "…" : 0)} />
-        <Tile label="Corretores com lead" value={comLead} hint={`de ${linhas.length} na equipe`} />
+        <Tile
+          label="Leads que chegaram"
+          value={data?.chegaram ?? (isLoading ? "…" : 0)}
+          hint="clientes novos que escreveram"
+        />
+        <Tile
+          label="Encaminhados"
+          value={data?.encaminhados ?? 0}
+          hint={taxa == null ? "a IA passou pro corretor" : `${taxa}% do que chegou`}
+        />
+        <Tile
+          label="Ainda sem corretor"
+          value={data?.semCorretor ?? 0}
+          hint="a IA ainda está atendendo ou não encaminhou"
+        />
         <Tile
           label="Sem telefone de aviso"
           value={semTelefone}
-          hint="não recebem o WhatsApp"
-        />
-        <Tile
-          label="Fora da equipe"
-          value={data?.foraDaEquipe ?? 0}
-          hint="atribuídos a quem saiu"
+          hint={semTelefone > 0 ? "não recebem o WhatsApp" : `${comLead} corretor(es) com lead`}
         />
       </div>
 
@@ -115,10 +126,12 @@ export function DistribuicaoClient() {
       </Card>
 
       <p className="text-xs text-muted-foreground">
-        A conta é por <strong>envio</strong>: desde 04/09 o lead não passa adiante, então quem foi
-        atribuído é quem foi avisado. O que o corretor faz depois acontece no WhatsApp dele e não
-        passa pelo CRM, então este painel para no envio de propósito. Corretor marcado como sem
-        telefone recebe o lead no sistema, mas não recebe o aviso.
+        A janela conta pela <strong>chegada</strong> do lead, e <strong>encaminhados</strong> é o
+        pedaço dela que ganhou corretor, por isso a taxa fecha. Lead que chegou ontem e foi
+        encaminhado hoje
+        aparece no dia de ontem. Conversa do próprio corretor e conversa sem mensagem do cliente
+        ficam de fora dos dois números. O que o corretor faz depois acontece no WhatsApp dele e não
+        passa pelo CRM, então o painel para no envio de propósito.
       </p>
     </div>
   );
