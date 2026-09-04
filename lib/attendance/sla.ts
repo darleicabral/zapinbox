@@ -170,7 +170,9 @@ async function sweepOrg(
         manager_user_id: manager,
         passes,
       });
-      void notifyAssigneeNewLead(admin, {
+      // AWAIT, nao `void`: ver a nota em assign.ts — aviso solto em serverless se
+      // perde, e o cron termina logo depois de disparar.
+      await notifyAssigneeNewLead(admin, {
         organizationId: orgId,
         conversationId: conv.id,
         assigneeUserId: manager,
@@ -202,7 +204,7 @@ async function sweepOrg(
       from_user_id: conv.assigned_to_user_id,
       pass: passes + 1,
     });
-    void notifyAssigneeNewLead(admin, {
+    await notifyAssigneeNewLead(admin, {
       organizationId: orgId,
       conversationId: conv.id,
       assigneeUserId: next,
@@ -248,7 +250,7 @@ async function sweepOrg(
     // aparece pra quem está com o app aberto; o gestor precisa saber fora dele.
     const manager = await pickFallbackManager(admin, orgId);
     if (manager && manager !== conv.assigned_to_user_id) {
-      void notifyAssigneeNewLead(admin, {
+      await notifyAssigneeNewLead(admin, {
         organizationId: orgId,
         conversationId: conv.id,
         assigneeUserId: manager,

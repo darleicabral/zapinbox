@@ -115,7 +115,12 @@ export async function assignAndNotify(
     // Conversa já tem dono: NÃO reatribui (roubar atendimento em andamento é
     // pior que não avisar), só avisa quem já é responsável.
     if (donoAtual) {
-      void notifyAssigneeNewLead(client, {
+      // AWAIT, nao `void` (04/09/2026): promessa solta em funcao serverless nao
+      // termina — o processo congela quando a resposta sai. O Marcos foi
+      // atribuido ao Cleber as 09h34 e o aviso NUNCA saiu: zero mensagem
+      // mencionando ele no dia. notifyAssigneeNewLead engole os proprios erros e
+      // devolve boolean, entao esperar por ela nao quebra a atribuicao.
+      await notifyAssigneeNewLead(client, {
         organizationId: args.organizationId,
         conversationId: args.conversationId,
         assigneeUserId: donoAtual,
@@ -164,7 +169,7 @@ export async function assignAndNotify(
     }
 
     // Avisa o corretor por WhatsApp + push (mobile-first). Fire-and-forget.
-    void notifyAssigneeNewLead(client, {
+    await notifyAssigneeNewLead(client, {
       organizationId: args.organizationId,
       conversationId: args.conversationId,
       assigneeUserId: escolhido,
