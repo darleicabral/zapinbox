@@ -41,7 +41,11 @@ function Linha({ c, max }: { c: LinhaCorretor; max: number }) {
         </p>
         <p className="shrink-0 text-lg font-semibold tabular-nums">
           {c.recebidos}
-          <span className="ml-1.5 text-xs font-normal text-muted-foreground">{c.fatiaPct}%</span>
+          {/* Separador explicito: sem ele "6" e "43%" saem colados na copia e no
+              leitor de tela, virando "643%". */}
+          <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+            {"·"} {c.fatiaPct}%
+          </span>
         </p>
       </div>
       <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded bg-muted">
