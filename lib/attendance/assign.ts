@@ -97,6 +97,8 @@ export async function assignAndNotify(
     conversationId: string;
     /** Papel mínimo pro fallback sem rodízio. Default 'agent'. */
     minRole?: string;
+    /** Recado que vai no aviso do corretor, antes do resumo. */
+    observacao?: string | null;
   },
 ): Promise<AssignAndNotifyResult> {
   try {
@@ -118,6 +120,7 @@ export async function assignAndNotify(
         conversationId: args.conversationId,
         assigneeUserId: donoAtual,
         kind: "assigned",
+        observacao: args.observacao ?? null,
       });
       return {
         assignedUserId: donoAtual,
@@ -166,6 +169,7 @@ export async function assignAndNotify(
       conversationId: args.conversationId,
       assigneeUserId: escolhido,
       kind: "assigned",
+      observacao: args.observacao ?? null,
     });
 
     return {

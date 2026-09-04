@@ -34,7 +34,8 @@ export type HandoffReason =
   | "critical_stage"
   | "legal_mention"
   | "refund_mention"
-  | "bot_handoff_cue";
+  | "bot_handoff_cue"
+  | "lead_indisponivel";
 
 export interface TriggerHandoffInput {
   conversationId: string;
@@ -44,6 +45,8 @@ export interface TriggerHandoffInput {
   metadata?: Record<string, unknown>;
   /** Papel mínimo do corretor no fallback sem rodízio. Default 'agent'. */
   minAssigneeRole?: string;
+  /** Recado do lead que vai no aviso do corretor (ex.: "está no trabalho"). */
+  observacao?: string | null;
 }
 
 /**
@@ -217,6 +220,7 @@ export async function triggerHandoff(
       organizationId: input.organizationId,
       conversationId: input.conversationId,
       minRole: input.minAssigneeRole,
+      observacao: input.observacao ?? null,
     });
 
     return { triggered: true, reason: input.reason, ...atribuicao };

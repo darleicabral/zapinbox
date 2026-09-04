@@ -49,6 +49,12 @@ export async function notifyAssigneeNewLead(
     conversationId: string;
     assigneeUserId: string;
     kind: NotifyKind;
+    /**
+     * Recado curto que entra ANTES do resumo. Hoje serve pro lead que avisou
+     * quando pode falar ("estou no trabalho", "me chama mais tarde"): o corretor
+     * precisa ver isso antes de ligar na hora errada.
+     */
+    observacao?: string | null;
   },
 ): Promise<boolean> {
   try {
@@ -223,6 +229,9 @@ export async function notifyAssigneeNewLead(
     const crmLink = `${base}/app/inbox/${args.conversationId}`;
     const lines: string[] = [header, "", `👤 *${contactName}*`];
     if (waLink) lines.push(`💬 Falar no WhatsApp: ${waLink}`);
+    // Antes do resumo de propósito: é o dado que muda a AÇÃO do corretor agora.
+    const aviso = args.observacao?.trim();
+    if (aviso) lines.push("", `⏰ ${aviso}`);
     if (resumo) lines.push("", "📋 Resumo (IA):", resumo);
     if (property?.title) {
       const loc = property.location ? ` — ${property.location}` : "";

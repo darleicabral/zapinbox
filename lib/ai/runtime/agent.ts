@@ -31,7 +31,7 @@ import type { McpContext } from "@/lib/mcp/types";
 import { computeCostCents } from "./cost";
 import { finalizeRun } from "./finalize";
 import { sendFinalResponse } from "./finalize";
-import { finalizeHandoff, prometeuHumano } from "./handoff";
+import { avisoDeAgenda, finalizeHandoff, prometeuHumano } from "./handoff";
 import { loadHistoryWithBudget } from "./history";
 import { mintEphemeralToken, revokeEphemeralToken } from "./mcp_token";
 import { pickToolsFromMcp, type RuntimeHandoffSignal } from "./tools";
@@ -494,11 +494,22 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     // aqui é honrado pelo sistema, não pela boa vontade do modelo. Ver
     // prometeuHumano: só o último parágrafo conta, senão muleta viraria handoff.
     const promessaSemTool = !handoffSignal.triggered && prometeuHumano(result.text ?? "");
-    if (handoffSignal.triggered || promessaSemTool) {
+    // AVISO DE AGENDA (04/09/2026, regra do Darlei): o lead que responde "estou
+    // no trabalho" / "mais tarde" / "à noite" está dando um dado de agenda, não
+    // fugindo. Vai pro corretor com o recado escrito no aviso. Nasceu do Marcos,
+    // que avisou que estava trabalhando e seguiu sendo qualificado e cobrado.
+    const recadoDeAgenda = avisoDeAgenda(inboundBody ?? "");
+    if (handoffSignal.triggered || promessaSemTool || recadoDeAgenda) {
       const motivo = handoffSignal.triggered
         ? ((handoffSignal.reason as never) ?? "requested_human")
-        : ("requested_human" as never);
-      const origem = handoffSignal.triggered ? "tool" : "promessa";
+        : promessaSemTool
+          ? ("requested_human" as never)
+          : ("lead_indisponivel" as never);
+      const origem = handoffSignal.triggered
+        ? "tool"
+        : promessaSemTool
+          ? "promessa"
+          : "adiamento";
       const farewell = (result.text ?? "").trim();
       if (!run.is_dry_run && farewell && run.conversation_id && replyMode !== "silent") {
         await sendFinalResponse({
@@ -516,6 +527,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
         conversationId: conversationIdForHandoff,
         reason: motivo,
         source: origem,
+        observacao: recadoDeAgenda,
         latencyMs,
         tokensIn: usage.inputTokens,
         tokensOut: usage.outputTokens,
@@ -527,7 +539,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       return {
         run_id: run.id,
         status: "handoff",
-        abort_reason: `${origem}:${handoffSignal.reason ?? "promessa_de_humano"}`,
+        abort_reason: `${origem}:${handoffSignal.reason ?? motivo}`,
         tokens_in: usage.inputTokens,
         tokens_out: usage.outputTokens,
         cost_cents: cost,

@@ -11,7 +11,59 @@ import { triggerHandoff, type HandoffReason } from "@/lib/ai/handoff/orchestrato
 import { createAdminClient } from "@/lib/supabase/admin";
 import { finalizeRun, type FinalizeRunInput } from "./finalize";
 
-export type HandoffSource = "sentinel" | "tool" | "promessa";
+export type HandoffSource = "sentinel" | "tool" | "promessa" | "adiamento";
+
+/**
+ * O lead avisou QUANDO pode falar, em vez de responder.
+ *
+ * Regra do Darlei (04/09/2026): "quando ele usar esses termos mais tarde,
+ * depois, à noite, ocupado, no trabalho, a gente tem que passar pro corretor e
+ * deixar isso avisado no resumo de IA".
+ *
+ * Nasceu do print do Marcos: ele disse "Eu estou no trabalho" e o bot seguiu
+ * qualificando, enquanto a cadência o cobrava a cada 6 minutos. Quem avisa a
+ * hora está dando um dado de agenda, e isso é assunto de corretor, não de bot.
+ *
+ * Cada padrão devolve também o RECADO que vai no aviso, porque "está no
+ * trabalho agora" e "pediu pra falar à noite" mudam a ação do corretor.
+ */
+/**
+ * Sem `\b` de propósito: em JS a fronteira de palavra é ASCII, então `\bà` e
+ * `amanhã\b` NUNCA casam (foi o que quebrou "à noite" e "amanhã" no primeiro
+ * teste). As frases aqui são específicas o bastante pra dispensar âncora.
+ */
+const AVISOS_DE_AGENDA: { rx: RegExp; recado: string }[] = [
+  {
+    rx: /(?:^|[^\p{L}])(estou|est[oô]|t[oô]) no (trabalho|trampo)/iu,
+    recado: "O lead está no trabalho agora e avisou que não pode falar.",
+  },
+  {
+    rx: /(?:^|[^\p{L}])(estou|est[oô]|t[oô]) (meio )?ocupad[oa]|sem tempo agora/iu,
+    recado: "O lead avisou que está ocupado agora.",
+  },
+  {
+    rx: /mais tarde|depois eu (te )?(falo|chamo|respondo)|te (falo|chamo) depois|depois a gente (fala|conversa)/iu,
+    recado: "O lead pediu pra falar mais tarde.",
+  },
+  {
+    rx: /[aà] noite|de noite|fim da tarde|depois do (trabalho|servi[cç]o)|quando (eu )?sair do trabalho/iu,
+    recado: "O lead pediu pra falar no fim do dia.",
+  },
+  {
+    rx: /(amanh[aã]|na segunda|no s[aá]bado)[^.!?]{0,20}(a gente|eu (te )?(falo|chamo|vejo)|conversamos)/iu,
+    recado: "O lead pediu pra retomar em outro dia.",
+  },
+];
+
+/** Pura. Devolve o recado pro corretor, ou null quando não é aviso de agenda. */
+export function avisoDeAgenda(textoDoLead: string): string | null {
+  const t = (textoDoLead ?? "").trim();
+  if (!t) return null;
+  for (const { rx, recado } of AVISOS_DE_AGENDA) {
+    if (rx.test(t)) return `${recado} Ele escreveu: "${t.slice(0, 120)}"`;
+  }
+  return null;
+}
 
 /**
  * Frases em que o bot promete que OUTRA PESSOA (ou ele mesmo, depois) resolve.
@@ -69,6 +121,8 @@ export interface FinalizeHandoffInput {
   conversationId: string | null;
   reason: HandoffReason;
   source: HandoffSource;
+  /** Recado do lead que vai no aviso do corretor. */
+  observacao?: string | null;
   latencyMs?: number;
   tokensIn?: number;
   tokensOut?: number;
@@ -103,6 +157,7 @@ export async function finalizeHandoff(input: FinalizeHandoffInput): Promise<void
       organizationId: input.organizationId,
       reason: input.reason,
       leadId,
+      observacao: input.observacao ?? null,
       metadata: { run_id: input.runId, source: input.source },
     });
   }
