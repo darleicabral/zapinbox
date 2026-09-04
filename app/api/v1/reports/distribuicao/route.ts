@@ -1,8 +1,11 @@
 /**
  * GET /api/v1/reports/distribuicao?dias=0|7|30
  *
- * Quantos leads cada corretor recebeu (via notificação) e o que fez com eles.
- * Pedido do Darlei (04/09/2026), pra acompanhar em tempo real.
+ * Quantos leads cada corretor recebeu (via notificação). Pedido do Darlei
+ * (04/09/2026), pra acompanhar em tempo real.
+ *
+ * NÃO mede resposta do corretor: ele atende do WhatsApp PESSOAL e isso não passa
+ * pelo CRM — ver o cabeçalho de lib/reports/distribuicao.ts.
  *
  * GESTOR PRA CIMA. Corretor não vê o número dos colegas — ele já só enxerga os
  * leads dele no inbox (mesma decisão do dia), e um painel comparativo seria a
@@ -24,7 +27,6 @@ import {
   computeDistribuicao,
   type ConversaAtribuida,
   type Corretor,
-  type RespostaHumana,
 } from "@/lib/reports/distribuicao";
 
 export const dynamic = "force-dynamic";
@@ -78,23 +80,6 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (convErr) return fail("query_failed", convErr.message, 500, { requestId });
   const conversas = (convRows ?? []) as unknown as ConversaAtribuida[];
 
-  // Respostas HUMANAS dessas conversas. 'external_device' é o celular do
-  // corretor, 'user' é o composer do CRM; 'ai' é o bot e não conta.
-  let respostas: RespostaHumana[] = [];
-  const ids = conversas.map((c) => c.id);
-  for (let i = 0; i < ids.length; i += 100) {
-    const { data: msgs, error: msgErr } = await supabase
-      .from("messages")
-      .select("conversation_id, created_at")
-      .eq("organization_id", activeOrg.orgId)
-      .in("conversation_id", ids.slice(i, i + 100))
-      .eq("direction", "outbound")
-      .in("sent_via", ["external_device", "user"])
-      .gte("created_at", desde);
-    if (msgErr) return fail("query_failed", msgErr.message, 500, { requestId });
-    respostas = respostas.concat((msgs ?? []) as unknown as RespostaHumana[]);
-  }
-
   // Equipe: quem atende, ativo. Entra mesmo com zero lead — corretor de fora da
   // lista pareceria "sem lead nenhum" quando o caso é não estar no rodízio.
   const { data: membros, error: memErr } = await supabase
@@ -132,5 +117,5 @@ export async function GET(req: NextRequest): Promise<Response> {
     semTelefone: !m.notify_whatsapp_e164,
   }));
 
-  return ok(computeDistribuicao(conversas, respostas, corretores, desde), { requestId });
+  return ok(computeDistribuicao(conversas, corretores, desde), { requestId });
 }
