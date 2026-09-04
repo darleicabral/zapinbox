@@ -24,6 +24,7 @@ import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { ApiError } from "@/lib/api/types";
 import { ok, fail } from "@/lib/api/wrappers";
+import { avisoDeAgenda } from "@/lib/ai/runtime/handoff";
 import { notifyAssigneeNewLead } from "@/lib/attendance/notify";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -150,14 +151,31 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
       if (emitErr) console.error("[conversation.assign] emit_event failed", emitErr.message);
     });
 
+  // Se a última fala do lead avisou QUANDO ele pode falar ("estou no trabalho",
+  // "me chama à noite"), o recado vai no aviso — igual ao handoff automático.
+  // Sem isto a atribuição manual chegaria mais pobre que a do bot, e é
+  // justamente à mão que a gente resgata o lead que ficou esperando.
+  const admin = createAdminClient();
+  const { data: ultimaDoLead } = await admin
+    .from("messages")
+    .select("body")
+    .eq("organization_id", orgId)
+    .eq("conversation_id", conv.id)
+    .eq("direction", "inbound")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const recado = avisoDeAgenda((ultimaDoLead as { body: string | null } | null)?.body ?? "");
+
   // Aviso no WhatsApp do corretor. Client ADMIN: a notificação lê contato,
   // lead e imóvel e manda pelo WAHA — fora do alcance do RLS do caller.
   // Se o aviso falhar, a atribuição continua valendo (o corretor vê no CRM).
-  const avisou = await notifyAssigneeNewLead(createAdminClient(), {
+  const avisou = await notifyAssigneeNewLead(admin, {
     organizationId: orgId,
     conversationId: conv.id,
     assigneeUserId: input.user_id,
     kind: donoAnterior && donoAnterior !== input.user_id ? "reassigned" : "assigned",
+    observacao: recado,
   });
 
   return ok({ ...conv, notified: avisou }, { requestId });
