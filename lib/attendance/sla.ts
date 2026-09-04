@@ -2,14 +2,19 @@
  * C4 — Varredura de SLA de atendimento (2 etapas), consumida pelo cron
  * `/api/v1/cron/attendance-sla`. Decisões aprovadas (ESTADO.md):
  *
- *   Etapa 1 (claim): conversa `pending` atribuída e não assumida em
- *     `claim_sla_minutes` → repassa ao próximo do rodízio (online + ponteiro).
- *     Após `max_passes` sem claim → cai pro gestor/admin (fallback) com alerta.
- *     Conversa `pending` SEM dono (ninguém online no handoff) também é tentada
- *     aqui quando alguém fica online.
+ *   Etapa 1 (distribuição): conversa `pending` SEM dono → atribui ao próximo do
+ *     rodízio e avisa ele. Conversa que JÁ TEM dono não é tocada.
  *
- *   Etapa 2 (1ª resposta): conversa `claimed` sem resposta humana em
- *     `first_response_sla_minutes` → alerta o gestor (uma vez).
+ *   Etapa 2 (cobrança): conversa com dono e sem resposta humana em
+ *     `first_response_sla_minutes` → alerta o gestor, UMA vez, sem mexer no dono.
+ *
+ * ⚠️ Mudou em 04/09/2026 (Darlei): "o lead nunca deve passar adiante" + "a IA vai
+ * dizer para o lead quem vai atender ele e isso não deve mudar". O repasse por
+ * claim e a escalada que trocava o dono foram REMOVIDOS — o bot cita o nome do
+ * corretor pro cliente, então trocar depois faz o bot mentir. `max_passes` e
+ * `assignment_passes` ficaram sem uso, e `escalated_to_manager` não incrementa
+ * mais. Também mudou o que conta como atendimento: responder ao lead do próprio
+ * celular (`external_device`), porque o corretor não abre o CRM.
  *
  * Alertas: emit_event no event_log + broadcast realtime em `org:<org>:queue`
  * (mesmo canal que o handoff usa pra acender a UI da fila). Sem tabela de
@@ -67,6 +72,7 @@ interface PendingConv {
 interface ClaimedConv {
   id: string;
   assigned_to_user_id: string | null;
+  assigned_at: string | null;
   status_changed_at: string;
   contacts: ContatoEmbutido;
 }
@@ -186,40 +192,23 @@ async function sweepOrg(
       }
     }
 
-    const passes = conv.assignment_passes ?? 0;
+    // 🚫 O LEAD NUNCA PASSA ADIANTE (decisão do Darlei, 04/09/2026): "o lead
+    // nunca deve passar adiante" + "a IA vai dizer para o lead quem vai atender
+    // ele e isso não deve mudar".
+    //
+    // O bot fala o NOME do corretor pro cliente ("vou te encaminhar pro
+    // Gilvam"). Repassar depois faz duas coisas ruins de uma vez: o bot mente
+    // pro cliente, e o corretor fica com um aviso de lead que já não é dele. Em
+    // 04/09 a "Cris" trocou de dono 6 vezes em 28 minutos.
+    //
+    // Então o rodízio só age em conversa SEM dono. Quem já tem dono não muda —
+    // se ele não responder, a etapa 2 avisa o gestor SEM tirar o lead dele.
+    // (`max_passes` e `assignment_passes` ficaram sem uso por isso.)
+    if (conv.assigned_to_user_id) continue;
 
-    if (conv.assigned_to_user_id && passes >= settings.max_passes) {
-      // Fallback: gestor/admin. Só escala se ainda não está com um gestor
-      // (evita re-alertar em loop a cada tick).
-      const manager = await pickFallbackManager(admin, orgId);
-      if (!manager || manager === conv.assigned_to_user_id) continue;
-      await admin
-        .from("conversations")
-        .update({ assigned_to_user_id: manager, assigned_at: new Date(now).toISOString() })
-        .eq("id", conv.id)
-        .eq("organization_id", orgId);
-      await emitAlert(admin, orgId, "attendance.escalated_to_manager", conv.id, {
-        manager_user_id: manager,
-        passes,
-      });
-      // AWAIT, nao `void`: ver a nota em assign.ts — aviso solto em serverless se
-      // perde, e o cron termina logo depois de disparar.
-      await notifyAssigneeNewLead(admin, {
-        organizationId: orgId,
-        conversationId: conv.id,
-        assigneeUserId: manager,
-        kind: "escalated",
-      });
-      summary.escalated_to_manager += 1;
-      continue;
-    }
-
-    // Repasse (ou 1ª atribuição de conversa órfã) ao próximo online do rodízio.
-    const next = await pickNextAssignee(admin, orgId, {
-      excludeUserIds: conv.assigned_to_user_id ? [conv.assigned_to_user_id] : [],
-    });
+    const next = await pickNextAssignee(admin, orgId, {});
     if (!next) {
-      summary.left_unassigned += 1; // ninguém online — tenta no próximo tick
+      summary.left_unassigned += 1; // ninguém elegível — tenta no próximo tick
       continue;
     }
     await admin
@@ -227,46 +216,54 @@ async function sweepOrg(
       .update({
         assigned_to_user_id: next,
         assigned_at: new Date(now).toISOString(),
-        assignment_passes: passes + 1,
+        assignment_passes: 1,
       })
       .eq("id", conv.id)
       .eq("organization_id", orgId);
-    await emitAlert(admin, orgId, "attendance.reassigned", conv.id, {
-      to_user_id: next,
-      from_user_id: conv.assigned_to_user_id,
-      pass: passes + 1,
-    });
+    await emitAlert(admin, orgId, "attendance.assigned", conv.id, { to_user_id: next });
+    // AWAIT, nao `void`: ver a nota em assign.ts — aviso solto em serverless se
+    // perde, e o cron termina logo depois de disparar.
     await notifyAssigneeNewLead(admin, {
       organizationId: orgId,
       conversationId: conv.id,
       assigneeUserId: next,
-      kind: "reassigned",
+      kind: "assigned",
     });
     summary.reassigned += 1;
   }
 
-  // ── Etapa 2 — 1ª resposta SLA ──────────────────────────────────────────
+  // ── Etapa 2 — corretor não respondeu: AVISA, não tira o lead ───────────
+  //
+  // Como o lead nunca passa adiante (etapa 1), esta é a única cobrança que
+  // existe. Ela olha TODA conversa com dono, não só `status='claimed'`: o
+  // corretor atende do celular e nunca clica "Assumir", então a conversa dele
+  // fica em `pending` — filtrar por 'claimed' deixaria justamente o caso que
+  // importa (atribuído e sem resposta) fora do alerta.
   const { data: claimedRows } = await admin
     .from("conversations")
-    .select("id, assigned_to_user_id, status_changed_at, contacts:contact_id (id, is_internal, phone_number)")
+    .select(
+      "id, assigned_to_user_id, assigned_at, status_changed_at, contacts:contact_id (id, is_internal, phone_number)",
+    )
     .eq("organization_id", orgId)
-    .eq("status", "claimed")
+    .not("assigned_to_user_id", "is", null)
     .is("first_response_alerted_at", null);
 
   for (const conv of (claimedRows ?? []) as unknown as ClaimedConv[]) {
     if (primeiroContato(conv.contacts)?.is_internal) continue; // equipe não gera alerta
-    const claimedAt = new Date(conv.status_changed_at).getTime();
-    if (claimedAt > respCutoff) continue;
+    const desde = conv.assigned_at ?? conv.status_changed_at;
+    if (new Date(desde).getTime() > respCutoff) continue;
 
-    // Houve resposta humana após o claim? (bot fica silenciado pós-handoff,
-    // então qualquer outbound depois do claim é humano.)
+    // Resposta HUMANA depois da atribuição. Só 'external_device' (celular do
+    // corretor) e 'user' (composer do CRM) contam: a conversa pode seguir
+    // atribuída com o bot ainda falando, e mensagem de bot não é atendimento.
     const { count } = await admin
       .from("messages")
       .select("id", { count: "exact", head: true })
       .eq("organization_id", orgId)
       .eq("conversation_id", conv.id)
       .eq("direction", "outbound")
-      .gt("created_at", conv.status_changed_at);
+      .in("sent_via", ["external_device", "user"])
+      .gt("created_at", desde);
     if ((count ?? 0) > 0) continue; // já respondeu
 
     await admin
