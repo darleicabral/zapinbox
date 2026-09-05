@@ -31,7 +31,7 @@ import type { McpContext } from "@/lib/mcp/types";
 import { computeCostCents } from "./cost";
 import { finalizeRun } from "./finalize";
 import { sendFinalResponse } from "./finalize";
-import { avisoDeAgenda, botParouSemResolver, finalizeHandoff } from "./handoff";
+import { botParouSemResolver, finalizeHandoff, motivoDoLeadParaEncaminhar } from "./handoff";
 import { loadHistoryWithBudget } from "./history";
 import { mintEphemeralToken, revokeEphemeralToken } from "./mcp_token";
 import { pickToolsFromMcp, type RuntimeHandoffSignal } from "./tools";
@@ -499,7 +499,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     // no trabalho" / "mais tarde" / "à noite" está dando um dado de agenda, não
     // fugindo. Vai pro corretor com o recado escrito no aviso. Nasceu do Marcos,
     // que avisou que estava trabalhando e seguiu sendo qualificado e cobrado.
-    const recadoDeAgenda = avisoDeAgenda(inboundBody ?? "");
+    const recadoDeAgenda = motivoDoLeadParaEncaminhar(inboundBody ?? "");
     if (handoffSignal.triggered || promessaSemTool || recadoDeAgenda) {
       const motivo = handoffSignal.triggered
         ? ((handoffSignal.reason as never) ?? "requested_human")

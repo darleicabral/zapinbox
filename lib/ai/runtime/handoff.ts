@@ -32,7 +32,7 @@ export type HandoffSource = "sentinel" | "tool" | "promessa" | "adiamento";
  * `amanhã\b` NUNCA casam (foi o que quebrou "à noite" e "amanhã" no primeiro
  * teste). As frases aqui são específicas o bastante pra dispensar âncora.
  */
-const AVISOS_DE_AGENDA: { rx: RegExp; recado: string }[] = [
+const MOTIVOS_NA_FALA_DO_LEAD: { rx: RegExp; recado: string }[] = [
   {
     rx: /(?:^|[^\p{L}])(estou|est[oô]|t[oô]) no (trabalho|trampo)/iu,
     recado: "O lead está no trabalho agora e avisou que não pode falar.",
@@ -53,13 +53,29 @@ const AVISOS_DE_AGENDA: { rx: RegExp; recado: string }[] = [
     rx: /(amanh[aã]|na segunda|no s[aá]bado)[^.!?]{0,20}(a gente|eu (te )?(falo|chamo|vejo)|conversamos)/iu,
     recado: "O lead pediu pra retomar em outro dia.",
   },
+  // 05/09/2026, regra do Darlei: "se pedirem o endereco completo, ja pode passar
+  // direto para o corretor sem ficar pedindo autorizacao do lead". No print o
+  // lead insistiu no endereco e a IA ficou perguntando se podia chamar alguem.
+  //
+  // "localizacao" sozinho NAO entra de proposito: a essa o bot responde com o
+  // bairro, que e informacao boa e nao precisa de humano. Aqui e endereco de
+  // rua, numero, ou o pin do mapa.
+  {
+    rx: /endere[çc]o|qual (é )?(a )?rua|nome da rua|n[uú]mero da casa|localiza[çc][ãa]o (exata|completa|precisa)|(manda|envia|passa|mandar|enviar)[^.!?]{0,12}localiza[çc][ãa]o/iu,
+    recado: "O lead pediu o ENDEREÇO do imóvel — quem passa endereço e marca visita é você.",
+  },
 ];
 
-/** Pura. Devolve o recado pro corretor, ou null quando não é aviso de agenda. */
-export function avisoDeAgenda(textoDoLead: string): string | null {
+/**
+ * A fala do lead já pede corretor? Pura. Devolve o recado, ou null.
+ *
+ * Duas famílias hoje: aviso de agenda (ele disse quando pode falar) e pedido de
+ * endereço (é o corretor que passa endereço e marca a visita).
+ */
+export function motivoDoLeadParaEncaminhar(textoDoLead: string): string | null {
   const t = (textoDoLead ?? "").trim();
   if (!t) return null;
-  for (const { rx, recado } of AVISOS_DE_AGENDA) {
+  for (const { rx, recado } of MOTIVOS_NA_FALA_DO_LEAD) {
     if (rx.test(t)) return `${recado} Ele escreveu: "${t.slice(0, 120)}"`;
   }
   return null;

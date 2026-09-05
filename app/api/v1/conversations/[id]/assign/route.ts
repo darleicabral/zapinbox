@@ -24,7 +24,7 @@ import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { ApiError } from "@/lib/api/types";
 import { ok, fail } from "@/lib/api/wrappers";
-import { avisoDeAgenda } from "@/lib/ai/runtime/handoff";
+import { motivoDoLeadParaEncaminhar } from "@/lib/ai/runtime/handoff";
 import { notifyAssigneeNewLead } from "@/lib/attendance/notify";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
     .limit(3);
   const recado =
     ((ultimasDoLead ?? []) as { body: string | null }[])
-      .map((m) => avisoDeAgenda(m.body ?? ""))
+      .map((m) => motivoDoLeadParaEncaminhar(m.body ?? ""))
       .find((r) => r !== null) ?? null;
 
   // Aviso no WhatsApp do corretor. Client ADMIN: a notificação lê contato,
