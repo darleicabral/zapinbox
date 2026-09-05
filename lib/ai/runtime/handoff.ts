@@ -66,7 +66,8 @@ export function avisoDeAgenda(textoDoLead: string): string | null {
 }
 
 /**
- * Frases em que o bot promete que OUTRA PESSOA (ou ele mesmo, depois) resolve.
+ * Frases em que o bot PARA sem resolver: promete humano, promete voltar com uma
+ * resposta que nunca vem, ou fica esperando o cliente trazer a data da visita.
  *
  * 🐛 04/09/2026 — o lead perguntou sobre permuta e o bot respondeu "Boa
  * pergunta, deixa eu confirmar isso certinho com a equipe" SEM chamar a tool de
@@ -79,40 +80,62 @@ export function avisoDeAgenda(textoDoLead: string): string | null {
  * DeepSeek contra ~75% no Sonnet). Outra regra no prompt não resolve: quem
  * promete humano aqui passa a ser honrado pelo SISTEMA.
  */
-const ESPERA_SEM_VOLTA: RegExp[] = [
-  /s[oó] um momento/i,
-  /j[aá] te retorno/i,
-  /j[aá] confirmo isso/i,
-  /com a equipe/i,
-  /prefiro que o corretor/i,
-  /quem te (passa|explica) certinho/i,
-  /ficar[aá] pronta em instantes/i,
-  // "pro" além de "pra/para": o bot escreve "vou te encaminhar PRO Gilvam"
-  /vou (te )?(encaminhar|passar) (pro|pra|para)/i,
-  /vou chamar (o|a) (corretor|consultor)/i,
+const PARADAS_SEM_SOLUCAO: { rx: RegExp; recado: string }[] = [
+  // ── promete humano e não chama ninguém (o caso do Ronaldo, 04/09) ──
+  {
+    rx: /s[oó] um momento|j[aá] te retorno|j[aá] confirmo isso|ficar[aá] pronta em instantes/i,
+    recado: "A IA pediu pro cliente esperar e não voltou.",
+  },
+  {
+    rx: /com a equipe|prefiro que o corretor|quem te (passa|explica) certinho|vou (te )?(encaminhar|passar) (pro|pra|para)|vou chamar (o|a) (corretor|consultor)/i,
+    recado: "A IA disse ao cliente que alguém da equipe assumiria.",
+  },
+  // ── 05/09: não soube responder e ficou de voltar ──
+  // "Você tem terrenos menor?" / "Boa pergunta! Deixa eu ver o que temos em
+  // terrenos menores por aqui pra te passar certinho." E não voltou.
+  {
+    rx: /deixa eu (ver|confirmar|checar|conferir|dar uma olhada)|vou (ver|verificar|checar|conferir|dar uma olhada)|te (passar|passo|mandar|mando).{0,12}certinho/i,
+    recado: "A IA não soube responder a pergunta e ficou de retornar.",
+  },
+  // ── 05/09: visita que não fechou ──
+  // "Vou me organizar e te retorno" / "Fechado! Vou deixar anotado... me chama
+  // que eu já confirmo a agenda." Ninguém marcou nada, e a cadência foi cobrar.
+  {
+    rx: /quando (voc[êe] )?(confirmar|decidir|souber|tiver certeza)|me chama (que|quando)|vou deixar anotado|t[oô] (por )?aqui pra/i,
+    recado: "O cliente quer visitar, mas a IA não fechou dia e horário.",
+  },
 ];
 
 /**
- * Só olha o ÚLTIMO parágrafo, e é isso que separa promessa de muleta.
+ * O bot ENCERROU o turno sem resolver? Devolve o recado pro corretor, ou null.
  *
- * Nos dados: quando é muleta o bot continua e responde ("Deixa eu confirmar
- * certinho essa casa no catálogo." + "Confirmei aqui: é ..."), e a espera fica
- * no meio. Quando é abandono, a espera é a última coisa dita. Sem esse recorte,
- * 24 de 27 execuções cairiam aqui e o bot seria silenciado à toa.
+ * Regra do Darlei (05/09/2026), com dois prints: "a IA não deveria insistir
+ * assim, poderia passar para o corretor. Ele disse que quer visitar, mas o
+ * agente não conseguiu agendar" e "nesse aqui a IA não soube responder a
+ * pergunta, passe ao corretor também".
+ *
+ * SÓ O ÚLTIMO PARÁGRAFO, e é isso que separa parada de muleta. Quando é muleta
+ * o bot continua e responde ("Deixa eu confirmar essa casa no catálogo." +
+ * "Confirmei aqui: é ..."), e a frase fica no meio. Quando ele para de verdade,
+ * ela é a última coisa dita. Sem esse recorte, 24 de 27 execuções medidas em
+ * 04/09 cairiam aqui e o bot seria silenciado à toa.
  */
-export function prometeuHumano(texto: string): boolean {
-  const partes = texto
+export function botParouSemResolver(texto: string): string | null {
+  const partes = (texto ?? "")
     .split(/\n[ \t]*\n+/)
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
   const ultima = partes[partes.length - 1] ?? "";
-  if (!ESPERA_SEM_VOLTA.some((rx) => rx.test(ultima))) return false;
-  // Terminar PERGUNTANDO não é prometer: "quem te passa certinho é o corretor.
-  // Quer que eu chame ele agora?" espera a resposta do lead. Acionar ali
-  // silenciaria o bot antes de o cliente dizer se quer, e um "não, deixa"
-  // ficaria sem resposta. Emoji no fim é comum, então sai antes de olhar o "?".
+  if (!ultima) return null;
+  // Terminar PERGUNTANDO não é parar: "Quer que eu chame ele agora?" espera a
+  // resposta do lead, e acionar ali silenciaria o bot antes de o cliente dizer
+  // se quer. Emoji no fim é comum, então sai antes de olhar o "?".
   const semEmoji = ultima.replace(/[\s\p{Extended_Pictographic}️‍]+$/gu, "");
-  return !semEmoji.endsWith("?");
+  if (semEmoji.endsWith("?")) return null;
+  for (const { rx, recado } of PARADAS_SEM_SOLUCAO) {
+    if (rx.test(ultima)) return recado;
+  }
+  return null;
 }
 
 export interface FinalizeHandoffInput {

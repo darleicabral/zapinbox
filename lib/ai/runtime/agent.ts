@@ -31,7 +31,7 @@ import type { McpContext } from "@/lib/mcp/types";
 import { computeCostCents } from "./cost";
 import { finalizeRun } from "./finalize";
 import { sendFinalResponse } from "./finalize";
-import { avisoDeAgenda, finalizeHandoff, prometeuHumano } from "./handoff";
+import { avisoDeAgenda, botParouSemResolver, finalizeHandoff } from "./handoff";
 import { loadHistoryWithBudget } from "./history";
 import { mintEphemeralToken, revokeEphemeralToken } from "./mcp_token";
 import { pickToolsFromMcp, type RuntimeHandoffSignal } from "./tools";
@@ -493,7 +493,8 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     // esperou 33 minutos por alguém que nunca foi avisado. Quem promete humano
     // aqui é honrado pelo sistema, não pela boa vontade do modelo. Ver
     // prometeuHumano: só o último parágrafo conta, senão muleta viraria handoff.
-    const promessaSemTool = !handoffSignal.triggered && prometeuHumano(result.text ?? "");
+    const paradaDoBot = handoffSignal.triggered ? null : botParouSemResolver(result.text ?? "");
+    const promessaSemTool = paradaDoBot != null;
     // AVISO DE AGENDA (04/09/2026, regra do Darlei): o lead que responde "estou
     // no trabalho" / "mais tarde" / "à noite" está dando um dado de agenda, não
     // fugindo. Vai pro corretor com o recado escrito no aviso. Nasceu do Marcos,
@@ -527,7 +528,9 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
         conversationId: conversationIdForHandoff,
         reason: motivo,
         source: origem,
-        observacao: recadoDeAgenda,
+        // Recado do LEAD tem prioridade (as palavras dele valem mais que a
+        // nossa leitura); sem ele, vai o motivo da parada do bot.
+        observacao: recadoDeAgenda ?? paradaDoBot,
         latencyMs,
         tokensIn: usage.inputTokens,
         tokensOut: usage.outputTokens,
