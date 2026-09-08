@@ -34,15 +34,25 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+/**
+ * Cada lead custa ~5s: o aviso pelo WAHA e a leitura do resumo dominam. Medido
+ * em produção em 08/09/2026 com um lead só. Sem isto, o padrão de 10s derruba
+ * o lote inteiro com 503 antes de atribuir qualquer coisa — foi o que
+ * aconteceu na primeira tentativa de distribuir 25.
+ */
+export const maxDuration = 300;
 
 /** Papéis que atendem lead. Admin fora: "o dono não é corretor". */
 const PAPEIS_QUE_ATENDEM = ["agent", "manager"];
 
 /**
- * Teto por chamada. Cada item acorda um corretor no WhatsApp; lote gigante num
- * clique é o caminho mais curto pro incidente de 01/09 de novo.
+ * Teto por chamada. Dois motivos, e os dois importam:
+ *  - TEMPO: ~5s por lead, então 10 é ~50s, com folga dentro do maxDuration.
+ *  - VOLUME: cada item acorda um corretor no WhatsApp, e lote gigante num
+ *    clique é o caminho mais curto pro incidente de 01/09 de novo.
+ * A tela manda vários blocos em sequência quando a seleção é maior.
  */
-const TETO_POR_LOTE = 25;
+const TETO_POR_LOTE = 10;
 
 const distribuirSchema = z.object({
   conversation_ids: z.array(z.string().uuid()).min(1).max(TETO_POR_LOTE),

@@ -18,6 +18,7 @@ import {
   useDistribuirLeads,
   useFilaSemCorretor,
   type JanelaFila,
+  type ResultadoDistribuicao,
 } from "@/hooks/attendance/useFilaSemCorretor";
 import type { LeadSemCorretor } from "@/lib/attendance/fila-parada";
 import type { LinhaCorretor } from "@/lib/reports/distribuicao";
@@ -81,20 +82,23 @@ export function FilaSemCorretor({ corretores }: { corretores: LinhaCorretor[] })
   const [dias, setDias] = useState<JanelaFila>(7);
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
   const [alvo, setAlvo] = useState<string>("rodizio");
+  const [progresso, setProgresso] = useState<{ feitos: number; total: number } | null>(null);
+  const [resumo, setResumo] = useState<ResultadoDistribuicao | null>(null);
   const { data, isLoading, isFetching } = useFilaSemCorretor(dias);
   const distribuir = useDistribuirLeads();
 
   // useMemo no fallback: `?? []` cria array nova a cada render e faria o
   // useMemo de baixo recalcular sempre (o lint reclama disso, com razão).
   const leads = useMemo(() => data?.leads ?? [], [data?.leads]);
-  // O teto do servidor é 25 por chamada; a tela precisa dizer isso ANTES do
-  // clique, senão o gestor marca 46 e leva um 422 sem entender.
-  const TETO = 25;
+  // O servidor aceita 10 por chamada porque cada lead custa ~5s (aviso pelo
+  // WAHA). Mandar os 25 de uma vez deu 503 e ZERO atribuição na primeira
+  // tentativa, em 08/09/2026. Então a seleção pode ser grande e a tela quebra
+  // em blocos, em sequência, mostrando o progresso.
+  const BLOCO = 10;
   const selecionados = useMemo(
     () => leads.filter((l) => marcados.has(l.conversationId)),
     [leads, marcados],
   );
-  const passouDoTeto = selecionados.length > TETO;
 
   function marcar(id: string, v: boolean) {
     setMarcados((atual) => {
@@ -106,16 +110,30 @@ export function FilaSemCorretor({ corretores }: { corretores: LinhaCorretor[] })
   }
 
   function marcarTodos(v: boolean) {
-    setMarcados(v ? new Set(leads.slice(0, TETO).map((l) => l.conversationId)) : new Set());
+    setMarcados(v ? new Set(leads.map((l) => l.conversationId)) : new Set());
   }
 
   async function enviar() {
-    const ids = selecionados.slice(0, TETO).map((l) => l.conversationId);
+    const ids = selecionados.map((l) => l.conversationId);
     if (ids.length === 0) return;
-    await distribuir.mutateAsync({
-      conversationIds: ids,
-      userId: alvo === "rodizio" ? undefined : alvo,
-    });
+    let feitos = 0;
+    const somaDistribuidos: ResultadoDistribuicao["distribuidos"] = [];
+    const somaPulados: ResultadoDistribuicao["pulados"] = [];
+    // Sequencial, nunca em paralelo: o rodízio avança um ponteiro no banco, e
+    // blocos concorrentes dariam o mesmo corretor pra todo mundo.
+    for (let i = 0; i < ids.length; i += BLOCO) {
+      const bloco = ids.slice(i, i + BLOCO);
+      const r = await distribuir.mutateAsync({
+        conversationIds: bloco,
+        userId: alvo === "rodizio" ? undefined : alvo,
+      });
+      somaDistribuidos.push(...r.distribuidos);
+      somaPulados.push(...r.pulados);
+      feitos += bloco.length;
+      setProgresso({ feitos, total: ids.length });
+    }
+    setResumo({ distribuidos: somaDistribuidos, pulados: somaPulados });
+    setProgresso(null);
     setMarcados(new Set());
   }
 
@@ -159,7 +177,7 @@ export function FilaSemCorretor({ corretores }: { corretores: LinhaCorretor[] })
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
             <div className="flex items-center gap-3">
               <Button size="sm" variant="ghost" onClick={() => marcarTodos(true)}>
-                Marcar {Math.min(leads.length, TETO)}
+                Marcar todos ({leads.length})
               </Button>
               {marcados.size > 0 && (
                 <Button size="sm" variant="ghost" onClick={() => marcarTodos(false)}>
@@ -188,27 +206,30 @@ export function FilaSemCorretor({ corretores }: { corretores: LinhaCorretor[] })
                 disabled={selecionados.length === 0 || distribuir.isPending}
                 onClick={() => void enviar()}
               >
-                {distribuir.isPending
-                  ? "Enviando…"
-                  : `Distribuir e avisar (${Math.min(selecionados.length, TETO)})`}
+                {progresso
+                  ? `Enviando ${progresso.feitos}/${progresso.total}…`
+                  : distribuir.isPending
+                    ? "Enviando…"
+                    : `Distribuir e avisar (${selecionados.length})`}
               </Button>
             </div>
           </div>
 
-          {passouDoTeto && (
-            <p className="mt-2 text-xs text-warning-fg">
-              Marcados {selecionados.length}, e o envio vai até {TETO} por vez. Os primeiros {TETO}{" "}
-              da lista saem agora; repita pro resto.
+          {selecionados.length > BLOCO && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              São {selecionados.length} selecionados. O envio vai em blocos de {BLOCO}, um após o
+              outro, porque cada aviso leva alguns segundos — dá uns{" "}
+              {Math.ceil((selecionados.length * 5) / 60)} min. Deixe a aba aberta.
             </p>
           )}
 
-          {distribuir.data && (
+          {resumo && !progresso && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Último envio: {distribuir.data.distribuidos.length} distribuído(s)
-              {distribuir.data.distribuidos.filter((d) => !d.notified).length > 0 &&
-                `, ${distribuir.data.distribuidos.filter((d) => !d.notified).length} sem aviso no WhatsApp (corretor sem número cadastrado)`}
-              {distribuir.data.pulados.length > 0 &&
-                `, ${distribuir.data.pulados.length} pulado(s) por já ter dono`}
+              Último envio: {resumo.distribuidos.length} distribuído(s)
+              {resumo.distribuidos.filter((d) => !d.notified).length > 0 &&
+                `, ${resumo.distribuidos.filter((d) => !d.notified).length} sem aviso no WhatsApp (corretor sem número cadastrado)`}
+              {resumo.pulados.length > 0 &&
+                `, ${resumo.pulados.length} pulado(s) por já ter dono`}
               .
             </p>
           )}
