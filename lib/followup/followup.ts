@@ -62,6 +62,8 @@ interface ConvRow {
   contact_id: string | null;
   status: string;
   last_inbound_at: string | null;
+  /** Nossa ultima fala. Se for mais antiga que a dele, DEVEMOS uma resposta. */
+  last_outbound_at: string | null;
   last_followup_at: string | null;
   followup_step: number;
   bot_silenced_until: string | null;
@@ -279,7 +281,7 @@ async function sweepOrg(
   const { data: rows } = await admin
     .from("conversations")
     .select(
-      "id, created_at, contact_id, status, last_inbound_at, last_followup_at, followup_step, bot_silenced_until, assigned_to_user_id, contacts:contact_id(display_name, is_blocked, force_human, is_internal)",
+      "id, created_at, contact_id, status, last_inbound_at, last_outbound_at, last_followup_at, followup_step, bot_silenced_until, assigned_to_user_id, contacts:contact_id(display_name, is_blocked, force_human, is_internal)",
     )
     .eq("organization_id", orgId)
     .in("status", ["open", "ai_handling"])
@@ -288,6 +290,21 @@ async function sweepOrg(
   for (const conv of (rows ?? []) as unknown as ConvRow[]) {
     // Conversa que já existia quando o reengajamento foi ativado nunca entra.
     if (!conversaElegivelPorAtivacao(conv.created_at, settings.enabled_at)) continue;
+
+    // 🐛 07-08/09/2026 — O BOT MORREU (o provider passou a exigir um header) e a
+    // cadencia seguiu rodando: 332 mensagens em 50 conversas cobrando lead que
+    // NUNCA recebeu resposta. "Oi, ainda ta por ai?" pra quem escreveu e ficou
+    // no vacuo e ofensivo, e nao e reengajamento: a gente deve a resposta.
+    //
+    // A bola tem de estar com o LEAD. Se a nossa ultima fala e mais antiga que a
+    // dele, ninguem respondeu ainda e a cadencia fica calada. Isso tambem serve
+    // de rede pra qualquer falha futura do agente, sem precisar saber a causa.
+    if (
+      !conv.last_outbound_at ||
+      new Date(conv.last_outbound_at).getTime() < new Date(conv.last_inbound_at!).getTime()
+    ) {
+      continue;
+    }
     if (!conv.contacts || conv.contacts.is_blocked || conv.contacts.force_human) continue;
     if (conv.contacts.is_internal) continue; // corretor não recebe cadência de lead
     // Transferida pra humano (silenciada) → cadência não roda.
