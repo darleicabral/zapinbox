@@ -110,7 +110,34 @@ export function parseChatId(chatId: string): ChatIdentity {
   return { kind: "group", phone: null, lid: null };
 }
 
-const STOP_RX = /\b(STOP|PARAR|SAIR|UNSUBSCRIBE)\b/i;
+/**
+ * Pedido de descadastro. Bloquear o contato é irreversível na prática (o bot
+ * emudece e ninguém é avisado), então a barra é alta: só conta como pedido o que
+ * é INEQUÍVOCO.
+ *
+ * Duas formas valem:
+ *  1. A palavra-comando SOZINHA na mensagem ("PARAR", "sair.", "STOP").
+ *  2. Uma frase que só existe para descadastrar ("me tira da lista",
+ *     "não quero mais receber mensagens").
+ *
+ * O que NÃO vale é a palavra solta no meio de uma frase — foi o que bloqueou
+ * dois leads reais da Avant, os dois querendo comprar:
+ *   01/09 "Aqui tive que sair e só vou chegar depois de 19:00 tem como ser
+ *          amanhã na parte da manhã?"  (estava MARCANDO VISITA)
+ *   08/09 "E não queria sair da régua"
+ * Em 1000 mensagens recebidas medidas em 08/09/2026, a regra antiga acertou
+ * ZERO vezes e errou essas duas.
+ */
+const STOP_COMANDO_RX = /^[\s\p{P}]*(stop|parar|sair|cancelar|descadastrar|remover|unsubscribe)[\s\p{P}]*$/iu;
+
+const STOP_FRASE_RX =
+  /(me\s+(tir[ae]|remov[ae]|exclu[ai])\s+d[ao]s?\s+(lista|grupo|cadastro))|(n[ãa]o\s+quero\s+(mais\s+)?receber)|(pare\s+de\s+me\s+(mandar|enviar))|(descadastr\w*\s+me)|(quero\s+(me\s+)?descadastrar)|(sair\s+d[ao]\s+(lista|cadastro))/i;
+
+export function pediuDescadastro(body: string | null | undefined): boolean {
+  const t = (body ?? "").trim();
+  if (!t) return false;
+  return STOP_COMANDO_RX.test(t) || STOP_FRASE_RX.test(t);
+}
 
 export function verifyHmacSha512(
   rawBody: string,
@@ -500,7 +527,7 @@ async function handleInbound(
     requestId,
   });
 
-  if (p.body && STOP_RX.test(p.body)) {
+  if (pediuDescadastro(p.body)) {
     await admin
       .from("contacts")
       .update({ is_blocked: true, blocked_reason: "stop_keyword", blocked_at: now })

@@ -639,15 +639,36 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     // 16) Happy path. Send WAHA reply when not dry-run (nunca no modo silencioso).
     let outboundMessageId: string | null = null;
     const finalText = (result.text ?? "").trim();
-    if (!run.is_dry_run && finalText && run.conversation_id && replyMode !== "silent") {
+    // Guarda o id em vez de um boolean: assim o TS sabe que a conversa existe
+    // dentro do if, e a MESMA condição serve pra cobrar a entrega logo abaixo.
+    const convParaFalar =
+      !run.is_dry_run && finalText && replyMode !== "silent" ? run.conversation_id : null;
+    if (convParaFalar) {
       outboundMessageId = await sendFinalResponse({
         supabase: admin,
         organizationId: run.organization_id,
         runId: run.id,
-        conversationId: run.conversation_id,
+        conversationId: convParaFalar,
         text: finalText,
         requestId: run.id,
       });
+    }
+
+    // O run que gera texto e não entrega NADA é fracasso, não sucesso.
+    //
+    // Em 08/09/2026 a lead fernanda márcia foi bloqueada por engano (a palavra
+    // "sair" no meio de uma frase) e o envio passou a ser recusado com 422.
+    // Ela ficou sem resposta enquanto SEIS runs seguidos se gravavam como
+    // `completed` — a tela dizia que estava tudo bem. Marcar como falha aqui é o
+    // que faz esse caso aparecer em qualquer contagem de erro, junto com queda
+    // de provider e sessão do WAHA caída.
+    if (convParaFalar && !outboundMessageId) {
+      return await failRun(
+        run,
+        "delivery_failed",
+        "o agente gerou resposta e nenhum balão foi entregue (contato bloqueado, sessão do WhatsApp caída ou recusa do WAHA)",
+        startedAt,
+      );
     }
 
     await finalizeRun({
