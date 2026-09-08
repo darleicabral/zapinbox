@@ -122,7 +122,12 @@ function buildSentinelRegex(keywords: string[]): RegExp | null {
  * "Unauthenticated. Configure AI_GATEWAY_API_KEY or use a provider module.",
  * which is exactly what this does — a direct provider module per `provider`.
  */
-function buildModel(provider: string, apiKey: string, modelId: string): LanguageModel {
+function buildModel(
+  provider: string,
+  apiKey: string,
+  modelId: string,
+  sessionId?: string,
+): LanguageModel {
   switch (provider) {
     case "anthropic":
       return createAnthropic({ apiKey })(modelId);
@@ -137,7 +142,20 @@ function buildModel(provider: string, apiKey: string, modelId: string): Language
       // endpoint /chat/completions, por isso `.chat(modelId)` em vez do default
       // `(modelId)` — o default do @ai-sdk/openai fala com /responses, que o gateway
       // só expõe pra família GPT. Mesma chave de workspace vale pra Go e Zen.
-      return createOpenAI({ apiKey, baseURL: "https://opencode.ai/zen/go/v1" }).chat(modelId);
+      // 🐛 06/09/2026 21h BRT — o Go passou a EXIGIR `x-opencode-session` e o bot
+      // morreu por 2 dias em silêncio: 156 runs com HTTP 400
+      // "MissingSessionID: Request is missing x-opencode-session and cannot be
+      // routed efficiently", zero resposta e zero encaminhamento em 07 e 08/09.
+      // Provado: sem o header 400, com QUALQUER valor 200.
+      //
+      // O valor é o id da CONVERSA de propósito: o header serve pra roteamento e
+      // afinidade de cache, e o prompt do sistema tem ~8k tokens. Id estável por
+      // conversa mantém o cache quente entre os turnos dela.
+      return createOpenAI({
+        apiKey,
+        baseURL: "https://opencode.ai/zen/go/v1",
+        headers: { "x-opencode-session": sessionId || "zapinbox" },
+      }).chat(modelId);
     default:
       throw new Error(`unsupported_provider: ${provider}`);
   }
@@ -418,7 +436,14 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       : [];
 
     // 9) Build LM directly against the provider (BYOK credential — see buildModel doc).
-    const model = buildModel(version.provider, credentialApiKey, version.model);
+    // Sessao do provider = conversa (ver buildModel). Dry-run/teste nao tem
+    // conversa, entao cai no id do run.
+    const model = buildModel(
+      version.provider,
+      credentialApiKey,
+      version.model,
+      run.conversation_id ?? run.id,
+    );
 
     // 10) Cost/token guard. Fires BEFORE the next step is taken.
     let abortReason: string | null = null;
