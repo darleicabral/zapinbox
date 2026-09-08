@@ -38,6 +38,7 @@ import {
   marcarContatoInterno,
 } from "./interno";
 import { notifyAssigneeNewLead } from "./notify";
+import { resgatarLeadsParados } from "./parados";
 import {
   inBusinessHours,
   loadAttendanceSettings,
@@ -51,6 +52,8 @@ export interface SlaSweepSummary {
   escalated_to_manager: number;
   first_response_alerts: number;
   left_unassigned: number;
+  /** Lead que ficou esperando em conversa sem dono e foi resgatado (parados.ts). */
+  rescued: number;
   errors: string[];
 }
 
@@ -83,6 +86,7 @@ function emptySummary(): SlaSweepSummary {
     escalated_to_manager: 0,
     first_response_alerts: 0,
     left_unassigned: 0,
+    rescued: 0,
     errors: [],
   };
 }
@@ -230,6 +234,11 @@ async function sweepOrg(
     summary.reassigned += 1;
   }
 
+  // Segunda rede, independente do status `pending`: lead que escreveu e ficou
+  // sem resposta de ninguém. Ver parados.ts pro porquê e pros limites.
+  const resgate = await resgatarLeadsParados(admin, orgId, { now: new Date(now) });
+  summary.rescued += resgate.resgatados;
+  summary.left_unassigned += resgate.sem_corretor;
 }
 
 export async function sweepAttendanceSla(
