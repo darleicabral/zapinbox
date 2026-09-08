@@ -46,11 +46,21 @@ export function ehTelefoneDaEquipe(
   return variantesDeTelefone(telefoneDoContato).some((v) => digitosDaEquipe.has(v));
 }
 
+/**
+ * Cache curto por org. O dispatcher e caminho quente (toda mensagem que entra),
+ * e a lista muda quando alguem cadastra telefone — 60s e curto o suficiente pra
+ * ninguem notar e longo o suficiente pra nao consultar a cada mensagem.
+ */
+const CACHE_TTL_MS = 60_000;
+const cacheTelefones = new Map<string, { em: number; fones: Set<string> }>();
+
 /** Todos os telefones de aviso da org, nas duas formas. Uma query por passada. */
 export async function carregarTelefonesDaEquipe(
   client: SupabaseClient,
   organizationId: string,
 ): Promise<Set<string>> {
+  const emCache = cacheTelefones.get(organizationId);
+  if (emCache && Date.now() - emCache.em < CACHE_TTL_MS) return emCache.fones;
   const { data, error } = await client
     .from("user_organizations")
     .select("notify_whatsapp_e164")
@@ -68,6 +78,7 @@ export async function carregarTelefonesDaEquipe(
   for (const linha of (data ?? []) as { notify_whatsapp_e164: string | null }[]) {
     for (const v of variantesDeTelefone(linha.notify_whatsapp_e164)) fora.add(v);
   }
+  cacheTelefones.set(organizationId, { em: Date.now(), fones: fora });
   return fora;
 }
 

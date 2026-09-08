@@ -24,6 +24,11 @@ import { randomUUID } from "node:crypto";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { env } from "@/lib/env";
+import {
+  carregarTelefonesDaEquipe,
+  ehTelefoneDaEquipe,
+  marcarContatoInterno,
+} from "@/lib/attendance/interno";
 import { logger } from "@/lib/logger";
 import { checkTenantBudget } from "./budget";
 import { checkRateLimit } from "./rate-limit";
@@ -289,7 +294,7 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
   const { data: convRow } = await admin
     .from("conversations")
     .select(
-      "id, organization_id, is_group, group_chat_id, bot_silenced_until, contacts:contact_id (is_internal)",
+      "id, organization_id, is_group, group_chat_id, bot_silenced_until, contacts:contact_id (id, phone_number, is_internal)",
     )
     .eq("id", conversationId)
     .eq("organization_id", orgId)
@@ -305,12 +310,25 @@ async function processEvent(event: EventRow): Promise<DispatchOutcome> {
   // corretor (aconteceu: 42 mensagens da IA na conversa de um deles).
   const contatoEmbutido = (convRow as { contacts?: unknown }).contacts;
   const contatoDaConversa = (Array.isArray(contatoEmbutido) ? contatoEmbutido[0] : contatoEmbutido) as
-    | { is_internal?: boolean | null }
+    | { id?: string; phone_number?: string | null; is_internal?: boolean | null }
     | null
     | undefined;
   if (contatoDaConversa?.is_internal) {
     await markEventProcessed(event, "skipped_internal_contact");
     return "skipped_internal_contact";
+  }
+  // A flag pode nao ter chegado ainda: o auto-cura mora no sweep de SLA, que so
+  // olha conversa `pending` vencida. Em 08/09 o contato do Gilvam ainda estava
+  // sem marca as 14h49, o bot atendeu o proprio corretor e chegou a encaminhar
+  // pra outro; a marca so veio as 15h02, pelo sweep. Aqui a gente compara o
+  // telefone na hora (lista cacheada por 60s) e marca de uma vez.
+  if (contatoDaConversa?.id && contatoDaConversa.phone_number) {
+    const telefonesDaEquipe = await carregarTelefonesDaEquipe(admin, orgId);
+    if (ehTelefoneDaEquipe(contatoDaConversa.phone_number, telefonesDaEquipe)) {
+      await marcarContatoInterno(admin, orgId, contatoDaConversa.id);
+      await markEventProcessed(event, "skipped_internal_contact", { reason: "telefone_da_equipe" });
+      return "skipped_internal_contact";
+    }
   }
 
   // Pós-handoff o bot fica mudo: bot_silenced_until='infinity' (EPIC-06/IA-06).
