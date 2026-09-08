@@ -91,24 +91,36 @@ export async function listarLeadsSemCorretor(
   });
   if (candidatas.length === 0) return [];
 
-  // Uma query pra todas as conversas: contar mensagem por conversa numa varredura
-  // só, em vez de N+1 (eram 88 conversas na Avant).
+  // Varredura só das conversas candidatas, em vez de N+1 (eram 88 na Avant).
+  //
+  // ⚠️ PAGINADO de propósito: `.limit(4000)` NÃO funciona aqui, porque o
+  // PostgREST corta a resposta no `db-max-rows` do servidor (1000 no Supabase).
+  // Com o corte silencioso, conversa cujas mensagens ficam fora da janela das
+  // mil mais recentes é contada como zero e desaparece da lista — o número da
+  // tela passaria a depender do volume total do tenant. Errei isso na primeira
+  // versão e só não deu problema porque uma página bastava.
   const ids = candidatas.map((c) => c.id);
-  const { data: msgs } = await client
-    .from("messages")
-    .select("conversation_id, body, created_at")
-    .eq("organization_id", organizationId)
-    .eq("direction", "inbound")
-    .in("conversation_id", ids)
-    .order("created_at", { ascending: false })
-    .limit(4000);
-
+  const PAGINA = 1000;
   const porConversa = new Map<string, { total: number; ultima: string }>();
-  for (const m of (msgs ?? []) as { conversation_id: string; body: string | null }[]) {
-    const atual = porConversa.get(m.conversation_id);
-    if (atual) atual.total += 1;
-    // A primeira que aparece é a mais recente (ordem desc).
-    else porConversa.set(m.conversation_id, { total: 1, ultima: (m.body ?? "").trim() });
+  for (let pagina = 0; ; pagina++) {
+    const { data: msgs, error: msgErr } = await client
+      .from("messages")
+      .select("conversation_id, body")
+      .eq("organization_id", organizationId)
+      .eq("direction", "inbound")
+      .in("conversation_id", ids)
+      .order("created_at", { ascending: false })
+      .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
+    if (msgErr) throw new Error(msgErr.message);
+    const lote = (msgs ?? []) as { conversation_id: string; body: string | null }[];
+    for (const m of lote) {
+      const atual = porConversa.get(m.conversation_id);
+      if (atual) atual.total += 1;
+      // A primeira que aparece é a mais recente: a ordem desc vale entre as
+      // páginas também, porque elas são lidas em sequência.
+      else porConversa.set(m.conversation_id, { total: 1, ultima: (m.body ?? "").trim() });
+    }
+    if (lote.length < PAGINA) break;
   }
 
   const saida: LeadSemCorretor[] = [];
