@@ -9,6 +9,8 @@ import {
 } from "@/hooks/reports/useDistribuicaoReport";
 import type { LinhaCorretor } from "@/lib/reports/distribuicao";
 
+import { FilaSemCorretor } from "./_fila";
+
 const JANELAS: { v: JanelaDistribuicao; label: string }[] = [
   { v: 0, label: "Hoje" },
   { v: 7, label: "7 dias" },
@@ -128,6 +130,8 @@ export function DistribuicaoClient() {
           linhas.map((c) => <Linha key={c.userId} c={c} max={max} />)
         )}
       </Card>
+
+      <FilaSemCorretor corretores={linhas} />
 
       <p className="text-xs text-muted-foreground">
         A janela conta pela <strong>chegada</strong> do lead, e <strong>encaminhados</strong> é o
