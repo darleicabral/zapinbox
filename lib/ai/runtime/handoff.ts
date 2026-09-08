@@ -64,6 +64,27 @@ const MOTIVOS_NA_FALA_DO_LEAD: { rx: RegExp; recado: string }[] = [
     rx: /endere[çc]o|qual (é )?(a )?rua|nome da rua|n[uú]mero da casa|localiza[çc][ãa]o (exata|completa|precisa)|(manda|envia|passa|mandar|enviar)[^.!?]{0,12}localiza[çc][ãa]o/iu,
     recado: "O lead pediu o ENDEREÇO do imóvel — quem passa endereço e marca visita é você.",
   },
+  // ── 08/09: padroes achados lendo as 19 conversas que escaparam em 04-06/09 ──
+  {
+    // "Apos as 19:00 horas!" — dar HORA e agendar visita, e agenda e sua.
+    rx: /(?:^|[^\d])([01]?\d|2[0-3])\s*(?:h(?:oras?)?\b|:\s*[0-5]\d)/iu,
+    recado: "O lead deu um horário — ele está marcando a visita.",
+  },
+  {
+    // acessibilidade: "eu sou analfabeta", "nao sei ler". Caso do contato 🫛.
+    rx: /analfabet|n[ãa]o sei ler|n[ãa]o consigo ler|s[oó] por [aá]udio/iu,
+    recado: "O lead não lê texto e precisa de ÁUDIO ou ligação — fale com ele por voz.",
+  },
+  {
+    // pede FOTO ou VIDEO pra gente. Lookbehind exclui "vou te mandar uma foto".
+    rx: /(?<!vou )(?<!vou te )(manda|mande|envia|envie|passa|passe)[^.!?]{0,14}(fotos?|v[ií]deos?)|(fotos?|v[ií]deos?)[^.!?]{0,10}(por favor|pra mim)/iu,
+    recado: "O lead pediu FOTO ou VÍDEO do imóvel — quem manda é você.",
+  },
+  {
+    // confusao: "Eu nao entendi direito." O bot repetia a pergunta padrao.
+    rx: /n[ãa]o entendi|n[ãa]o compreendi|n[ãa]o ficou claro|como assim\?|voc[êe] [ée] (um )?rob[oô]|[ée] rob[oô]\?/iu,
+    recado: "O lead não entendeu a conversa com a IA.",
+  },
 ];
 
 /**
@@ -119,6 +140,18 @@ const PARADAS_SEM_SOLUCAO: { rx: RegExp; recado: string }[] = [
   {
     rx: /quando (voc[êe] )?(confirmar|decidir|souber|tiver certeza)|me chama (que|quando)|vou deixar anotado|t[oô] (por )?aqui pra/i,
     recado: "O cliente quer visitar, mas a IA não fechou dia e horário.",
+  },
+  // ── 08/09, achados nas 19 que escaparam ──
+  {
+    // A FRASE DO PROTOCOLO dita SEM chamar a ferramenta. O pior caso do lote:
+    // a Grazi tinha visita pra "amanha a tarde" e ninguem foi avisado.
+    rx: /s[oó] confirmando aqui a disponibilidade|confirmando (aqui )?a agenda|vou confirmar a agenda/i,
+    recado: "A IA disse ao cliente que ia CONFIRMAR A AGENDA da visita — confirme com ele.",
+  },
+  {
+    // mesma familia de espera, palavras que faltavam: "um instante", "ja volto".
+    rx: /um instante|um minuto|j[aá] volto|volto (j[aá]|em seguida)|aguarda (um|ai)/i,
+    recado: "A IA pediu pro cliente esperar e não voltou.",
   },
 ];
 

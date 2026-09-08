@@ -141,3 +141,22 @@ describe("o que NÃO pode acionar", () => {
     expect(botParouSemResolver("   \n\n  ")).toBeNull();
   });
 });
+
+/**
+ * 08/09/2026 — dois padrões achados na análise das 19 que escaparam.
+ */
+describe("4. o pior caso: prometeu confirmar a agenda e não chamou ninguém", () => {
+  it("pega a frase do protocolo dita sem a ferramenta (caso Grazi)", () => {
+    // ela tinha visita pra "amanhã à tarde" e nenhum corretor foi avisado
+    expect(
+      botParouSemResolver("Só confirmando aqui a disponibilidade da agenda para amanhã à tarde"),
+    ).toContain("CONFIRMAR A AGENDA");
+  });
+
+  it("pega 'um instante' e 'já volto', que faltavam na família de espera", () => {
+    expect(
+      botParouSemResolver("Vou procurar terrenos até R$ 200.000 pra você, um instante."),
+    ).toContain("esperar");
+    expect(botParouSemResolver("Já volto com essa informação.")).toContain("esperar");
+  });
+});

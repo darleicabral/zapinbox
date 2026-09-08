@@ -65,13 +65,15 @@ describe("aviso de agenda: o lead disse quando pode falar", () => {
 
 describe("o que NÃO é motivo pra encaminhar", () => {
   it("resposta comum não aciona", () => {
+    // "Pode mandar mais fotos" saiu desta lista em 08/09: pedir foto passou a
+    // ser motivo de encaminhamento (a regra sempre foi "quem manda foto é o
+    // corretor"), e agora o código honra isso. Está coberto no describe novo.
     for (const frase of [
       "Sim",
       "Ok",
       "Quanto custa?",
       "qual a Localização ?",
       "Gostei da casa",
-      "Pode mandar mais fotos",
       "trabalho em BH, perto do centro",
       "meu trabalho é aqui do lado",
     ]) {
@@ -120,5 +122,55 @@ describe("pedido de endereço vai direto pro corretor", () => {
     // humano. Encaminhar aqui gastaria corretor com pergunta que a IA resolve.
     expect(motivoDoLeadParaEncaminhar("qual a Localização ?")).toBeNull();
     expect(motivoDoLeadParaEncaminhar("Em que bairro fica?")).toBeNull();
+  });
+});
+
+/**
+ * 08/09/2026 — padrões achados lendo as 19 conversas de 04-06/09 que
+ * conversaram e NÃO foram encaminhadas (de 64 que conversaram, 45 foram).
+ */
+describe("padrões novos achados na análise de 08/09", () => {
+  it("lead que dá HORÁRIO está marcando visita", () => {
+    expect(motivoDoLeadParaEncaminhar("Após as 19:00 horas!")).toContain("horário");
+    expect(motivoDoLeadParaEncaminhar("pode ser 15h")).toContain("horário");
+    expect(motivoDoLeadParaEncaminhar("amanhã às 9:30 tudo bem?")).toContain("horário");
+  });
+
+  // O RISCO do padrão de horário é confundir PREÇO com hora. Estas são as
+  // frases mais comuns do funil (vêm do anúncio) e não podem acionar.
+  it("preço e metragem NÃO viram horário", () => {
+    for (const frase of [
+      "Olá, quero saber mais sobre a Casa no São Paulo de R$ 290.000, por favor.",
+      "Olá, quero saber mais do Apto de R$ 190.000 ao lado da estação de Venda Nova.",
+      "Até no valor de duzentos mil",
+      "tem de 2 quartos?",
+      "quero algo de uns 70m²",
+      "meu orçamento é 250 mil",
+      "Olá, quero saber mais sobre as fazendas no Hectares Bela Vista, por favor.",
+    ]) {
+      expect(motivoDoLeadParaEncaminhar(frase), frase).toBeNull();
+    }
+  });
+
+  it("lead que não lê texto precisa de voz", () => {
+    expect(
+      motivoDoLeadParaEncaminhar("Como você manda um áudio pra mim? Porque eu sou analfabeta."),
+    ).toContain("não lê texto");
+    expect(motivoDoLeadParaEncaminhar("não sei ler direito")).toContain("não lê texto");
+  });
+
+  it("pedido de foto ou vídeo vai pro corretor", () => {
+    expect(motivoDoLeadParaEncaminhar("me manda umas fotos")).toContain("FOTO");
+    expect(motivoDoLeadParaEncaminhar("Tem vídeo do imóvel? manda vídeo")).toContain("FOTO");
+    expect(motivoDoLeadParaEncaminhar("fotos por favor")).toContain("FOTO");
+  });
+
+  it("'vou te mandar uma foto' NÃO é pedido (é o lead enviando)", () => {
+    expect(motivoDoLeadParaEncaminhar("vou te mandar uma foto do que procuro")).toBeNull();
+  });
+
+  it("lead confuso vai pro corretor", () => {
+    expect(motivoDoLeadParaEncaminhar("Eu não entendi direito.")).toContain("não entendeu");
+    expect(motivoDoLeadParaEncaminhar("você é robô?")).toContain("não entendeu");
   });
 });
