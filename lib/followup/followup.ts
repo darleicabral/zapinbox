@@ -53,6 +53,8 @@ export interface FollowupSweepSummary {
   sent: number;
   discarded: number;
   reset: number;
+  /** Cadencia encerrada porque o lead recusou (ver leadRecusou). */
+  recusados: number;
   errors: string[];
 }
 
@@ -76,6 +78,100 @@ interface ConvRow {
     /** Telefone da equipe: a conversa existe pro histórico, mas não é lead. */
     is_internal: boolean | null;
   } | null;
+}
+
+/**
+ * A mensagem saiu da CADENCIA, e nao e resposta de ninguem.
+ *
+ * 🐛 09/09/2026 — o furo da trava de 08/09. A cadencia envia pelo
+ * sendMessageHandler, que atualiza `last_outbound_at`. Ou seja: o primeiro toque
+ * mexe no proprio relogio que a trava consulta, e do segundo em diante ela
+ * SEMPRE passa. A trava barrava um toque e liberava os proximos quatro.
+ *
+ * Medido nas conversas de 03 a 09/09: 19 leads escreveram, NUNCA receberam uma
+ * resposta de verdade, e levaram 141 toques. O Waldeir levou 25. Cinco deles
+ * receberam toque hoje as 9h em ponto, na abertura do expediente.
+ *
+ * Mensagem nova leva a marca em `metadata.followup_step`. Pro acervo que nao
+ * tem marca, comparar com os textos das etapas resolve — sao frases fixas de
+ * configuracao, com {nome} como unico buraco.
+ */
+export function ehMensagemDaCadencia(
+  body: string | null | undefined,
+  metadata: Record<string, unknown> | null | undefined,
+  steps: FollowupStep[],
+): boolean {
+  if (metadata && metadata.followup_step !== undefined && metadata.followup_step !== null) {
+    return true;
+  }
+  const t = chaveDeTexto(body ?? "");
+  if (!t) return false;
+  return steps.some((s) => {
+    const molde = chaveDeTexto(s.message);
+    if (!molde) return false;
+    // {nome} vira buraco: compara o que vem antes e depois do placeholder.
+    const partes = molde.split(chaveDeTexto("{nome}"));
+    if (partes.length === 2) {
+      return t.startsWith(partes[0]!) && t.endsWith(partes[1]!);
+    }
+    return t === molde;
+  });
+}
+
+function chaveDeTexto(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/\p{Mn}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9{} ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * O lead RECUSOU. Cutucar depois disso e importunar.
+ *
+ * Pedido do Darlei (09/09/2026), olhando a conversa do Ronaldo Costa: as 09h07
+ * ele respondeu "Bom dia, nao obrigado" a oferta de simulacao, o bot se
+ * despediu bem ("Tranquilo, sem problema") — e as 09h13 a cadencia perguntou
+ * "Oi, ainda ta por ai?".
+ *
+ * Duas camadas, porque o vocabulario da recusa e ambiguo:
+ *
+ *  1. RECUSA QUE SE EXPLICA SOZINHA, vale em qualquer contexto: "nao obrigado",
+ *     "nao tenho interesse", "so tava olhando", "desisti", "ja comprei".
+ *
+ *  2. RECUSA QUE SO EXISTE COMO RESPOSTA A UMA OFERTA: "nao", "ok obrigado",
+ *     "obrigado", "valeu". Um "nao" solto no meio da conversa costuma ser
+ *     resposta a uma pergunta do bot ("ja tem financiamento?" / "conhece o
+ *     bairro?") e nao recusa de nada. Mas TODA etapa da cadencia termina numa
+ *     oferta, entao "nao" respondendo a um toque e recusa da oferta.
+ *
+ * O que NAO pode ser lido como recusa, tirado das falas reais desta semana:
+ * "Vcs nao respondem", "vc nao fala nada", "nao me responde as mensagens" (sao
+ * RECLAMACOES de abandono — o lead quer atencao, nao quer sair), "nao entendi
+ * direito" (confusao), "Vc anuncia uma casa e nao sabe o endereco?" (pergunta),
+ * "E nao queria sair da regua", "Se nao for no capela".
+ */
+const RECUSA_SOZINHA =
+  /(n[ãa]o,? (muito )?obrigad|n[ãa]o obg|n[ãa]o,? valeu|n[ãa]o (tenho|ha|há) interesse|sem interesse|n[ãa]o me interessa|n[ãa]o (quero|queria) (mais|nada)|n[ãa]o vou querer|n[ãa]o pretendo|desisti|ja (comprei|resolvi|consegui|achei|fechei)|j[áa] (comprei|resolvi|consegui|achei|fechei)|s[óo] (tava|estava|estou|to|tô) (olhando|vendo|dando uma olhada)|n[ãa]o me atende|n[ãa]o preciso mais|pode (cancelar|encerrar)|me (tira|remove))/i;
+
+const ENCERRAMENTO_APOS_OFERTA =
+  /^(n[ãa]o|nada|nops?|negativo|ok,?\s*obrigad\w*|obrigad\w*|valeu|vlw|tranquilo|de nada|blz|beleza|t[áa] (bom|certo)|agradeço|agradecido)[\s.!]*$/i;
+
+/** Reclamacao de abandono: o oposto de recusa, ainda que cheia de "nao". */
+const RECLAMACAO_DE_ABANDONO =
+  /(n[ãa]o (me )?respond|n[ãa]o fala nada|ningu[eé]m respond|n[ãa]o me atender|sem resposta|cad[êe] (voc|vc))/i;
+
+export function leadRecusou(
+  texto: string | null | undefined,
+  opts: { respondendoACadencia: boolean },
+): boolean {
+  const t = (texto ?? "").trim();
+  if (!t) return false;
+  if (RECLAMACAO_DE_ABANDONO.test(t)) return false;
+  if (RECUSA_SOZINHA.test(t)) return true;
+  return opts.respondendoACadencia && ENCERRAMENTO_APOS_OFERTA.test(t);
 }
 
 /**
@@ -296,13 +392,81 @@ async function sweepOrg(
     // NUNCA recebeu resposta. "Oi, ainda ta por ai?" pra quem escreveu e ficou
     // no vacuo e ofensivo, e nao e reengajamento: a gente deve a resposta.
     //
-    // A bola tem de estar com o LEAD. Se a nossa ultima fala e mais antiga que a
-    // dele, ninguem respondeu ainda e a cadencia fica calada. Isso tambem serve
-    // de rede pra qualquer falha futura do agente, sem precisar saber a causa.
+    // A bola tem de estar com o LEAD — e quem conta e a ULTIMA RESPOSTA DE
+    // VERDADE, nunca `last_outbound_at`.
+    //
+    // 🐛 09/09/2026 — o furo da trava de ontem: a cadencia envia pelo
+    // sendMessageHandler, que atualiza `last_outbound_at`. O primeiro toque
+    // mexia no proprio relogio que a trava consultava, e do segundo em diante
+    // ela sempre passava. Resultado medido: 19 leads escreveram, NUNCA
+    // receberam resposta nenhuma, e levaram 141 toques (o Waldeir levou 25);
+    // cinco deles as 9h de hoje, na abertura do expediente.
+    //
+    // Sem resposta nenhuma na conversa, a cadencia seria a UNICA coisa falando
+    // com o lead. Isso nao e reengajamento, e um robo insistindo com quem ainda
+    // espera a primeira palavra — e serve de rede pra qualquer falha futura do
+    // agente, sem precisar saber a causa.
+    const { data: ultimas } = await admin
+      .from("messages")
+      .select("direction, body, sent_via, sent_at, metadata")
+      .eq("organization_id", orgId)
+      .eq("conversation_id", conv.id)
+      .order("sent_at", { ascending: false })
+      .limit(15);
+    type MsgLinha = {
+      direction: string;
+      body: string | null;
+      sent_via: string | null;
+      sent_at: string;
+      metadata: Record<string, unknown> | null;
+    };
+    const historico = (ultimas ?? []) as MsgLinha[];
+    const respostaDeVerdade = historico.find(
+      (m) => m.direction === "outbound" && !ehMensagemDaCadencia(m.body, m.metadata, steps),
+    );
     if (
-      !conv.last_outbound_at ||
-      new Date(conv.last_outbound_at).getTime() < new Date(conv.last_inbound_at!).getTime()
+      !respostaDeVerdade ||
+      new Date(respostaDeVerdade.sent_at).getTime() < new Date(conv.last_inbound_at!).getTime()
     ) {
+      continue;
+    }
+
+    // O lead RECUSOU → a cadencia para PRA SEMPRE nesta conversa.
+    //
+    // Pedido do Darlei (09/09/2026) olhando o Ronaldo Costa: as 09h07 ele
+    // respondeu "Bom dia, nao obrigado" a oferta de simulacao, o bot se
+    // despediu bem, e as 09h13 a cadencia perguntou "Oi, ainda ta por ai?".
+    //
+    // Zerar a etapa nao bastaria: a proxima passada recomecaria do zero. Manda
+    // `followup_step` pro fim da fila, que e o mesmo estado de quem esgotou a
+    // cadencia. O bot NAO e silenciado: se o lead voltar com uma pergunta, ele
+    // responde — o que para e a insistencia por tempo, nao o atendimento.
+    const ultimaDoLead = historico.find((m) => m.direction === "inbound");
+    const ultimaNossa = historico.find((m) => m.direction === "outbound");
+    if (
+      ultimaDoLead &&
+      leadRecusou(ultimaDoLead.body, {
+        respondendoACadencia: Boolean(
+          ultimaNossa &&
+            ehMensagemDaCadencia(ultimaNossa.body, ultimaNossa.metadata, steps) &&
+            new Date(ultimaNossa.sent_at).getTime() < new Date(ultimaDoLead.sent_at).getTime(),
+        ),
+      })
+    ) {
+      await admin
+        .from("conversations")
+        .update({ followup_step: steps.length })
+        .eq("id", conv.id)
+        .eq("organization_id", orgId);
+      await admin.rpc("emit_event" as never, {
+        p_event_type: "followup.recusado",
+        p_entity_kind: "conversation",
+        p_entity_id: conv.id,
+        p_payload: { conversation_id: conv.id, fala_do_lead: (ultimaDoLead.body ?? "").slice(0, 200) },
+        p_metadata: { source: "inactivity-followup" },
+        p_organization_id: orgId,
+      } as never);
+      summary.recusados += 1;
       continue;
     }
     if (!conv.contacts || conv.contacts.is_blocked || conv.contacts.force_human) continue;
@@ -416,7 +580,14 @@ async function sweepOrg(
           actor: { type: "ai_agent", id: "followup-worker", role: "agent" },
           requestId: randomUUID(),
         },
-        { conversation_id: conv.id, type: "text", body },
+        {
+          conversation_id: conv.id,
+          type: "text",
+          body,
+          // MARCA: e o que permite a passada seguinte saber que esta fala foi da
+          // cadencia e nao resposta de ninguem (ver ehMensagemDaCadencia).
+          metadata: { followup_step: conv.followup_step + 1 },
+        },
       );
     } catch (err) {
       summary.errors.push(`${conv.id}: send ${err instanceof Error ? err.message : String(err)}`);
@@ -460,6 +631,7 @@ export async function sweepFollowups(
     sent: 0,
     discarded: 0,
     reset: 0,
+    recusados: 0,
     errors: [],
   };
   const now = (opts.now ?? new Date()).getTime();
