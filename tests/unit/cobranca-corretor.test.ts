@@ -23,6 +23,7 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
+import { leadReclamouDeAbandono } from "@/lib/ai/runtime/handoff";
 import { quandoEncaminhei, textoDaCobranca } from "@/lib/attendance/recobrar";
 
 describe("quando o corretor recebeu o lead", () => {
@@ -75,5 +76,58 @@ describe("o texto que chega no WhatsApp do corretor", () => {
   it("não promete reatribuir: o lead nunca passa adiante", () => {
     const t = textoDaCobranca(base);
     expect(t).not.toMatch(/outro corretor|repassad|transferid/i);
+  });
+});
+
+/**
+ * 🐛 INCIDENTE 09/09/2026 — a primeira versao disparou 29 COBRANCAS na primeira
+ * passada, de leads encaminhados havia ate 6,3 DIAS, e o Cleber reclamou.
+ *
+ * A premissa estava errada: "o lead voltou a escrever e o corretor nao respondeu
+ * NO SISTEMA" nao mede nada, porque o corretor atende pelo celular DELE, fora do
+ * numero compartilhado -- o CRM nunca ve essa resposta. Era o mesmo erro que o
+ * Darlei ja tinha corrigido em 08/09 sobre o alerta de SLA.
+ *
+ * A fala do LEAD e a unica evidencia que nao depende de medir o corretor. E e
+ * exatamente o que a mensagem afirma ("reclamou de nao ter sido contatado") --
+ * antes disso, a mensagem mentia sobre o proprio gatilho.
+ *
+ * Medido nas 29 que sairam por engano: exigindo reclamacao sobra UMA.
+ */
+describe("a trava que derrubou 29 cobrancas para 1", () => {
+  it("a UNICA que devia ter saido: a Valone reclamando", () => {
+    expect(leadReclamouDeAbandono("Bom dia tenho interesse, só que não me responde as mensagens")).toBe(true);
+  });
+
+  it("as outras 28 nao reclamavam de nada", () => {
+    // falas reais dos leads que levaram cobranca por engano
+    for (const frase of [
+      "Ok obrigado",
+      "Se não for no capela",
+      "Depois conversamos",
+      "Quero fazer um simulado",
+      "Conforme for o endereço, não me interessa",
+      "Bom dia, não obrigado",
+      "Tenho interesse nesse imóvel",
+      "Até no valor de duzentos mil",
+    ]) {
+      expect(leadReclamouDeAbandono(frase), frase).toBe(false);
+    }
+  });
+
+  it("pega as quatro reclamacoes reais da semana", () => {
+    for (const frase of [
+      "Vcs não respondem",
+      "Estou mas vc não fala nada",
+      "A gente fala sim, vocês respondem não. Pelo amor de Deus, gente.",
+      "Bom dia tenho interesse, só que não me responde as mensagens",
+    ]) {
+      expect(leadReclamouDeAbandono(frase), frase).toBe(true);
+    }
+  });
+
+  it("vazio nao reclama", () => {
+    expect(leadReclamouDeAbandono("")).toBe(false);
+    expect(leadReclamouDeAbandono(null)).toBe(false);
   });
 });

@@ -28,6 +28,28 @@ export type HandoffSource = "sentinel" | "tool" | "promessa" | "adiamento";
  * trabalho agora" e "pediu pra falar à noite" mudam a ação do corretor.
  */
 /**
+ * O lead RECLAMANDO que ninguém responde.
+ *
+ * ⚠️ A frase do Bruno é INVERTIDA: "vocês respondem não". Um regex que só
+ * procurasse "não responde" perdia justamente a reclamação mais raivosa do lote,
+ * então as duas ordens entram.
+ *
+ * Exportado porque TRÊS lugares precisam da mesma leitura, e uma cópia
+ * divergente seria pior que o problema: aqui vira encaminhamento; na cadência
+ * (followup.ts) garante que reclamação NÃO seja lida como desistência; e na
+ * cobrança do corretor (recobrar.ts) é a única coisa que autoriza acordar
+ * alguém.
+ */
+export const RECLAMACAO_DE_ABANDONO_RX =
+  /n[ãa]o (me )?respond|n[ãa]o (me )?atend|respondem?\s+n[ãa]o|atendem?\s+n[ãa]o|n[ãa]o fala nada|ningu[eé]m (me )?(respond|atend)|sem resposta (at[ée]|ainda)|cad[êe] (voc[êe]s?|vcs?)|(t[ôo]|estou) esperando (resposta|h[áa]|ha )/iu;
+
+/** O lead está cobrando resposta? Pura. */
+export function leadReclamouDeAbandono(texto: string | null | undefined): boolean {
+  const t = (texto ?? "").trim();
+  return t.length > 0 && RECLAMACAO_DE_ABANDONO_RX.test(t);
+}
+
+/**
  * Sem `\b` de propósito: em JS a fronteira de palavra é ASCII, então `\bà` e
  * `amanhã\b` NUNCA casam (foi o que quebrou "à noite" e "amanhã" no primeiro
  * teste). As frases aqui são específicas o bastante pra dispensar âncora.
@@ -98,10 +120,7 @@ const MOTIVOS_NA_FALA_DO_LEAD: { rx: RegExp; recado: string }[] = [
   // desistencia. Aqui ele escala. As duas leituras dizem a mesma coisa — esse
   // lead quer atencao, nao quer sair.
   {
-    // ⚠️ A frase do Bruno é INVERTIDA: "vocês respondem não". Um regex que só
-    // procurasse "não responde" perdia justamente a reclamação mais raivosa do
-    // lote, então as duas ordens entram.
-    rx: /n[ãa]o (me )?respond|n[ãa]o (me )?atend|respondem?\s+n[ãa]o|atendem?\s+n[ãa]o|n[ãa]o fala nada|ningu[eé]m (me )?(respond|atend)|sem resposta (at[ée]|ainda)|cad[êe] (voc[êe]s?|vcs?)|(t[ôo]|estou) esperando (resposta|h[áa]|ha )/iu,
+    rx: RECLAMACAO_DE_ABANDONO_RX,
     recado:
       "🚨 O lead RECLAMOU que ninguém responde. Fale com ele agora — ele está irritado e ainda quer comprar.",
   },

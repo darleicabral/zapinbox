@@ -13,14 +13,24 @@
  * O bot já falou o NOME do corretor pro cliente. Aqui a gente só bate na porta
  * do mesmo corretor de novo.
  *
+ * 🐛 INCIDENTE, 09/09/2026 — a primeira versão disparou 29 COBRANÇAS na
+ * primeira passada, de leads encaminhados havia até 6,3 dias, e o Cléber
+ * reclamou. A premissa estava errada: "o lead voltou a escrever e o corretor
+ * não respondeu no sistema" não mede nada, porque o corretor atende pelo
+ * celular DELE, fora do número compartilhado. Ver a nota longa no laço.
+ *
  * Os limites existem porque cada cobrança acorda uma pessoa:
+ *   - o LEAD tem de estar RECLAMANDO (a única evidência que não depende de
+ *     medir o corretor) — é o que derruba 29 para 1;
+ *   - encaminhamento com mais de `IDADE_MAX_H` é acervo e não se cobra;
  *   - o corretor tem `CARENCIA_MIN` de sossego depois de receber o lead;
- *   - só cobra se ele NÃO falou nada desde que recebeu;
+ *   - não cobra quem visivelmente já está atendendo por aqui;
  *   - uma cobrança por conversa a cada `SILENCIO_ENTRE_COBRANCAS_H`;
  *   - teto por passada, e só dentro do expediente (quem chama é o sweep).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { leadReclamouDeAbandono } from "@/lib/ai/runtime/handoff";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { resolveChatIdChecked, sendWAHA } from "@/lib/waha/send";
@@ -29,6 +39,15 @@ import { resolveChatIdChecked, sendWAHA } from "@/lib/waha/send";
 export const CARENCIA_MIN = 30;
 /** Não cobrar o mesmo corretor pela mesma conversa antes disso. */
 export const SILENCIO_ENTRE_COBRANCAS_H = 6;
+/**
+ * Idade máxima do encaminhamento. Acima disso é acervo, e acervo não se cobra
+ * em massa.
+ *
+ * 🐛 09/09/2026, poucas horas depois de subir isto: a primeira passada mandou
+ * 29 COBRANÇAS, de leads encaminhados havia até 6,3 DIAS. O Cléber reclamou,
+ * com razão. Faltavam as duas travas abaixo.
+ */
+export const IDADE_MAX_H = 48;
 /** Cada cobrança acorda uma pessoa. Fila grande escoa em vários ticks. */
 export const TETO_POR_TICK = 10;
 
@@ -139,8 +158,52 @@ export async function cobrarCorretorSilencioso(
       continue;
     }
 
+    // Encaminhamento velho não se cobra: acima de IDADE_MAX_H é acervo.
+    if (
+      new Date(conv.assigned_at).getTime() <
+      agora.getTime() - IDADE_MAX_H * 3_600_000
+    ) {
+      continue;
+    }
+
+    // ⚠️ SÓ COBRA SE O LEAD RECLAMOU DE VERDADE. Esta é a trava que faltava, e
+    // ela é a diferença entre 1 cobrança e 29.
+    //
+    // A premissa errada da primeira versão era "o lead voltou a escrever e o
+    // corretor não respondeu NO SISTEMA". Mas o corretor atende pelo WhatsApp
+    // PESSOAL dele, por fora do número compartilhado — o CRM nunca vê essa
+    // resposta, então a conversa fica "sem resposta" pra sempre e a cobrança
+    // dispara em todo lead encaminhado. É o mesmo erro que o Darlei já tinha
+    // corrigido em 08/09 sobre o alerta de SLA: "se o corretor atende pelo
+    // celular dele, faz sentido alertar que o lead não foi atendido no
+    // sistema?" — e a resposta foi não.
+    //
+    // A fala do LEAD é a única evidência que não depende de medir o corretor.
+    // Se ele está escrevendo "ninguém me responde", ele não está sendo
+    // atendido, independente do que aconteceu fora do nosso alcance. E é
+    // exatamente o que a mensagem de cobrança afirma ("reclamou de não ter sido
+    // contatado") — antes disso, a mensagem mentia sobre o próprio gatilho.
+    //
+    // Medido nas 29 que saíram por engano: exigindo reclamação sobra UMA, a
+    // Valone, que é o caso que motivou o pedido.
+    const { data: falasDoLead } = await admin
+      .from("messages")
+      .select("body")
+      .eq("organization_id", organizationId)
+      .eq("conversation_id", conv.id)
+      .eq("direction", "inbound")
+      .gt("sent_at", conv.assigned_at)
+      .order("sent_at", { ascending: false })
+      .limit(5);
+    const reclamou = ((falasDoLead ?? []) as { body: string | null }[]).some((m) =>
+      leadReclamouDeAbandono(m.body),
+    );
+    if (!reclamou) continue;
+
     // O corretor respondeu desde que recebeu? `external_device` é o celular
     // dele, `user` é o composer do CRM. Qualquer um dos dois encerra o assunto.
+    // ⚠️ Isto NÃO prova que ele não falou com o lead (ver a nota acima): serve
+    // só pra não cobrar quem visivelmente já está atendendo por aqui.
     const { count: falouAlgo } = await admin
       .from("messages")
       .select("id", { count: "exact", head: true })
