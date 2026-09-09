@@ -280,7 +280,27 @@ export function podeDisparar(
 ): boolean {
   const step = steps[indice];
   if (!step) return false;
-  if (ctx.inactivityMin < step.after_minutes) return false;
+
+  // ⏰ O RELOGIO DA CADENCIA CONTA TEMPO DE EXPEDIENTE, nao tempo de parede.
+  //
+  // 🐛 09/09/2026 — o Darlei viu a cadencia disparando as 9h em cima de lead da
+  // noite. O bot responde 24h, a cadencia so no expediente. Entao lead que
+  // escreveu 01h40, foi respondido 01h41 e dormiu chegava as 09h00 com SETE
+  // HORAS de silencio: as etapas de 5 e 10 minutos estavam as duas vencidas, e
+  // o unico freio era o espacamento entre etapas consecutivas (5 min). Ele
+  // levava DOIS toques de robo em 5 minutos, logo de manha, sobre uma conversa
+  // da madrugada. Aconteceu com tres leads hoje: 09:00+09:05, 09:01+09:05,
+  // 09:01+09:07.
+  //
+  // Contando desde a ABERTURA da janela, as 09h00 a espera efetiva e zero: o
+  // primeiro toque sai 09h05 e o segundo 09h10, que e a cadencia que o Darlei
+  // configurou. `minutosDesdeAberturaMin` ja existia, mas so limitava a trava
+  // de IDADE da etapa 0 — nao entrava na comparacao com `after_minutes`.
+  const desdeAbertura = ctx.minutosDesdeAberturaMin;
+  const esperaEfetivaMin =
+    desdeAbertura == null ? ctx.inactivityMin : Math.min(ctx.inactivityMin, desdeAbertura);
+
+  if (esperaEfetivaMin < step.after_minutes) return false;
 
   // Quem respondeu está conversando, não sumido: espera uma hora antes de
   // cobrar de novo, em vez dos 5 minutos da etapa 1.
@@ -290,10 +310,7 @@ export function podeDisparar(
 
   const maxIdade = ctx.maxIdadeParaIniciarMin ?? MAX_IDADE_PARA_INICIAR_MIN;
   if (indice === 0) {
-    const desdeAbertura = ctx.minutosDesdeAberturaMin;
-    const idadeEfetiva =
-      desdeAbertura == null ? ctx.inactivityMin : Math.min(ctx.inactivityMin, desdeAbertura);
-    return idadeEfetiva <= maxIdade;
+    return esperaEfetivaMin <= maxIdade;
   }
 
   if (ctx.desdeUltimoFollowupMin == null) return true;

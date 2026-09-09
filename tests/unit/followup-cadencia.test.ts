@@ -110,12 +110,45 @@ describe("idade efetiva: lead da madrugada entra quando o expediente abre", () =
   // noite de 03/09 (03h25 a 03h45). Agora a idade da etapa 0 é a MENOR entre o
   // silêncio do lead e o tempo desde a abertura do expediente.
 
-  it("lead das 3h dispara às 9h em ponto (abertura = idade 0)", () => {
+  // 🐛 09/09/2026 — este teste cravava "dispara às 9h EM PONTO", e era isso que
+  // o Darlei viu de manhã: o lead da madrugada chegava às 09h00 com 7h de
+  // silêncio, todas as etapas curtas vencidas, e levava DOIS toques em 5 min.
+  // A espera agora também conta desde a abertura, então a cadência começa do
+  // zero quando o expediente abre, em vez de despejar o atrasado.
+  it("lead das 3h NÃO dispara às 9h em ponto: a espera dele acabou de começar", () => {
     expect(
       podeDisparar(CADENCIA, 0, {
         inactivityMin: 360,
         desdeUltimoFollowupMin: null,
         minutosDesdeAberturaMin: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("ele dispara 5 min depois da abertura, que é a etapa 0 configurada", () => {
+    expect(
+      podeDisparar(CADENCIA, 0, {
+        inactivityMin: 365,
+        desdeUltimoFollowupMin: null,
+        minutosDesdeAberturaMin: 5,
+      }),
+    ).toBe(true);
+  });
+
+  it("e a etapa 1 espera a PRÓPRIA vez, não sai junto com a 0", () => {
+    // as 09h05 saiu a etapa 0; a etapa 1 (10 min) so pode sair as 09h10
+    expect(
+      podeDisparar(CADENCIA, 1, {
+        inactivityMin: 366,
+        desdeUltimoFollowupMin: 1,
+        minutosDesdeAberturaMin: 6,
+      }),
+    ).toBe(false);
+    expect(
+      podeDisparar(CADENCIA, 1, {
+        inactivityMin: 370,
+        desdeUltimoFollowupMin: 5,
+        minutosDesdeAberturaMin: 10,
       }),
     ).toBe(true);
   });
