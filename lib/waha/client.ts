@@ -8,6 +8,40 @@
  * stored in container env). Plaintext-then-hash is NOT used in this version.
  * So WAHA_API_KEY in .env.local IS the hex hash.
  */
+import { logger } from "@/lib/logger";
+
+import { podeEnviarAgora, textoDoAlarmeDeTeto } from "./limite-envio";
+
+/** Código do erro quando o teto barra. Vai pro `error_message` da mensagem. */
+export const ERRO_TETO_DE_ENVIO = "waha_teto_de_envio";
+
+/**
+ * Consulta o teto e conta o envio. LANÇA quando barra, e o motivo é importante:
+ *
+ * a primeira versão devolvia null, e aí o `sendMessageHandler` seguia o caminho
+ * de sucesso — lia `wahaRes?.id` como undefined e gravava a mensagem como
+ * `sent` com `external_id` nulo. Ou seja: mensagem que NUNCA saiu registrada
+ * como enviada. Seria a quarta falha silenciosa da semana, e eu passei os dois
+ * últimos dias consertando exatamente esse padrão.
+ *
+ * Lançando, o catch que já existe no handler marca a mensagem como `failed` com
+ * este código, o run vira `delivery_failed` (agente.ts), e o alarme de falha de
+ * execução acaba avisando o gestor — que é justamente o que se quer quando o
+ * teto está barrando em massa.
+ */
+async function liberadoParaEnviar(session: string): Promise<void> {
+  const d = await podeEnviarAgora(session);
+  if (d.liberado) return;
+  logger.error("[waha.client] envio BARRADO pelo teto", {
+    session,
+    motivo: d.motivo,
+    no_minuto: d.noMinuto,
+    na_hora: d.naHora,
+    alarme: textoDoAlarmeDeTeto(d),
+  });
+  throw new Error(ERRO_TETO_DE_ENVIO);
+}
+
 export class WahaClient {
   constructor(
     private readonly baseUrl: string,
@@ -98,7 +132,23 @@ export class WahaClient {
     };
   }
 
+  /**
+   * 🚨 FREIO DE MÃO DO NÚMERO, no ponto por onde TUDO sai: resposta do bot,
+   * cadência, aviso de lead novo, cobrança, resgate. Cada um desses teve um bug
+   * de rajada nesta semana (bot, cadência e cobrança), e uma proteção que
+   * dependesse de cada recurso lembrar de se comportar não protege nada.
+   *
+   * O risco não é erro de API, é BANIMENTO: rajada pra muitos destinatários é o
+   * padrão que o WhatsApp lê como spam, e este número é uma sessão WAHA comum,
+   * não o canal oficial da Meta. A pior rajada medida foi 51 mensagens em 1
+   * minuto. Perder o número é perder o histórico e o contato de todos os leads.
+   *
+   * Barrado LANÇA `ERRO_TETO_DE_ENVIO`, e isso é de propósito: devolver null
+   * fazia o handler gravar a mensagem como enviada sem ela ter saído. Ver a nota
+   * em `liberadoParaEnviar`. Limites em lib/waha/limite-envio.ts.
+   */
   async sendMessage(session: string, chatId: string, text: string): Promise<unknown> {
+    await liberadoParaEnviar(session);
     const res = await fetch(`${this.baseUrl}/api/sendText`, {
       method: "POST",
       headers: {
@@ -123,6 +173,7 @@ export class WahaClient {
     file: { mimetype: string; filename: string; base64: string },
     caption?: string,
   ): Promise<unknown> {
+    await liberadoParaEnviar(session);
     const isImage = file.mimetype.startsWith("image/");
     const isVoice = /^audio\/(ogg|opus)/.test(file.mimetype);
     const endpoint = isImage ? "sendImage" : isVoice ? "sendVoice" : "sendFile";

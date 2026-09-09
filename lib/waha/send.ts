@@ -36,6 +36,13 @@ export function resolveWahaChatId(input: ResolveWahaChatIdInput): string | null 
   return null;
 }
 
+/**
+ * O freio de envio NÃO está aqui: ele mora no cliente WAHA
+ * (lib/waha/client.ts), que é o ponto por onde TUDO sai de verdade. O caminho
+ * de produção das mensagens de lead é o `sendMessageHandler`, que chama o
+ * cliente direto e não passa por esta função — pôr o teto aqui protegeria só os
+ * avisos a corretor, que é justamente o lado menos arriscado.
+ */
 export async function sendWAHA(input: SendWahaInput): Promise<unknown | null> {
   const client = getWahaClient();
   if (!client) return null;
