@@ -254,6 +254,39 @@ export function conversaElegivelPorAtivacao(
  * lead e o tempo desde a abertura do expediente. Sem isso quem escrevia de
  * madrugada nunca recebia nada — às 9h já estava fora da trava.
  */
+/**
+ * Qual etapa mandar, dado o silencio REAL do lead.
+ *
+ * 🐛 09/09/2026 — a cadencia andava etapa por etapa, entao lead que sumiu de
+ * madrugada recebia, na abertura do expediente, a fila inteira das etapas
+ * curtas: "Oi, ainda ta por ai?" as 09h00 e "Notei que voce nao pode responder
+ * no momento" as 09h05, sobre uma conversa da 01h40. Aconteceu com tres leads
+ * nessa manha.
+ *
+ * "Ainda ta por ai?" e frase pra quem sumiu ha cinco minutos. Pra quem sumiu ha
+ * sete horas, a etapa certa e a que fala do imovel. Entao a escolha e pela MAIOR
+ * etapa que o silencio real ja venceu, pulando as que ficaram atras — e o que
+ * `after_minutes` sempre quis dizer ("mande isto quando o silencio passar de N").
+ *
+ * Em operacao normal isto nao muda nada: o cron roda a cada minuto, o silencio
+ * cresce de um em um e nenhuma etapa e pulada. Pular so acontece quando a
+ * cadencia NAO pode falar — fora do expediente, ou com a varredura parada — que
+ * e exatamente quando andar a fila toda faz estrago.
+ */
+export function escolherEtapa(
+  steps: FollowupStep[],
+  proximaEtapa: number,
+  inactivityMin: number,
+): number {
+  if (proximaEtapa >= steps.length) return -1;
+  let escolhida = -1;
+  for (let i = proximaEtapa; i < steps.length; i++) {
+    if (inactivityMin >= steps[i]!.after_minutes) escolhida = i;
+    else break;
+  }
+  return escolhida;
+}
+
 export function podeDisparar(
   steps: FollowupStep[],
   indice: number,
@@ -276,31 +309,19 @@ export function podeDisparar(
      * trabalho).
      */
     respondeuAoUltimoFollowup?: boolean;
+    /** E a estreia da cadencia nesta conversa? Decide a trava de idade. */
+    primeiroToque?: boolean;
   },
 ): boolean {
   const step = steps[indice];
   if (!step) return false;
 
-  // ⏰ O RELOGIO DA CADENCIA CONTA TEMPO DE EXPEDIENTE, nao tempo de parede.
-  //
-  // 🐛 09/09/2026 — o Darlei viu a cadencia disparando as 9h em cima de lead da
-  // noite. O bot responde 24h, a cadencia so no expediente. Entao lead que
-  // escreveu 01h40, foi respondido 01h41 e dormiu chegava as 09h00 com SETE
-  // HORAS de silencio: as etapas de 5 e 10 minutos estavam as duas vencidas, e
-  // o unico freio era o espacamento entre etapas consecutivas (5 min). Ele
-  // levava DOIS toques de robo em 5 minutos, logo de manha, sobre uma conversa
-  // da madrugada. Aconteceu com tres leads hoje: 09:00+09:05, 09:01+09:05,
-  // 09:01+09:07.
-  //
-  // Contando desde a ABERTURA da janela, as 09h00 a espera efetiva e zero: o
-  // primeiro toque sai 09h05 e o segundo 09h10, que e a cadencia que o Darlei
-  // configurou. `minutosDesdeAberturaMin` ja existia, mas so limitava a trava
-  // de IDADE da etapa 0 — nao entrava na comparacao com `after_minutes`.
-  const desdeAbertura = ctx.minutosDesdeAberturaMin;
-  const esperaEfetivaMin =
-    desdeAbertura == null ? ctx.inactivityMin : Math.min(ctx.inactivityMin, desdeAbertura);
-
-  if (esperaEfetivaMin < step.after_minutes) return false;
+  // O prazo da etapa e medido no silencio REAL. Tentei medir em tempo de
+  // expediente (09/09/2026) e as duas ideias se atropelam: com a espera
+  // reancorada na abertura, a etapa de 1440 min nunca sairia, porque um dia de
+  // expediente tem 540. Quem resolve o despejo de manha e escolherEtapa(),
+  // pulando as etapas curtas ja vencidas — nao mexer no prazo.
+  if (ctx.inactivityMin < step.after_minutes) return false;
 
   // Quem respondeu está conversando, não sumido: espera uma hora antes de
   // cobrar de novo, em vez dos 5 minutos da etapa 1.
@@ -308,11 +329,21 @@ export function podeDisparar(
     return false;
   }
 
-  const maxIdade = ctx.maxIdadeParaIniciarMin ?? MAX_IDADE_PARA_INICIAR_MIN;
-  if (indice === 0) {
-    return esperaEfetivaMin <= maxIdade;
+  // Trava de idade: vale no PRIMEIRO toque da conversa, seja qual for a etapa
+  // escolhida. Antes era keyed em `indice === 0`, e com escolherEtapa() pulando
+  // pra frente uma conversa velha estrearia numa etapa adiante e escaparia da
+  // trava — que existe justamente pra nao ressuscitar acervo (incidente de
+  // 03/09: 116 mensagens em 5 minutos).
+  const primeiroToque = ctx.primeiroToque ?? indice === 0;
+  if (primeiroToque) {
+    const maxIdade = ctx.maxIdadeParaIniciarMin ?? MAX_IDADE_PARA_INICIAR_MIN;
+    const desdeAbertura = ctx.minutosDesdeAberturaMin;
+    const idadeEfetiva =
+      desdeAbertura == null ? ctx.inactivityMin : Math.min(ctx.inactivityMin, desdeAbertura);
+    if (idadeEfetiva > maxIdade) return false;
   }
 
+  if (indice === 0) return true;
   if (ctx.desdeUltimoFollowupMin == null) return true;
   const anterior = steps[indice - 1]!;
   const intervaloMin = Math.max(step.after_minutes - anterior.after_minutes, 0);
@@ -547,9 +578,12 @@ async function sweepOrg(
     }
 
     if (conv.followup_step >= steps.length) continue;
-    const step = steps[conv.followup_step]!;
     const inactivityMin = (now - lastInbound) / 60_000;
-    if (inactivityMin < step.after_minutes) continue; // ainda dentro do prazo
+    // A etapa vem do silencio REAL, pulando as que ficaram atras: quem sumiu ha
+    // sete horas nao recebe "ainda ta por ai?". Ver escolherEtapa().
+    const indice = escolherEtapa(steps, conv.followup_step, inactivityMin);
+    if (indice < 0) continue; // nenhuma etapa vencida ainda
+    const step = steps[indice]!;
 
     // Trava de idade (não ressuscitar conversa velha) + espaçamento entre etapas.
     // As duas nasceram do incidente de 03/09/2026 — ver podeDisparar().
@@ -557,7 +591,7 @@ async function sweepOrg(
       ? (now - new Date(conv.last_followup_at).getTime()) / 60_000
       : null;
     if (
-      !podeDisparar(steps, conv.followup_step, {
+      !podeDisparar(steps, indice, {
         inactivityMin,
         desdeUltimoFollowupMin,
         minutosDesdeAberturaMin: desdeAberturaMin,
@@ -565,6 +599,7 @@ async function sweepOrg(
           conv.last_inbound_at,
           conv.last_followup_at,
         ),
+        primeiroToque: conv.followup_step === 0,
       })
     )
       continue;
@@ -577,7 +612,7 @@ async function sweepOrg(
     const { data: reservou } = await admin
       .from("conversations")
       .update({
-        followup_step: conv.followup_step + 1,
+        followup_step: indice + 1,
         last_followup_at: new Date(now).toISOString(),
         ...(step.discard ? { status: "resolved", status_changed_at: new Date(now).toISOString() } : {}),
       })
@@ -603,7 +638,7 @@ async function sweepOrg(
           body,
           // MARCA: e o que permite a passada seguinte saber que esta fala foi da
           // cadencia e nao resposta de ninguem (ver ehMensagemDaCadencia).
-          metadata: { followup_step: conv.followup_step + 1 },
+          metadata: { followup_step: indice + 1 },
         },
       );
     } catch (err) {
@@ -624,7 +659,7 @@ async function sweepOrg(
       p_event_type: "followup.sent",
       p_entity_kind: "conversation",
       p_entity_id: conv.id,
-      p_payload: { conversation_id: conv.id, step: conv.followup_step + 1, discard: !!step.discard },
+      p_payload: { conversation_id: conv.id, step: indice + 1, discard: !!step.discard },
       p_metadata: { source: "inactivity-followup" },
       p_organization_id: orgId,
     } as never);

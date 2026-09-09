@@ -32,6 +32,7 @@ vi.mock("@/lib/logger", () => ({
 
 import {
   conversaElegivelPorAtivacao,
+  escolherEtapa,
   podeDisparar,
   respondeuAoUltimoFollowup,
   type FollowupStep,
@@ -110,45 +111,15 @@ describe("idade efetiva: lead da madrugada entra quando o expediente abre", () =
   // noite de 03/09 (03h25 a 03h45). Agora a idade da etapa 0 é a MENOR entre o
   // silêncio do lead e o tempo desde a abertura do expediente.
 
-  // 🐛 09/09/2026 — este teste cravava "dispara às 9h EM PONTO", e era isso que
-  // o Darlei viu de manhã: o lead da madrugada chegava às 09h00 com 7h de
-  // silêncio, todas as etapas curtas vencidas, e levava DOIS toques em 5 min.
-  // A espera agora também conta desde a abertura, então a cadência começa do
-  // zero quando o expediente abre, em vez de despejar o atrasado.
-  it("lead das 3h NÃO dispara às 9h em ponto: a espera dele acabou de começar", () => {
+  it("lead das 3h dispara na abertura, mas numa etapa que faz sentido", () => {
+    // o prazo volta a ser medido no silencio REAL: 360 min de silencio venceu a
+    // etapa 0. Quem evita o despejo das etapas curtas e escolherEtapa(), que
+    // manda direto a etapa do imovel em vez de "ainda ta por ai?".
     expect(
       podeDisparar(CADENCIA, 0, {
         inactivityMin: 360,
         desdeUltimoFollowupMin: null,
         minutosDesdeAberturaMin: 0,
-      }),
-    ).toBe(false);
-  });
-
-  it("ele dispara 5 min depois da abertura, que é a etapa 0 configurada", () => {
-    expect(
-      podeDisparar(CADENCIA, 0, {
-        inactivityMin: 365,
-        desdeUltimoFollowupMin: null,
-        minutosDesdeAberturaMin: 5,
-      }),
-    ).toBe(true);
-  });
-
-  it("e a etapa 1 espera a PRÓPRIA vez, não sai junto com a 0", () => {
-    // as 09h05 saiu a etapa 0; a etapa 1 (10 min) so pode sair as 09h10
-    expect(
-      podeDisparar(CADENCIA, 1, {
-        inactivityMin: 366,
-        desdeUltimoFollowupMin: 1,
-        minutosDesdeAberturaMin: 6,
-      }),
-    ).toBe(false);
-    expect(
-      podeDisparar(CADENCIA, 1, {
-        inactivityMin: 370,
-        desdeUltimoFollowupMin: 5,
-        minutosDesdeAberturaMin: 10,
       }),
     ).toBe(true);
   });
@@ -318,5 +289,73 @@ describe("corte por ativação: só conversa criada depois entra", () => {
 
   it("sem enabled_at (tenant legado) NADA entra — exige reativar", () => {
     expect(entra("2026-09-03T17:01:00Z", null)).toBe(false);
+  });
+});
+
+/**
+ * 09/09/2026 — o Darlei viu a cadencia disparando as 9h em cima de lead da
+ * noite. A causa: ela andava etapa por etapa, entao quem sumiu de madrugada
+ * recebia a fila das etapas curtas na abertura do expediente. Aconteceu com
+ * tres leads nessa manha: 09:00+09:05, 09:01+09:05, 09:01+09:07.
+ *
+ * "Ainda ta por ai?" e frase pra quem sumiu ha cinco minutos.
+ */
+describe("escolher a etapa pelo silencio real, pulando as vencidas", () => {
+  it("lead da madrugada (7h de silencio) vai direto pra etapa do imovel", () => {
+    // 440 min venceu 5, 10 e 120; a maior vencida e a de 120 (indice 2)
+    expect(escolherEtapa(CADENCIA, 0, 440)).toBe(2);
+  });
+
+  it("o caso real da Maria: respondida 06h40, silenciosa desde entao", () => {
+    // as 09h00 sao 140 min de silencio -> etapa 2, UMA mensagem, nao tres
+    expect(escolherEtapa(CADENCIA, 0, 140)).toBe(2);
+  });
+
+  it("em operacao normal nao pula nada: o cron roda a cada minuto", () => {
+    expect(escolherEtapa(CADENCIA, 0, 5)).toBe(0);
+    expect(escolherEtapa(CADENCIA, 1, 10)).toBe(1);
+    expect(escolherEtapa(CADENCIA, 2, 120)).toBe(2);
+    expect(escolherEtapa(CADENCIA, 3, 1440)).toBe(3);
+  });
+
+  it("nenhuma etapa vencida devolve -1", () => {
+    expect(escolherEtapa(CADENCIA, 0, 4)).toBe(-1);
+    expect(escolherEtapa(CADENCIA, 2, 119)).toBe(-1);
+  });
+
+  it("cadencia esgotada devolve -1", () => {
+    expect(escolherEtapa(CADENCIA, CADENCIA.length, 99999)).toBe(-1);
+  });
+
+  it("nunca anda pra tras: respeita a etapa em que a conversa esta", () => {
+    // ja mandou as tres primeiras; com 1440 min so a ultima esta disponivel
+    expect(escolherEtapa(CADENCIA, 3, 1440)).toBe(3);
+    // e com silencio de 200 min, nada: a etapa 3 pede 1440
+    expect(escolherEtapa(CADENCIA, 3, 200)).toBe(-1);
+  });
+});
+
+describe("trava de idade vale no PRIMEIRO toque, nao so na etapa 0", () => {
+  it("conversa velha nao estreia numa etapa adiante pra escapar da trava", () => {
+    // 3 dias de silencio venceria a etapa 3, mas e a estreia e ja passou dos
+    // 180 min de idade -- e o incidente de 03/09 (116 mensagens em 5 min)
+    expect(
+      podeDisparar(CADENCIA, 3, {
+        inactivityMin: 4320,
+        desdeUltimoFollowupMin: null,
+        minutosDesdeAberturaMin: 400,
+        primeiroToque: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("mas a conversa que ja andou na cadencia segue andando", () => {
+    expect(
+      podeDisparar(CADENCIA, 3, {
+        inactivityMin: 1440,
+        desdeUltimoFollowupMin: 1320,
+        primeiroToque: false,
+      }),
+    ).toBe(true);
   });
 });
