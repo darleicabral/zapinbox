@@ -69,3 +69,8 @@ deskcommcrm-setup-kit.zip
 *.xlsx
 *.xls
 /*.csv
+
+# dumps de conversa com PII de lead - nunca versionar
+_transcricoes.txt
+_*.mjs
+_*.py
