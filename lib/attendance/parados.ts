@@ -28,6 +28,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { motivoDoLeadParaEncaminhar } from "@/lib/ai/runtime/handoff";
+import { ehMensagemDaCadencia, type FollowupStep } from "@/lib/followup/followup";
 import { splitSenderPrefix } from "@/lib/ai/runtime/history";
 import { listAuthUsersByIds } from "@/lib/auth/admin-users";
 
@@ -175,15 +176,58 @@ export function minutosEsperando(
   return (agora.getTime() - new Date(conv.last_inbound_at).getTime()) / 60_000;
 }
 
+/** Só a IDADE da espera: esperou o suficiente e não é acervo velho. */
+export function idadeDaEsperaEstaNaJanela(
+  conv: { last_inbound_at: string | null },
+  agora: Date,
+): boolean {
+  const esperou = minutosEsperando(conv, agora);
+  if (esperou === null) return false;
+  return esperou >= ESPERA_MIN && esperou <= IDADE_MAX_DIAS * 24 * 60;
+}
+
 /** Está na janela de resgate: esperou o suficiente e não é acervo velho. */
 export function estaNaJanelaDeResgate(
   conv: { last_inbound_at: string | null; last_outbound_at: string | null },
   agora: Date,
 ): boolean {
   if (!leadEstaEsperando(conv)) return false;
-  const esperou = minutosEsperando(conv, agora);
-  if (esperou === null) return false;
-  return esperou >= ESPERA_MIN && esperou <= IDADE_MAX_DIAS * 24 * 60;
+  return idadeDaEsperaEstaNaJanela(conv, agora);
+}
+
+/**
+ * Ninguém respondeu de VERDADE depois da última fala do lead.
+ *
+ * 🐛 09/09/2026 — `leadEstaEsperando` olha `last_outbound_at`, e a cadência de
+ * reengajamento atualiza essa coluna. Então lead que só recebeu "Oi, ainda tá
+ * por aí?" PARECE atendido e ficava invisível pro resgate — exatamente o pior
+ * caso, porque é lead que nunca ouviu uma palavra de ninguém. A Carmem e a
+ * Soraia escreveram em 07/09, receberam quatro toques de robô e nada mais.
+ *
+ * Só é consultado quando a conversa parece respondida; quando a bola já está
+ * visivelmente com a gente, não precisa de query nenhuma.
+ */
+async function ninguemRespondeuDeVerdade(
+  admin: SupabaseClient,
+  organizationId: string,
+  conversationId: string,
+  lastInboundAt: string,
+  steps: FollowupStep[],
+): Promise<boolean> {
+  const { data } = await admin
+    .from("messages")
+    .select("body, metadata, sent_at")
+    .eq("organization_id", organizationId)
+    .eq("conversation_id", conversationId)
+    .eq("direction", "outbound")
+    .gt("sent_at", lastInboundAt)
+    .order("sent_at", { ascending: false })
+    .limit(10);
+  const saidas = (data ?? []) as {
+    body: string | null;
+    metadata: Record<string, unknown> | null;
+  }[];
+  return !saidas.some((m) => !ehMensagemDaCadencia(m.body, m.metadata, steps));
 }
 
 /**
@@ -225,10 +269,31 @@ export async function resgatarLeadsParados(
   if (error) throw new Error(`resgate_query: ${error.message}`);
 
   const telefonesDaEquipe = await carregarTelefonesDaEquipe(admin, organizationId);
+  // Etapas da cadencia, pra distinguir toque de robo de resposta de verdade.
+  // Uma query por passada; sem configuracao, lista vazia e nada e cadencia.
+  const { data: cfg } = await admin
+    .from("followup_settings")
+    .select("steps")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const steps = ((cfg as { steps: FollowupStep[] } | null)?.steps ?? []) as FollowupStep[];
 
   for (const conv of (data ?? []) as unknown as ConvParada[]) {
     if (resumo.resgatados >= teto) break;
-    if (!estaNaJanelaDeResgate(conv, agora)) continue;
+    if (!idadeDaEsperaEstaNaJanela(conv, agora)) continue;
+    // A conversa que PARECE respondida pode ter recebido so cadencia: a coluna
+    // last_outbound_at e atualizada pelo proprio follow-up. So nesse caso vale
+    // a query — quando a bola esta visivelmente com a gente, nao precisa.
+    if (!leadEstaEsperando(conv)) {
+      const soRobo = await ninguemRespondeuDeVerdade(
+        admin,
+        organizationId,
+        conv.id,
+        conv.last_inbound_at!,
+        steps,
+      );
+      if (!soRobo) continue;
+    }
 
     const contato = umContato(conv.contacts);
     if (!contato) continue;

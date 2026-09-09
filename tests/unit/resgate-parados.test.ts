@@ -22,6 +22,7 @@ vi.mock("@/lib/env", () => ({
 import {
   casarNomeComMembro,
   estaNaJanelaDeResgate,
+  idadeDaEsperaEstaNaJanela,
   leadEstaEsperando,
   minutosEsperando,
   nomeDoCorretorNaConversa,
@@ -168,5 +169,28 @@ describe("devolver ao corretor que ja falou", () => {
   it("nome que nao e da equipe volta pro rodizio", () => {
     expect(casarNomeComMembro("Fulano", [{ user_id: "u1", primeiro_nome: "Robson" }])).toBeNull();
     expect(casarNomeComMembro(null, [{ user_id: "u1", primeiro_nome: "Robson" }])).toBeNull();
+  });
+});
+
+/**
+ * 09/09/2026 — a coluna last_outbound_at e atualizada pela CADENCIA, entao lead
+ * que so recebeu "Oi, ainda ta por ai?" parecia atendido e ficava invisivel pro
+ * resgate. Era o pior caso possivel: lead que nunca ouviu uma palavra de
+ * ninguem. A separacao entre idade e posse da bola e o que permite consultar as
+ * mensagens so nesse caso ambiguo.
+ */
+describe("idade da espera, separada da posse da bola", () => {
+  it("a Carmem PARECE atendida (o robo falou depois dela) mas a idade entra na janela", () => {
+    const conv = { last_inbound_at: atras(9000), last_outbound_at: atras(60) };
+    expect(estaNaJanelaDeResgate(conv, AGORA)).toBe(false); // bola parece nossa
+    expect(idadeDaEsperaEstaNaJanela(conv, AGORA)).toBe(true); // mas espera ha 6 dias
+  });
+
+  it("acervo velho fica fora da janela mesmo pela idade", () => {
+    expect(idadeDaEsperaEstaNaJanela({ last_inbound_at: atras(9 * 24 * 60) }, AGORA)).toBe(false);
+  });
+
+  it("lead de 2 minutos nao entra: o bot merece a chance", () => {
+    expect(idadeDaEsperaEstaNaJanela({ last_inbound_at: atras(2) }, AGORA)).toBe(false);
   });
 });
