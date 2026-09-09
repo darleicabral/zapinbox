@@ -273,6 +273,21 @@ export function conversaElegivelPorAtivacao(
  * cadencia NAO pode falar — fora do expediente, ou com a varredura parada — que
  * e exatamente quando andar a fila toda faz estrago.
  */
+/**
+ * Etapas em ordem crescente de prazo. Ordenar e barato e evita falha silenciosa.
+ *
+ * ⚠️ `escolherEtapa` pega a MAIOR etapa vencida e para no primeiro prazo nao
+ * vencido, o que assume a lista crescente. Com uma lista fora de ordem — por
+ * exemplo subir a etapa 0 de 5 pra 15 minutos e esquecer a etapa 1, que estava
+ * em 10 — o silencio de 15 min venceria as duas e a escolha cairia na 1,
+ * PULANDO a 0 pra sempre. Nada quebraria, nenhum erro apareceria: o lead
+ * simplesmente receberia a mensagem errada. Ordenar aqui torna a configuracao a
+ * prova disso, e na lista certa e no-op.
+ */
+export function etapasEmOrdem(steps: FollowupStep[]): FollowupStep[] {
+  return [...steps].sort((a, b) => a.after_minutes - b.after_minutes);
+}
+
 export function escolherEtapa(
   steps: FollowupStep[],
   proximaEtapa: number,
@@ -405,8 +420,8 @@ async function sweepOrg(
   summary: FollowupSweepSummary,
 ): Promise<void> {
   const orgId = settings.organization_id;
-  const steps = settings.steps;
-  if (!Array.isArray(steps) || steps.length === 0) return;
+  if (!Array.isArray(settings.steps) || settings.steps.length === 0) return;
+  const steps = etapasEmOrdem(settings.steps);
   if (!inBusinessHours(settings.business_hours, new Date(now))) return; // fora do expediente
   // Quanto faz que o expediente abriu — entra na trava de idade da etapa 0.
   const desdeAberturaMin = minutosDesdeAberturaDaJanela(settings.business_hours, new Date(now));

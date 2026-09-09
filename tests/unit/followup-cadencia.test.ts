@@ -33,6 +33,7 @@ vi.mock("@/lib/logger", () => ({
 import {
   conversaElegivelPorAtivacao,
   escolherEtapa,
+  etapasEmOrdem,
   podeDisparar,
   respondeuAoUltimoFollowup,
   type FollowupStep,
@@ -357,5 +358,42 @@ describe("trava de idade vale no PRIMEIRO toque, nao so na etapa 0", () => {
         primeiroToque: false,
       }),
     ).toBe(true);
+  });
+});
+
+/**
+ * 09/09/2026 — a etapa 0 subiu de 5 para 15 min a pedido do Darlei. Se a etapa 1
+ * tivesse ficado nos 10, a lista sairia da ordem e escolherEtapa() PULARIA a
+ * etapa 0 pra sempre: 15 min de silencio vence as duas e a escolha e a maior.
+ * Nada quebraria e nenhum erro apareceria; o lead so receberia a frase errada.
+ */
+describe("etapas fora de ordem nao envenenam a escolha", () => {
+  const FORA_DE_ORDEM: FollowupStep[] = [
+    { after_minutes: 15, message: "primeira" },
+    { after_minutes: 10, message: "segunda" },
+    { after_minutes: 120, message: "terceira" },
+  ];
+
+  it("sem ordenar, a escolha erraria: 15 min cairia na etapa de 10", () => {
+    expect(escolherEtapa(FORA_DE_ORDEM, 0, 15)).toBe(1);
+  });
+
+  it("ordenando, o prazo mais curto vem primeiro e a escolha acerta", () => {
+    const ok = etapasEmOrdem(FORA_DE_ORDEM);
+    expect(ok.map((s) => s.after_minutes)).toEqual([10, 15, 120]);
+    expect(escolherEtapa(ok, 0, 10)).toBe(0);
+    expect(escolherEtapa(ok, 0, 15)).toBe(1);
+  });
+
+  it("na lista ja correta e no-op e nao muda os objetos", () => {
+    const ordenada = etapasEmOrdem(CADENCIA);
+    expect(ordenada.map((s) => s.after_minutes)).toEqual(CADENCIA.map((s) => s.after_minutes));
+    expect(ordenada[0]).toBe(CADENCIA[0]);
+  });
+
+  it("nao muta a lista original", () => {
+    const antes = FORA_DE_ORDEM.map((s) => s.after_minutes);
+    etapasEmOrdem(FORA_DE_ORDEM);
+    expect(FORA_DE_ORDEM.map((s) => s.after_minutes)).toEqual(antes);
   });
 });
