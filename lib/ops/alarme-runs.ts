@@ -18,9 +18,10 @@
  *     de falha é 0% e um alarme que só olhasse falha veria tudo verde. É o
  *     retrato de dispatcher parado, cron morto ou fila travada.
  *
- * O alarme fala com o GESTOR, não com corretor. É o único aviso do sistema que
- * vai pro dono de propósito: a regra "nunca encaminhe para o dono" é sobre
- * LEAD, e supervisionar é justamente o papel dele.
+ * O alarme fala SÓ com o admin do tenant. É o único aviso do sistema que vai pro
+ * dono de propósito: a regra "nunca encaminhe para o dono" é sobre LEAD, e
+ * supervisionar é justamente o papel dele. Corretor e gerente ficam fora — ver
+ * a nota em avisarOAdmin().
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -153,7 +154,7 @@ export async function varrerAlarmes(
       // Alarme repetido vira ruído, e ruído é ignorado — o oposto do objetivo.
       if (await alarmouRecentemente(admin, orgId, d.motivo!, agora)) continue;
 
-      const enviados = await avisarGestores(admin, orgId, d.texto);
+      const enviados = await avisarOAdmin(admin, orgId, d.texto);
       await registrar(admin, orgId, d, enviados);
       if (enviados > 0) {
         resumo.alarmes += 1;
@@ -215,10 +216,18 @@ async function registrar(
 }
 
 /**
- * Manda pra quem supervisiona: admin e gerente com telefone de aviso. Corretor
- * NÃO recebe — ele não tem o que fazer com "30% das execuções falharam".
+ * Manda SÓ pro admin do tenant — o gestor que pode agir no sistema.
+ *
+ * Gerente e corretor ficam FORA de propósito. O Cléber é gerente e atende lead:
+ * em 03/09/2026 ele levou 12 alertas do SLA num dia, metade sem ninguém
+ * esperando nada, e o Darlei encerrou o assunto com "não precisa alertar". Ele
+ * não tem o que fazer com "30% das execuções falharam" — quem mexe no provider
+ * e no deploy é o gestor.
+ *
+ * Testado em produção em 09/09: com admin+gerente saíram DUAS mensagens, e uma
+ * delas era exatamente o ruído que a decisão de 03/09 tinha eliminado.
  */
-async function avisarGestores(
+async function avisarOAdmin(
   admin: SupabaseClient,
   organizationId: string,
   texto: string,
@@ -239,7 +248,7 @@ async function avisarGestores(
     .select("user_id, role, notify_whatsapp_e164")
     .eq("organization_id", organizationId)
     .is("revoked_at", null)
-    .in("role", ["admin", "manager"]);
+    .eq("role", "admin");
 
   let enviados = 0;
   for (const m of (membros ?? []) as { notify_whatsapp_e164: string | null }[]) {
