@@ -15,7 +15,22 @@
  *   5531992953088 -> 553192953088@c.us
  *   5531984407819 -> 553184407819@c.us
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+// 09/09/2026 — o cliente WAHA passou a puxar o teto de envio
+// (lib/waha/limite-envio.ts), que importa lib/env, e lib/env VALIDA as
+// variáveis na importação e derruba a suíte. As funções sob teste aqui são
+// puras e não usam nada disso.
+vi.mock("@/lib/env", () => ({
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: "https://exemplo.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "teste",
+    NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+    INTERNAL_SECRET: "teste",
+    UPSTASH_REDIS_REST_URL: "",
+    UPSTASH_REDIS_REST_TOKEN: "",
+  },
+}));
+
 
 import { escolherChatId } from "@/lib/waha/send";
 
