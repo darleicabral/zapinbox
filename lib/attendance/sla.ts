@@ -39,6 +39,7 @@ import {
 } from "./interno";
 import { notifyAssigneeNewLead } from "./notify";
 import { resgatarLeadsParados } from "./parados";
+import { cobrarCorretorSilencioso } from "./recobrar";
 import {
   inBusinessHours,
   loadAttendanceSettings,
@@ -54,6 +55,8 @@ export interface SlaSweepSummary {
   left_unassigned: number;
   /** Lead que ficou esperando em conversa sem dono e foi resgatado (parados.ts). */
   rescued: number;
+  /** Corretor cobrado porque o lead voltou a escrever e ele nao respondeu. */
+  cobrados: number;
   errors: string[];
 }
 
@@ -87,6 +90,7 @@ function emptySummary(): SlaSweepSummary {
     first_response_alerts: 0,
     left_unassigned: 0,
     rescued: 0,
+    cobrados: 0,
     errors: [],
   };
 }
@@ -239,6 +243,12 @@ async function sweepOrg(
   const resgate = await resgatarLeadsParados(admin, orgId, { now: new Date(now) });
   summary.rescued += resgate.resgatados;
   summary.left_unassigned += resgate.sem_corretor;
+
+  // Terceira rede: lead que JA tem corretor, voltou a escrever, e o corretor
+  // nao respondeu. Nao reatribui -- bate na porta do mesmo. Ver recobrar.ts.
+  const cobranca = await cobrarCorretorSilencioso(admin, orgId, { now: new Date(now) });
+  summary.cobrados += cobranca.cobrados;
+  summary.errors.push(...cobranca.errors);
 }
 
 export async function sweepAttendanceSla(

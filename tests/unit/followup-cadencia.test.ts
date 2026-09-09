@@ -34,6 +34,7 @@ import {
   conversaElegivelPorAtivacao,
   escolherEtapa,
   etapasEmOrdem,
+  etapasJaEnviadas,
   podeDisparar,
   respondeuAoUltimoFollowup,
   type FollowupStep,
@@ -395,5 +396,82 @@ describe("etapas fora de ordem nao envenenam a escolha", () => {
     const antes = FORA_DE_ORDEM.map((s) => s.after_minutes);
     etapasEmOrdem(FORA_DE_ORDEM);
     expect(FORA_DE_ORDEM.map((s) => s.after_minutes)).toEqual(antes);
+  });
+});
+
+/**
+ * 09/09/2026, item 3 da lista: cada etapa fala UMA vez por conversa.
+ * `followup_step` zera quando o lead responde (proposital: ele voltou), mas quem
+ * responde curto entrava num laco -- o Waldeir recebeu "Oi, ainda ta por ai?"
+ * SEIS vezes em 40 minutos, dizendo "Sim" entre uma e outra.
+ */
+describe("cada etapa fala uma vez por conversa", () => {
+  // Fixture com os textos REAIS que estavam em producao ate 09/09 -- o CADENCIA
+  // do topo do arquivo e abreviado, e aqui o casamento e POR TEXTO, entao ele
+  // precisa ser o que o lead viu de verdade.
+  const REAIS: FollowupStep[] = [
+    { after_minutes: 5, message: "Oi, ainda tá por aí?" },
+    {
+      after_minutes: 10,
+      message:
+        "Notei que você não pode responder no momento. Tem um horário melhor para falarmos sobre essa oportunidade?",
+    },
+    {
+      after_minutes: 120,
+      message:
+        "Esse imóvel ainda tem ótimas condições de financiamento. Gostaria de realizar uma simulação?",
+    },
+    {
+      after_minutes: 1440,
+      message:
+        "Oi, {nome}! Voltando aqui. A simulação continua de pé e leva menos de 2 minutos. Quer que eu faça?",
+    },
+  ];
+
+  it("a etapa ja enviada e pulada mesmo com o contador zerado", () => {
+    const enviadas = etapasJaEnviadas(REAIS, ["Oi, ainda tá por aí?"]);
+    expect(enviadas.has(0)).toBe(true);
+    // com 5 min de silencio nao ha outra etapa vencida: nada a enviar
+    expect(escolherEtapa(REAIS, 0, 5, enviadas)).toBe(-1);
+    // com 10 min, a etapa 1 esta disponivel e e ela que sai
+    expect(escolherEtapa(REAIS, 0, 10, enviadas)).toBe(1);
+  });
+
+  it("o laco do Waldeir nao acontece mais", () => {
+    // ele recebeu a MESMA frase 6x em 40 min, dizendo "Sim" entre uma e outra
+    const enviadas = etapasJaEnviadas(REAIS, [
+      "Oi, ainda tá por aí?",
+      "Oi, ainda tá por aí?",
+      "Notei que você não pode responder no momento. Tem um horário melhor para falarmos sobre essa oportunidade?",
+    ]);
+    expect([...enviadas].sort()).toEqual([0, 1]);
+    expect(escolherEtapa(REAIS, 0, 60, enviadas)).toBe(-1);
+    expect(escolherEtapa(REAIS, 0, 130, enviadas)).toBe(2);
+  });
+
+  it("reconhece a etapa com {nome} pelo texto que o lead viu", () => {
+    // a frase que a Soraia e a Carmem receberam as 9h de 09/09
+    const enviadas = etapasJaEnviadas(REAIS, [
+      "Oi, Soraia! Voltando aqui. A simulação continua de pé e leva menos de 2 minutos. Quer que eu faça?",
+    ]);
+    expect(enviadas.has(3)).toBe(true);
+  });
+
+  it("resposta de verdade do bot nao marca etapa nenhuma", () => {
+    const enviadas = etapasJaEnviadas(REAIS, [
+      "Essa é a casa de 2 quartos com suíte no São Paulo, R$ 290.000.",
+      "O que mais chamou sua atenção nesse imóvel?",
+      null,
+    ]);
+    expect(enviadas.size).toBe(0);
+  });
+
+  it("cadencia toda gasta nao envia mais nada", () => {
+    const enviadas = etapasJaEnviadas(
+      REAIS,
+      REAIS.map((s) => s.message.replace("{nome}", "Ana")),
+    );
+    expect(enviadas.size).toBe(4);
+    expect(escolherEtapa(REAIS, 0, 99999, enviadas)).toBe(-1);
   });
 });

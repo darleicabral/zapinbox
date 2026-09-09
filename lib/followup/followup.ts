@@ -292,14 +292,52 @@ export function escolherEtapa(
   steps: FollowupStep[],
   proximaEtapa: number,
   inactivityMin: number,
+  jaEnviadas?: ReadonlySet<number>,
 ): number {
   if (proximaEtapa >= steps.length) return -1;
   let escolhida = -1;
   for (let i = proximaEtapa; i < steps.length; i++) {
-    if (inactivityMin >= steps[i]!.after_minutes) escolhida = i;
-    else break;
+    if (inactivityMin < steps[i]!.after_minutes) break;
+    // Etapa cujo TEXTO ja saiu nesta conversa nao sai de novo. Ver a nota de
+    // `etapasJaEnviadas`.
+    if (jaEnviadas?.has(i)) continue;
+    escolhida = i;
   }
   return escolhida;
+}
+
+/**
+ * Indices das etapas cujo TEXTO ja foi enviado nesta conversa.
+ *
+ * 🐛 09/09/2026 — `followup_step` volta a zero cada vez que o lead responde
+ * (isso e proposital: ele voltou, a cadencia recomeca). Mas quem responde curto
+ * entra num laco: o Waldeir recebeu "Oi, ainda ta por ai?" SEIS VEZES em 40
+ * minutos, dizendo "Sim" entre uma e outra. Subir a etapa de 5 pra 15 minutos
+ * espacou o laco; nao o eliminou.
+ *
+ * A regra e do ponto de vista do lead: uma frase de robo repetida e o sinal mais
+ * claro de que ninguem esta lendo. Cada etapa fala UMA vez por conversa.
+ *
+ * Casa por TEXTO, nao por indice, porque o indice se move quando a configuracao
+ * muda — e a Avant mudou os prazos hoje. O texto e o que o lead viu.
+ */
+export function etapasJaEnviadas(
+  steps: FollowupStep[],
+  corposEnviados: (string | null)[],
+): Set<number> {
+  const vistos = new Set(corposEnviados.map((c) => chaveDeTexto(c ?? "")).filter(Boolean));
+  const fora = new Set<number>();
+  steps.forEach((s, i) => {
+    const molde = chaveDeTexto(s.message);
+    if (!molde) return;
+    const partes = molde.split(chaveDeTexto("{nome}"));
+    const casou =
+      partes.length === 2
+        ? [...vistos].some((v) => v.startsWith(partes[0]!) && v.endsWith(partes[1]!))
+        : vistos.has(molde);
+    if (casou) fora.add(i);
+  });
+  return fora;
 }
 
 export function podeDisparar(
@@ -594,9 +632,26 @@ async function sweepOrg(
 
     if (conv.followup_step >= steps.length) continue;
     const inactivityMin = (now - lastInbound) / 60_000;
+
+    // Cada etapa fala UMA vez por conversa. `followup_step` zera quando o lead
+    // responde, e quem responde curto entrava num laco: o Waldeir recebeu a
+    // mesma frase 6x em 40 min. Ver etapasJaEnviadas().
+    const { data: jaSaiu } = await admin
+      .from("messages")
+      .select("body")
+      .eq("organization_id", orgId)
+      .eq("conversation_id", conv.id)
+      .eq("direction", "outbound")
+      .order("sent_at", { ascending: false })
+      .limit(60);
+    const jaEnviadas = etapasJaEnviadas(
+      steps,
+      ((jaSaiu ?? []) as { body: string | null }[]).map((m) => m.body),
+    );
+
     // A etapa vem do silencio REAL, pulando as que ficaram atras: quem sumiu ha
     // sete horas nao recebe "ainda ta por ai?". Ver escolherEtapa().
-    const indice = escolherEtapa(steps, conv.followup_step, inactivityMin);
+    const indice = escolherEtapa(steps, conv.followup_step, inactivityMin, jaEnviadas);
     if (indice < 0) continue; // nenhuma etapa vencida ainda
     const step = steps[indice]!;
 

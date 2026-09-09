@@ -85,6 +85,26 @@ const MOTIVOS_NA_FALA_DO_LEAD: { rx: RegExp; recado: string }[] = [
     rx: /n[ãa]o entendi|n[ãa]o compreendi|n[ãa]o ficou claro|como assim\?|voc[êe] [ée] (um )?rob[oô]|[ée] rob[oô]\?/iu,
     recado: "O lead não entendeu a conversa com a IA.",
   },
+  // ── 09/09: RECLAMACAO DE ABANDONO. O estado mais raivoso que existe, e ate
+  // hoje sem gatilho nenhum. Quatro casos numa semana, todos com o lead
+  // querendo comprar:
+  //   Bruno   "A gente fala sim, voces respondem nao. Pelo amor de Deus, gente."
+  //   Roger   "Vcs nao respondem" (e, seis minutos depois, "?????")
+  //   Waldeir "Estou mas vc nao fala nada"
+  //   Valone  "Bom dia tenho interesse, so que nao me responde as mensagens"
+  //
+  // O MESMO texto e reconhecido na cadencia (RECLAMACAO_DE_ABANDONO em
+  // followup.ts) pro efeito OPOSTO: garantir que reclamacao nao seja lida como
+  // desistencia. Aqui ele escala. As duas leituras dizem a mesma coisa — esse
+  // lead quer atencao, nao quer sair.
+  {
+    // ⚠️ A frase do Bruno é INVERTIDA: "vocês respondem não". Um regex que só
+    // procurasse "não responde" perdia justamente a reclamação mais raivosa do
+    // lote, então as duas ordens entram.
+    rx: /n[ãa]o (me )?respond|n[ãa]o (me )?atend|respondem?\s+n[ãa]o|atendem?\s+n[ãa]o|n[ãa]o fala nada|ningu[eé]m (me )?(respond|atend)|sem resposta (at[ée]|ainda)|cad[êe] (voc[êe]s?|vcs?)|(t[ôo]|estou) esperando (resposta|h[áa]|ha )/iu,
+    recado:
+      "🚨 O lead RECLAMOU que ninguém responde. Fale com ele agora — ele está irritado e ainda quer comprar.",
+  },
 ];
 
 /**

@@ -46,6 +46,12 @@ const config: VercelConfig = {
     //   * * * * * curl -s -X POST https://crm.zapinbox.com.br/api/v1/cron/inactivity-followup \
     //       -H "Authorization: Bearer $INTERNAL_SECRET"
     { path: "/api/v1/cron/inactivity-followup", schedule: "45 3 * * *" },
+    // [ZapInbox] Alarme de bot quebrado. Existe porque em 06-08/09/2026 o bot
+    // da Avant ficou DOIS DIAS fora do ar (156 execucoes com erro) e ninguem
+    // foi avisado. Idem: fallback diario aqui, tick de 15 em 15 min na VPS:
+    //   */15 * * * * curl -s -X POST https://crm.zapinbox.com.br/api/v1/cron/alarme-runs \
+    //       -H "Authorization: Bearer $INTERNAL_SECRET"
+    { path: "/api/v1/cron/alarme-runs", schedule: "50 3 * * *" },
   ],
   functions: {
     // EPIC-13 S-13.08: ToolLoopAgent runtime can issue multiple tool calls per

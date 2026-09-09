@@ -174,3 +174,59 @@ describe("padrões novos achados na análise de 08/09", () => {
     expect(motivoDoLeadParaEncaminhar("você é robô?")).toContain("não entendeu");
   });
 });
+
+/**
+ * 09/09/2026, item 2 da lista de melhorias: RECLAMACAO DE ABANDONO.
+ *
+ * Quatro casos numa semana, todos com lead que ainda queria comprar. Era o
+ * estado mais raivoso possivel e nao tinha gatilho nenhum. O MESMO texto e
+ * reconhecido na cadencia pro efeito oposto (garantir que reclamacao nao seja
+ * lida como desistencia) -- as duas leituras dizem a mesma coisa: esse lead
+ * quer atencao, nao quer sair.
+ */
+describe("lead que reclama de abandono vai pro corretor", () => {
+  it("pega as quatro falas reais da semana", () => {
+    for (const frase of [
+      "A gente fala sim, vocês respondem não. Pelo amor de Deus, gente. Quem não é pessoas para atender, não?",
+      "Vcs não respondem",
+      "Estou mas vc não fala nada",
+      "Bom dia tenho interesse, só que não me responde as mensagens",
+    ]) {
+      const r = motivoDoLeadParaEncaminhar(frase);
+      expect(r, frase).not.toBeNull();
+      expect(r, frase).toContain("RECLAMOU");
+    }
+  });
+
+  it("pega as variacoes de cobranca", () => {
+    for (const frase of [
+      "ninguém me responde",
+      "cadê vocês?",
+      "cadê vc",
+      "tô esperando resposta há duas horas",
+      "ninguém atende aqui",
+    ]) {
+      expect(motivoDoLeadParaEncaminhar(frase), frase).not.toBeNull();
+    }
+  });
+
+  it("o recado diz ao corretor o que ele precisa saber", () => {
+    const r = motivoDoLeadParaEncaminhar("Vcs não respondem");
+    expect(r).toContain("irritado");
+    expect(r).toContain("ainda quer comprar");
+  });
+
+  it("nao confunde com fala comum que tem 'nao'", () => {
+    for (const frase of [
+      "Não quero financiamento, vou pagar à vista",
+      "Ainda não decidi",
+      "Não sei se consigo a entrada",
+      "Bom dia, não obrigado",
+      "E não queria sair da régua",
+    ]) {
+      const r = motivoDoLeadParaEncaminhar(frase);
+      // pode acionar outro gatilho, mas NUNCA o de reclamacao
+      if (r) expect(r, frase).not.toContain("RECLAMOU");
+    }
+  });
+});
