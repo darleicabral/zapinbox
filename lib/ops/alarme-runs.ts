@@ -25,6 +25,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { inBusinessHours } from "@/lib/attendance/rotation";
 import { logger } from "@/lib/logger";
 import { resolveChatIdChecked, sendWAHA } from "@/lib/waha/send";
 
@@ -137,15 +138,29 @@ export async function varrerAlarmes(
 
   const { data: orgs, error } = await admin
     .from("attendance_settings")
-    .select("organization_id")
+    .select("organization_id, business_hours")
     .eq("enabled", true);
   if (error) {
     resumo.errors.push(`load_orgs: ${error.message}`);
     return resumo;
   }
 
-  for (const row of (orgs ?? []) as { organization_id: string }[]) {
+  for (const row of (orgs ?? []) as {
+    organization_id: string;
+    business_hours: Parameters<typeof inBusinessHours>[0];
+  }[]) {
     const orgId = row.organization_id;
+
+    // Fora do expediente o alarme fica calado.
+    //
+    // Não é preguiça: o gestor não conserta provider às 3h da manhã, e alarme
+    // que acorda de madrugada é alarme que vira silenciado. O apagão de 06-08/09
+    // começou às 21h — com esta regra ele teria sido avisado às 9h do dia
+    // seguinte, em vez de descobrir dois dias depois por um print de lead sem
+    // resposta. A madrugada também tem pouca amostra, então o critério de
+    // volume mínimo raramente fecharia lá de qualquer forma.
+    if (!inBusinessHours(row.business_hours, agora)) continue;
+
     resumo.orgs_scanned += 1;
     try {
       const { data: runs } = await admin
