@@ -101,7 +101,7 @@ describe("triggerHandoff chama a atribuição+aviso", () => {
     expect(chamadas[0]).toMatchObject({ minRole: "manager" });
   });
 
-  it("handoff idempotente (<5s, mesma razão) NÃO atribui de novo", async () => {
+  it("handoff repetido na mesma conversa NAO atribui de novo", async () => {
     ultimoHandoffAt = new Date().toISOString();
     const { triggerHandoff } = await import("@/lib/ai/handoff/orchestrator");
 
@@ -112,8 +112,29 @@ describe("triggerHandoff chama a atribuição+aviso", () => {
     });
 
     expect(r.triggered).toBe(false);
-    expect(r.reason).toBe("idempotent_5s");
+    expect(r.reason).toBe("idempotent");
     expect(chamadas).toHaveLength(0); // sem aviso em dobro
+  });
+
+  // 🐛 10/09/2026 — os corretores reclamaram de receber o mesmo lead duas vezes:
+  // 45 duplicatas em 162 avisos. A trava nao pegava porque exigia o MESMO
+  // motivo, e os dois caminhos mandam motivos diferentes (a ferramenta manda
+  // "requested_human", o runtime manda o texto do motivo). Do ponto de vista do
+  // corretor o motivo e irrelevante: dois avisos do mesmo lead em segundos sao
+  // duplicata.
+  it("motivo DIFERENTE na mesma conversa tambem e duplicata", async () => {
+    ultimoHandoffAt = new Date(Date.now() - 10_000).toISOString(); // 10s atras
+    const { triggerHandoff } = await import("@/lib/ai/handoff/orchestrator");
+
+    const r = await triggerHandoff({
+      conversationId: CONV,
+      organizationId: ORG,
+      reason: "low_sentiment", // outro motivo, mesma conversa
+    });
+
+    expect(r.triggered).toBe(false);
+    expect(r.reason).toBe("idempotent");
+    expect(chamadas).toHaveLength(0);
   });
 
   it("conversa inexistente não atribui", async () => {

@@ -26,7 +26,10 @@ export type HandoffSource = "sentinel" | "tool" | "promessa" | "adiamento";
  *
  * Cada padrão devolve também o RECADO que vai no aviso, porque "está no
  * trabalho agora" e "pediu pra falar à noite" mudam a ação do corretor.
+ *
+ * A lista está em MOTIVOS_NA_FALA_DO_LEAD, mais abaixo.
  */
+
 /**
  * O lead RECLAMANDO que ninguém responde.
  *
@@ -268,9 +271,26 @@ async function findLeadIdForConversation(
 }
 
 export async function finalizeHandoff(input: FinalizeHandoffInput): Promise<void> {
-  // Trigger external side effects only when we have a real conversation
-  // (test/dry-run flows pass null and just want the run row marked).
-  if (input.conversationId && !input.isDryRun) {
+  // 🐛 10/09/2026 — CORRETOR RECEBENDO O MESMO LEAD DUAS VEZES.
+  //
+  // Quando o handoff vem da FERRAMENTA (`source === "tool"`), o efeito colateral
+  // JA ACONTECEU: `lib/mcp/tools/handoff.ts` chama triggerHandoff, e o passo 6
+  // do orquestrador atribui o corretor e manda o aviso. Chamar de novo aqui
+  // mandava o segundo aviso ~10 segundos depois, no meio da mensagem de
+  // despedida do bot.
+  //
+  // Medido nos avisos desde 05/09: 45 de 162 eram duplicata (28%), com
+  // intervalos de 7 a 23 segundos. A trava de idempotência do orquestrador não
+  // pegava, por dois motivos: a janela dela é de 5 segundos, e ela exige o
+  // MESMO motivo — a ferramenta manda "requested_human" e o runtime manda o
+  // texto do motivo, então nunca casavam.
+  //
+  // Aqui a função volta a fazer só o que o cabeçalho dela promete: marcar o
+  // run. Os outros gatilhos (sentinela, promessa, adiamento) continuam
+  // disparando o efeito, porque neles ninguém disparou antes.
+  const efeitoJaAconteceu = input.source === "tool";
+
+  if (input.conversationId && !input.isDryRun && !efeitoJaAconteceu) {
     const leadId = await findLeadIdForConversation(input.organizationId, input.conversationId);
     await triggerHandoff({
       conversationId: input.conversationId,

@@ -8,8 +8,9 @@
  *            bot_silenced_until='infinity',
  *            last_handoff_at=now(),
  *            last_handoff_reason=<reason>
- *      (idempotente: se outro handoff aconteceu nos últimos 5s com mesma reason,
- *       skip — tratamento de race G2 vs G3 vs G4 simultâneos.)
+ *      (idempotente: outro handoff da MESMA conversa dentro de
+ *       IDEMPOTENCY_WINDOW_MS é ignorado, seja qual for o motivo — ver a nota
+ *       na trava. Trata race entre gatilhos simultâneos e duplicata de aviso.)
  *   2. INSERT em crm_lead_activities (timeline) se houver lead_id
  *   3. emit_event('ai.handoff_triggered') no event_log
  *   4. Realtime broadcast no channel 'org:<org>:queue' (event 'handoff_pending')
@@ -59,7 +60,12 @@ export interface TriggerHandoffResult extends Partial<AssignAndNotifyResult> {
   reason: string;
 }
 
-const IDEMPOTENCY_WINDOW_MS = 5_000;
+/**
+ * Janela da trava de duplicata. Era 5s, que nao cobria o caso real (o segundo
+ * disparo vinha ~10s depois). Um minuto cobre com folga, e segundo aviso do
+ * mesmo lead dentro de um minuto nao informa nada ao corretor de qualquer jeito.
+ */
+const IDEMPOTENCY_WINDOW_MS = 60_000;
 // Postgres `infinity` literal — bot must never reassume after handoff (IA-06).
 const SILENCE_INFINITY = "infinity";
 
@@ -91,10 +97,27 @@ export async function triggerHandoff(
     };
     const c = convNow as unknown as ConvNowRow;
 
+    // ⚠️ A TRAVA IGNORA O MOTIVO DE PROPOSITO, e a janela e larga.
+    //
+    // 🐛 10/09/2026 — os corretores reclamaram de receber o mesmo lead duas
+    // vezes: 45 avisos duplicados de 162 (28%), com 7 a 23 segundos de
+    // intervalo. A causa raiz era o runtime re-disparando o que a ferramenta ja
+    // havia disparado (consertado em finalizeHandoff), mas esta trava DEVIA ter
+    // segurado e nao segurou, por dois motivos:
+    //
+    //   - a janela era de 5 segundos, e o segundo disparo vinha ~10s depois,
+    //     porque o runtime finaliza DEPOIS de mandar a despedida do bot;
+    //   - ela exigia `last_handoff_reason === input.reason`, e os dois caminhos
+    //     mandam motivos diferentes ("requested_human" contra o texto do
+    //     motivo). Nunca casava.
+    //
+    // Do ponto de vista do corretor, o motivo e irrelevante: dois avisos do
+    // mesmo lead em segundos sao duplicata, seja qual for o gatilho. Entao a
+    // trava passa a olhar SO a conversa e o tempo.
     if (c.last_handoff_at) {
       const since = Date.now() - new Date(c.last_handoff_at).getTime();
-      if (since < IDEMPOTENCY_WINDOW_MS && c.last_handoff_reason === input.reason) {
-        return { triggered: false, reason: "idempotent_5s" };
+      if (since < IDEMPOTENCY_WINDOW_MS) {
+        return { triggered: false, reason: "idempotent" };
       }
     }
 
