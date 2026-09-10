@@ -68,7 +68,16 @@ const MOTIVOS_NA_FALA_DO_LEAD: { rx: RegExp; recado: string }[] = [
     recado: "O lead pediu pra falar mais tarde.",
   },
   {
-    rx: /[aà] noite|de noite|fim da tarde|depois do (trabalho|servi[cç]o)|quando (eu )?sair do trabalho/iu,
+    // 🐛 10/09/2026 — "BOA NOITE" CONTÉM "A NOITE", e por isso toda saudação
+    // noturna virava "o lead pediu pra falar no fim do dia" e encaminhava o
+    // lead antes de o bot ter qualificado nada. Pior caso real: "Boa noite pode
+    // me dizer qual é a metragem do apartamento??" — pergunta simples, que o
+    // bot responde, mandada pro corretor. Das 6 falas que casaram com este
+    // padrão desde 01/09, QUATRO eram só a saudação.
+    //
+    // O lookbehind `(?<!bo)` separa saudação de intenção: "Boa noite" não
+    // aciona, "me chama a noite" e "hoje a noite" continuam acionando.
+    rx: /(?<!bo)[aà] noite|de noite|fim da tarde|depois do (trabalho|servi[cç]o)|quando (eu )?sair do trabalho/iu,
     recado: "O lead pediu pra falar no fim do dia.",
   },
   {

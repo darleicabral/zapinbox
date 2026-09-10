@@ -230,3 +230,51 @@ describe("lead que reclama de abandono vai pro corretor", () => {
     }
   });
 });
+
+/**
+ * 🐛 10/09/2026 — "BOA NOITE" CONTEM "A NOITE".
+ *
+ * O gatilho de agenda casava com toda saudacao noturna, e o lead era
+ * encaminhado antes de o bot qualificar nada. Pior caso real: "Boa noite pode
+ * me dizer qual e a metragem do apartamento??" -- pergunta simples, que o bot
+ * responde, mandada pro corretor. Das 6 falas que casaram com o padrao desde
+ * 01/09, QUATRO eram so a saudacao.
+ *
+ * Achado lendo a conversa da Ana Silvia: ela disse "Boa noite", o run virou
+ * handoff, e a pergunta que ela mandou 13 segundos depois ("Aceita
+ * financiamento?") caiu em skipped_silenced -- ninguem respondeu a ela.
+ */
+describe("saudacao noturna NAO e pedido de agenda", () => {
+  it("as quatro falas reais que nao deviam ter acionado", () => {
+    for (const frase of [
+      "Boa noite",
+      "Olá boa noite",
+      "Boa noite pode me dizer qual é a metragem do apartamento??",
+      "Ah Boa noite, eu escutei é vem da nova, então é Vespasiano, né?",
+    ]) {
+      const r = motivoDoLeadParaEncaminhar(frase);
+      if (r) expect(r, frase).not.toContain("fim do dia");
+    }
+  });
+
+  it("mas a intencao de verdade continua acionando", () => {
+    for (const frase of [
+      "me chama a noite",
+      "à noite fica melhor pra mim",
+      "hoje a noite eu falo com você",
+      "sábado a noite",
+      "só consigo depois do trabalho",
+      "quando eu sair do trabalho te chamo",
+    ]) {
+      const r = motivoDoLeadParaEncaminhar(frase);
+      expect(r, frase).not.toBeNull();
+      expect(r, frase).toContain("fim do dia");
+    }
+  });
+
+  it("bom dia e boa tarde nunca acionaram, e seguem assim", () => {
+    for (const frase of ["Bom dia", "Boa tarde", "Boa tarde, tudo bem?"]) {
+      expect(motivoDoLeadParaEncaminhar(frase), frase).toBeNull();
+    }
+  });
+});
