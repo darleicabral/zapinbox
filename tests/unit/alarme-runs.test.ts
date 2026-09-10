@@ -94,3 +94,28 @@ describe("o texto tem de dizer o que fazer, não só que quebrou", () => {
     expect(d.texto).toContain("não é falta de movimento");
   });
 });
+
+/**
+ * 🐛 10/09/2026 — duas execucoes morreram com `token_budget_exceeded` e o
+ * alarme nao viu nada, porque so olhava `failed`. Do ponto de vista do lead nao
+ * ha diferenca: ninguem respondeu.
+ *
+ * `skipped` continua fora de proposito -- e a decisao deliberada de nao
+ * responder (conversa ocupada, bot silenciado, contato interno), que e o sistema
+ * funcionando.
+ */
+describe("execucao abortada tambem e nao-resposta", () => {
+  it("aborto conta como falha na conta do alarme", () => {
+    // 5 de 10 abortadas = 50%, acima do limite
+    const d = diagnosticar({ runs: 10, falhas: 5, entradas: 10 });
+    expect(d.alarmar).toBe(true);
+    expect(d.motivo).toBe("falha");
+  });
+
+  it("o caso real de hoje NAO alarmaria sozinho, e esta certo", () => {
+    // 2 abortos em 51 execucoes = 4%: e ruido, nao apagao
+    const d = diagnosticar({ runs: 51, falhas: 2, entradas: 40 });
+    expect(d.alarmar).toBe(false);
+    expect(d.pctFalha).toBe(4);
+  });
+});

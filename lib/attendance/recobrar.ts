@@ -166,6 +166,26 @@ export async function cobrarCorretorSilencioso(
       continue;
     }
 
+    // Quando foi a ULTIMA cobranca desta conversa? Duas coisas dependem disso.
+    const { data: ultimaCobranca } = await admin
+      .from("event_log")
+      .select("created_at")
+      .eq("organization_id", organizationId)
+      .eq("event_type", "attendance.cobrado")
+      .eq("payload->>conversation_id", conv.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const cobradaEm = (ultimaCobranca as { created_at: string } | null)?.created_at ?? null;
+
+    // 1) Silencio minimo entre cobrancas da mesma conversa.
+    if (
+      cobradaEm &&
+      new Date(cobradaEm).getTime() > agora.getTime() - SILENCIO_ENTRE_COBRANCAS_H * 3_600_000
+    ) {
+      continue;
+    }
+
     // ⚠️ SÓ COBRA SE O LEAD RECLAMOU DE VERDADE. Esta é a trava que faltava, e
     // ela é a diferença entre 1 cobrança e 29.
     //
@@ -186,13 +206,21 @@ export async function cobrarCorretorSilencioso(
     //
     // Medido nas 29 que saíram por engano: exigindo reclamação sobra UMA, a
     // Valone, que é o caso que motivou o pedido.
+    // 2) A reclamacao tem de ser NOVA — posterior a ultima cobranca.
+    //
+    // 🐛 10/09/2026 — sem isto o Gilvam foi cobrado TRES vezes pela mesma
+    // reclamacao da Valone (09/09 08h04): ela nunca mais escreveu, ele nunca
+    // respondeu PELO CRM (atende do celular), e a cada 6h a reclamacao velha
+    // era relida como se fosse nova. Cobrar de novo pela mesma fala nao informa
+    // nada e queima a confianca no aviso.
+    const desdeQuando = cobradaEm ?? conv.assigned_at;
     const { data: falasDoLead } = await admin
       .from("messages")
       .select("body")
       .eq("organization_id", organizationId)
       .eq("conversation_id", conv.id)
       .eq("direction", "inbound")
-      .gt("sent_at", conv.assigned_at)
+      .gt("sent_at", desdeQuando)
       .order("sent_at", { ascending: false })
       .limit(5);
     const reclamou = ((falasDoLead ?? []) as { body: string | null }[]).some((m) =>
@@ -213,19 +241,6 @@ export async function cobrarCorretorSilencioso(
       .in("sent_via", ["user", "external_device"])
       .gt("sent_at", conv.assigned_at);
     if ((falouAlgo ?? 0) > 0) continue;
-
-    // Já cobramos por esta conversa há pouco?
-    const desde = new Date(
-      agora.getTime() - SILENCIO_ENTRE_COBRANCAS_H * 3_600_000,
-    ).toISOString();
-    const { count: cobrancaRecente } = await admin
-      .from("event_log")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", organizationId)
-      .eq("event_type", "attendance.cobrado")
-      .eq("payload->>conversation_id", conv.id)
-      .gte("created_at", desde);
-    if ((cobrancaRecente ?? 0) > 0) continue;
 
     const nomeDoLead =
       contato.name?.trim() || contato.display_name?.trim() || contato.phone_number || "Novo contato";

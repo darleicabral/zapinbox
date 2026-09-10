@@ -107,6 +107,25 @@ export function diagnosticar(contagem: {
   return { ...base, alarmar: false, motivo: null, texto: null };
 }
 
+/**
+ * A execucao terminou sem responder o lead?
+ *
+ * `failed` e o caso obvio. `aborted` conta tambem, e foi um furo descoberto em
+ * 10/09/2026: duas execucoes morreram com `token_budget_exceeded` e o alarme
+ * nao viu nada, porque so olhava `failed`. Do ponto de vista do lead nao ha
+ * diferenca — ninguem respondeu.
+ *
+ * `skipped` fica FORA de proposito: e a decisao deliberada de nao responder
+ * (conversa ocupada, bot silenciado, contato interno), e isso e o sistema
+ * funcionando.
+ *
+ * Abort antigo do tipo `stale_inflight` (o reaper limpando run orfao) nao
+ * poluiu porque a janela filtra por `created_at` do run, e run velho fica fora.
+ */
+function ehNaoResposta(r: { status: string; abort_reason: string | null }): boolean {
+  return r.status === "failed" || r.status === "aborted";
+}
+
 /** Varre os tenants com atendimento ligado e alarma quem estiver quebrado. */
 export async function varrerAlarmes(
   admin: SupabaseClient,
@@ -131,11 +150,11 @@ export async function varrerAlarmes(
     try {
       const { data: runs } = await admin
         .from("ai_agent_runs")
-        .select("status")
+        .select("status, abort_reason")
         .eq("organization_id", orgId)
         .eq("is_dry_run", false)
         .gte("created_at", desde);
-      const lista = (runs ?? []) as { status: string }[];
+      const lista = (runs ?? []) as { status: string; abort_reason: string | null }[];
 
       const { count: entradas } = await admin
         .from("messages")
@@ -146,7 +165,7 @@ export async function varrerAlarmes(
 
       const d = diagnosticar({
         runs: lista.length,
-        falhas: lista.filter((r) => r.status === "failed").length,
+        falhas: lista.filter((r) => ehNaoResposta(r)).length,
         entradas: entradas ?? 0,
       });
       if (!d.alarmar || !d.texto) continue;
