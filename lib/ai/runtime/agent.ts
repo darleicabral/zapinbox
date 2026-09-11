@@ -31,7 +31,13 @@ import type { McpContext } from "@/lib/mcp/types";
 import { computeCostCents } from "./cost";
 import { finalizeRun } from "./finalize";
 import { sendFinalResponse } from "./finalize";
-import { botParouSemResolver, finalizeHandoff, motivoDoLeadParaEncaminhar } from "./handoff";
+import {
+  avisoDeQuemVaiAtender,
+  botParouSemResolver,
+  finalizeHandoff,
+  motivoDoLeadParaEncaminhar,
+  precisaAvisarQuemAtende,
+} from "./handoff";
 import { loadHistoryWithBudget } from "./history";
 import { mintEphemeralToken, revokeEphemeralToken } from "./mcp_token";
 import { pickToolsFromMcp, type RuntimeHandoffSignal } from "./tools";
@@ -570,7 +576,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
           requestId: run.id,
         });
       }
-      await finalizeHandoff({
+      const desfecho = await finalizeHandoff({
         runId: run.id,
         organizationId: run.organization_id,
         conversationId: conversationIdForHandoff,
@@ -587,6 +593,37 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
         toolCalls: trace,
         isDryRun: run.is_dry_run,
       });
+
+      // 🐛 11/09/2026 — O LEAD NUNCA SOUBE QUE ALGUÉM IA ATENDER.
+      //
+      // Quando o handoff vem da FERRAMENTA, o modelo sabe que está encaminhando
+      // e escreve a despedida certa. Nos gatilhos de SISTEMA (sentinela,
+      // promessa, adiamento) quem decide é o código, depois que o modelo já
+      // falou — e o texto dele foi escrito supondo que a conversa continuava.
+      //
+      // A Junia Maria levou um "Qual dia fica melhor pra você?" e, 2 segundos
+      // depois, o bot silenciado pra sempre. Ela respondeu duas vezes no vazio.
+      // Medido: 16 leads encaminhados sem aviso, 13 seguiram falando sozinhos.
+      //
+      // Vai DEPOIS do finalizeHandoff de propósito: é só ali que o rodízio
+      // define o dono, e o nome dele é o que faz a mensagem valer alguma coisa.
+      if (
+        origem !== "tool" &&
+        !run.is_dry_run &&
+        run.conversation_id &&
+        replyMode !== "silent" &&
+        precisaAvisarQuemAtende(farewell)
+      ) {
+        await sendFinalResponse({
+          supabase: admin,
+          organizationId: run.organization_id,
+          runId: run.id,
+          conversationId: run.conversation_id,
+          text: avisoDeQuemVaiAtender(desfecho.assignedFirstName),
+          requestId: `${run.id}-aviso`,
+        });
+      }
+
       return {
         run_id: run.id,
         status: "handoff",

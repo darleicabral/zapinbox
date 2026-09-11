@@ -270,7 +270,20 @@ async function findLeadIdForConversation(
   return (data?.lead_id as string | undefined) ?? null;
 }
 
-export async function finalizeHandoff(input: FinalizeHandoffInput): Promise<void> {
+/**
+ * Quem ficou com o lead. Devolvido pra que o RUNTIME possa dizer ao cliente
+ * quem vai atendê-lo — ver o aviso obrigatório em agent.ts.
+ *
+ * `null` em assignedFirstName significa que ninguém foi atribuído (rodízio
+ * desligado ou sem corretor livre): o texto cai pra "nossa equipe já te chama".
+ */
+export interface DesfechoDoHandoff {
+  assignedFirstName: string | null;
+}
+
+export async function finalizeHandoff(
+  input: FinalizeHandoffInput,
+): Promise<DesfechoDoHandoff> {
   // 🐛 10/09/2026 — CORRETOR RECEBENDO O MESMO LEAD DUAS VEZES.
   //
   // Quando o handoff vem da FERRAMENTA (`source === "tool"`), o efeito colateral
@@ -290,9 +303,10 @@ export async function finalizeHandoff(input: FinalizeHandoffInput): Promise<void
   // disparando o efeito, porque neles ninguém disparou antes.
   const efeitoJaAconteceu = input.source === "tool";
 
+  let assignedFirstName: string | null = null;
   if (input.conversationId && !input.isDryRun && !efeitoJaAconteceu) {
     const leadId = await findLeadIdForConversation(input.organizationId, input.conversationId);
-    await triggerHandoff({
+    const resultado = await triggerHandoff({
       conversationId: input.conversationId,
       organizationId: input.organizationId,
       reason: input.reason,
@@ -300,6 +314,7 @@ export async function finalizeHandoff(input: FinalizeHandoffInput): Promise<void
       observacao: input.observacao ?? null,
       metadata: { run_id: input.runId, source: input.source },
     });
+    assignedFirstName = resultado.assignedFirstName ?? null;
   }
 
   await finalizeRun({
@@ -315,4 +330,47 @@ export async function finalizeHandoff(input: FinalizeHandoffInput): Promise<void
     toolCalls: input.toolCalls,
     isDryRun: input.isDryRun,
   });
+
+  return { assignedFirstName };
+}
+
+/**
+ * O texto que o cliente PRECISA receber quando o sistema encaminha.
+ *
+ * 🐛 11/09/2026 — A JUNIA MARIA FICOU FALANDO SOZINHA. Ela perguntou "Qual a
+ * sua disponibilidade?", o bot respondeu e perguntou "Qual dia fica melhor pra
+ * você?", e 2 segundos depois o sistema encaminhou pro corretor e silenciou o
+ * bot pra sempre. Ela respondeu DUAS vezes ("Posso te mandar da segunda?" e "VC
+ * teria outras unidades TMB na região?") sem nunca saber que alguém ia atendê-la.
+ *
+ * Medido em todos os handoffs da Avant: 16 leads foram encaminhados sem ouvir
+ * quem vai atender, e 13 deles continuaram falando no vazio.
+ *
+ * Por que só acontece fora da ferramenta: quando o MODELO chama a tool, ele sabe
+ * que está encaminhando e escreve a despedida certa. Nos gatilhos de sistema
+ * (sentinela, promessa, adiamento) quem decide é o código, DEPOIS que o modelo
+ * já escreveu — e o texto dele foi escrito supondo que a conversa continuava.
+ *
+ * O formato segue o que o prompt já manda (seção "COMO FUNCIONA O
+ * ENCAMINHAMENTO"): cita o nome quando existe, e nunca inventa um.
+ */
+export function avisoDeQuemVaiAtender(assignedFirstName: string | null): string {
+  return assignedFirstName
+    ? `Vou te encaminhar pro ${assignedFirstName}, nosso corretor. Ele já te chama aqui 👍`
+    : "Vou te encaminhar pra nossa equipe. Já te chamam aqui 👍";
+}
+
+/**
+ * A despedida que o modelo escreveu já cumpre o contrato?
+ *
+ * Se ele mesmo disse que ia passar pra alguém, repetir soa como robô travado.
+ * Só quando ele NÃO disse é que o sistema completa.
+ */
+const JA_DISSE_QUEM_ATENDE =
+  /vou te (encaminhar|passar)|te encaminho|nossa equipe j[áa] te chama|j[áa] te chama|o corretor[^.!?]{0,30}(te chama|entra em contato)|s[óo] um momento/iu;
+
+export function precisaAvisarQuemAtende(despedidaDoModelo: string | null | undefined): boolean {
+  const t = (despedidaDoModelo ?? "").trim();
+  if (!t) return true;
+  return !JA_DISSE_QUEM_ATENDE.test(t);
 }
