@@ -163,6 +163,40 @@ const ENCERRAMENTO_APOS_OFERTA =
 const RECLAMACAO_DE_ABANDONO =
   /(n[ãa]o (me )?respond|n[ãa]o fala nada|ningu[eé]m respond|n[ãa]o me atender|sem resposta|cad[êe] (voc|vc))/i;
 
+/**
+ * ADIAMENTO DE HORIZONTE LONGO — o lead não recusa, ele empurra pra semanas ou
+ * meses à frente. Pra a cadência dá no mesmo: cutucar em 5 minutos quem disse
+ * "só no ano que vem" é importunar.
+ *
+ * 🐛 11/09/2026 — a Raphaela. Às 12h24 ela escreveu "resolvemos que vamos
+ * deixar para olhar alguma coisa só no próximo ano", o bot se despediu bem, os
+ * dois trocaram agradecimentos — e a cadência disparou as QUATRO etapas: 12h41,
+ * 13h06, 14h27 e no dia seguinte às 12h28.
+ *
+ * ⚠️ Horizonte LONGO de propósito. "Agora não posso falar", "te chamo mais
+ * tarde", "estou no trabalho" NÃO entram aqui: são adiamentos de horas, e a
+ * etapa 2 da cadência existe exatamente pra eles ("Tem um horário melhor pra
+ * gente falar?"). Tratar isso como recusa jogaria fora lead bom.
+ */
+const ADIAMENTO_LONGO =
+  /((ano|m[êe]s) que vem|pr[óo]ximo ano|ano novo|mais pra? frente|depois do carnaval|(daqui|dentro) (a |de )?(uns?|alguns?|dois|tr[êe]s|quatro|cinco|seis|\d+)( \d+)? (meses|m[êe]s|semanas)|s[óo] (no |em |a partir de )?(janeiro|fevereiro|mar[çc]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)|sem previs[ãa]o)/i;
+
+/**
+ * CORTESIA DE FECHAMENTO — "muito obrigada pela atenção", "pra você também".
+ *
+ * Isto não decide nada sozinho: serve pra ANDAR PRA TRÁS. A trava antiga olhava
+ * só a última mensagem do lead, e na conversa da Raphaela a última era "Pra você
+ * também !". A recusa de verdade estava duas falas antes, escondida atrás de
+ * duas gentilezas. Educação não apaga o que o lead decidiu.
+ */
+const CORTESIA_DE_FECHAMENTO =
+  /^(muito |mt )?(obrigad\w*|vlw|valeu|agradeç\w*|agradecid\w*)( (pela|pelo) (aten[çc][ãa]o|ajuda|retorno|informa[çc][ãa]o|resposta))?[\s.!😊👍🙏]*$|^(pra|para) (voc[êe]|vc|ti) tamb[ée]m[\s.!😊👍🙏]*$|^(igualmente|obg|de nada|imagina|tudo bem|tudo bom|ok|okay|blz|beleza|👍|🙏|😊)[\s.!😊👍🙏]*$/i;
+
+export function ehCortesiaDeFechamento(texto: string | null | undefined): boolean {
+  const t = (texto ?? "").trim();
+  return t.length > 0 && CORTESIA_DE_FECHAMENTO.test(t);
+}
+
 export function leadRecusou(
   texto: string | null | undefined,
   opts: { respondendoACadencia: boolean },
@@ -171,7 +205,26 @@ export function leadRecusou(
   if (!t) return false;
   if (RECLAMACAO_DE_ABANDONO.test(t)) return false;
   if (RECUSA_SOZINHA.test(t)) return true;
+  if (ADIAMENTO_LONGO.test(t)) return true;
   return opts.respondendoACadencia && ENCERRAMENTO_APOS_OFERTA.test(t);
+}
+
+/**
+ * Qual fala do lead DECIDE se a cadência continua.
+ *
+ * Recebe as mensagens do lead da mais nova pra mais velha. Pula as gentilezas de
+ * despedida e devolve a primeira fala com conteúdo. Se o lead voltou depois com
+ * uma pergunta de verdade ("esse imóvel ainda tá disponível?"), é ELA que
+ * decide, e uma recusa velha não trava mais nada — o lead reengajou sozinho.
+ */
+export function falaQueDecide(inbounds: Array<string | null>): string | null {
+  for (const fala of inbounds) {
+    const t = (fala ?? "").trim();
+    if (!t) continue;
+    if (ehCortesiaDeFechamento(t)) continue;
+    return t;
+  }
+  return null;
 }
 
 /**
@@ -544,15 +597,23 @@ async function sweepOrg(
     // responde — o que para e a insistencia por tempo, nao o atendimento.
     const ultimaDoLead = historico.find((m) => m.direction === "inbound");
     const ultimaNossa = historico.find((m) => m.direction === "outbound");
+    // 🐛 11/09/2026 — olhar SÓ a última fala do lead deixava passar a recusa que
+    // o próprio lead cobriu com gentileza. Na conversa da Raphaela a última era
+    // "Pra você também !"; o "vamos deixar para o próximo ano" estava duas falas
+    // antes. Por isso a decisão anda pra trás pelas falas dele, pulando as
+    // cortesias de despedida (ver falaQueDecide).
+    const decisiva = falaQueDecide(
+      historico.filter((m) => m.direction === "inbound").map((m) => m.body),
+    );
+    const respondendoACadencia = Boolean(
+      ultimaNossa &&
+        ultimaDoLead &&
+        ehMensagemDaCadencia(ultimaNossa.body, ultimaNossa.metadata, steps) &&
+        new Date(ultimaNossa.sent_at).getTime() < new Date(ultimaDoLead.sent_at).getTime(),
+    );
     if (
-      ultimaDoLead &&
-      leadRecusou(ultimaDoLead.body, {
-        respondendoACadencia: Boolean(
-          ultimaNossa &&
-            ehMensagemDaCadencia(ultimaNossa.body, ultimaNossa.metadata, steps) &&
-            new Date(ultimaNossa.sent_at).getTime() < new Date(ultimaDoLead.sent_at).getTime(),
-        ),
-      })
+      (ultimaDoLead && leadRecusou(ultimaDoLead.body, { respondendoACadencia })) ||
+      leadRecusou(decisiva, { respondendoACadencia: false })
     ) {
       await admin
         .from("conversations")
@@ -563,7 +624,12 @@ async function sweepOrg(
         p_event_type: "followup.recusado",
         p_entity_kind: "conversation",
         p_entity_id: conv.id,
-        p_payload: { conversation_id: conv.id, fala_do_lead: (ultimaDoLead.body ?? "").slice(0, 200) },
+        p_payload: {
+          conversation_id: conv.id,
+          fala_do_lead: (ultimaDoLead?.body ?? "").slice(0, 200),
+          // A fala que realmente decidiu, que pode nao ser a ultima.
+          fala_decisiva: (decisiva ?? "").slice(0, 200),
+        },
         p_metadata: { source: "inactivity-followup" },
         p_organization_id: orgId,
       } as never);

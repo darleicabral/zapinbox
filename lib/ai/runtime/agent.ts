@@ -478,9 +478,32 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
 
     // Contexto da conversa anexado ao prompt: as tools de escrita (ex.
     // crm_create_lead) recebem UUIDs, e o modelo não tem como adivinhá-los.
+    //
+    // 🐛 11/09/2026 — O MODELO NÃO SABIA EM QUE DIA ESTAVA.
+    //
+    // A Raphaela disse "vamos deixar para olhar alguma coisa só no próximo ano"
+    // e o bot respondeu "Bom fim de ano pra vocês!". Era 9 de SETEMBRO. Sem data
+    // no contexto, "próximo ano" virou "estamos em dezembro" — e o mesmo buraco
+    // atinge qualquer conta de tempo: feriado, "semana que vem", prazo de
+    // financiamento.
+    //
+    // Granularidade de DIA, de propósito: o system prompt é o que o provider
+    // guarda em cache (ver o header x-opencode-session), e carimbar hora ou
+    // minuto aqui invalidaria esse cache a CADA chamada. Por dia, a conversa
+    // inteira reusa o mesmo prefixo e só vira à meia-noite.
+    const dataDeHoje = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(new Date());
+
     const runtimeContext = [
       "",
       "--- CONTEXTO DA CONVERSA (uso interno; nunca mencione estes dados ao cliente) ---",
+      `data_de_hoje: ${dataDeHoje} (fuso de Brasília)`,
+      "Toda conta de tempo sai desta data. Nunca deduza a época do ano pelo que o cliente falou.",
       `contact_id: ${run.contact_id ?? "desconhecido"}`,
       `conversation_id: ${run.conversation_id ?? "desconhecida"}`,
       ...(contactName
