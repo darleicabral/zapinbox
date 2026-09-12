@@ -163,25 +163,42 @@ export async function varrerAlarmes(
 
     resumo.orgs_scanned += 1;
     try {
-      const { data: runs } = await admin
+      // 🐛 12/09/2026 — O ALARME GRITOU "NÃO RODOU NENHUMA VEZ" COM 7 RUNS.
+      //
+      // Às 11h30 o Darlei recebeu "🚨 O bot não está atendendo. Chegaram 8
+      // mensagens de lead na última hora e o agente não rodou NENHUMA vez."
+      // Reproduzindo a MESMA janela: 7 runs, todos completed/handoff, e as 8
+      // entradas conferiam exatamente.
+      //
+      // A causa: `const { data: runs } = await ...` descartava o `error`. Leitura
+      // que falha devolve data = null, o `?? []` transformava isso em lista
+      // vazia, e lista vazia é indistinguível de "o bot não rodou". O alarme
+      // contava como FATO o que era só uma consulta que não voltou — o mesmo
+      // erro do pipeline de sincronização que declarava sucesso sobre dado
+      // velho. Agora a falha de leitura interrompe o diagnóstico: alarme só se
+      // apoia em número que foi realmente lido.
+      const { data: runs, error: erroRuns } = await admin
         .from("ai_agent_runs")
         .select("status, abort_reason")
         .eq("organization_id", orgId)
         .eq("is_dry_run", false)
         .gte("created_at", desde);
+      if (erroRuns) {
+        resumo.errors.push(`${orgId}: nao consegui ler os runs (${erroRuns.message})`);
+        continue;
+      }
       const lista = (runs ?? []) as { status: string; abort_reason: string | null }[];
 
-      const { count: entradas } = await admin
-        .from("messages")
-        .select("id", { count: "exact", head: true })
-        .eq("organization_id", orgId)
-        .eq("direction", "inbound")
-        .gte("sent_at", desde);
+      const entradas = await contarEntradasQueOBotDevia(admin, orgId, desde);
+      if (entradas == null) {
+        resumo.errors.push(`${orgId}: nao consegui contar as entradas`);
+        continue;
+      }
 
       const d = diagnosticar({
         runs: lista.length,
         falhas: lista.filter((r) => ehNaoResposta(r)).length,
-        entradas: entradas ?? 0,
+        entradas,
       });
       if (!d.alarmar || !d.texto) continue;
 
@@ -219,6 +236,77 @@ async function alarmouRecentemente(
     .eq("payload->>motivo", motivo)
     .gte("created_at", desde);
   return (count ?? 0) > 0;
+}
+
+/**
+ * Quantas mensagens de lead o BOT tinha obrigação de responder na janela.
+ *
+ * 🐛 12/09/2026 — o segundo defeito do mesmo alarme, e o que o fazia disparar
+ * numa manhã perfeitamente normal. A conta antiga era "toda mensagem inbound da
+ * org". Só que depois do handoff a conversa fica com `bot_silenced_until` =
+ * infinity e o lead segue conversando com o CORRETOR pelo mesmo número — e cada
+ * fala dessas entrava na conta como se fosse lead abandonado.
+ *
+ * Na janela real do alarme das 11h30: 8 entradas, e as OITO eram de conversa já
+ * entregue a corretor. O bot não devia responder nenhuma. Zero abandono.
+ *
+ * Fora da conta, então: conversa silenciada, conversa com dono, e contato da
+ * própria equipe (corretor escrevendo no CRM não é lead).
+ *
+ * Devolve `null` quando alguma leitura falha — quem chama não pode transformar
+ * isso em zero, que é exatamente o erro que gerou o alarme falso.
+ */
+async function contarEntradasQueOBotDevia(
+  admin: SupabaseClient,
+  organizationId: string,
+  desde: string,
+): Promise<number | null> {
+  const { data: msgs, error: erroMsgs } = await admin
+    .from("messages")
+    .select("id, conversation_id")
+    .eq("organization_id", organizationId)
+    .eq("direction", "inbound")
+    .gte("sent_at", desde);
+  if (erroMsgs) return null;
+  const lista = (msgs ?? []) as { id: string; conversation_id: string | null }[];
+  const convIds = [...new Set(lista.map((m) => m.conversation_id).filter(Boolean))] as string[];
+  if (convIds.length === 0) return 0;
+
+  const { data: convs, error: erroConvs } = await admin
+    .from("conversations")
+    .select("id, bot_silenced_until, assigned_to_user_id, contacts(is_internal)")
+    .eq("organization_id", organizationId)
+    .in("id", convIds);
+  if (erroConvs) return null;
+
+  // O embed do PostgREST vem como objeto pra relação 1-1, mas os tipos gerados
+  // descrevem como array. Aceitar as duas formas evita cast mentiroso.
+  type ContatoEmbed = { is_internal: boolean | null };
+  type ConvLinha = {
+    id: string;
+    bot_silenced_until: string | null;
+    assigned_to_user_id: string | null;
+    contacts: ContatoEmbed | ContatoEmbed[] | null;
+  };
+  const ehInterno = (c: ConvLinha): boolean => {
+    const alvo = Array.isArray(c.contacts) ? c.contacts[0] : c.contacts;
+    return Boolean(alvo?.is_internal);
+  };
+  const porId = new Map(
+    (convs ?? []).map((c) => {
+      const linha = c as unknown as ConvLinha;
+      return [linha.id, linha] as const;
+    }),
+  );
+
+  return lista.filter((m) => {
+    const c = m.conversation_id ? porId.get(m.conversation_id) : undefined;
+    if (!c) return false; // sem conversa conhecida, não dá pra afirmar abandono
+    if (ehInterno(c)) return false;
+    if (c.assigned_to_user_id) return false;
+    if (c.bot_silenced_until) return false;
+    return true;
+  }).length;
 }
 
 async function registrar(

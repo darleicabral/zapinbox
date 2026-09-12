@@ -615,6 +615,21 @@ async function sweepOrg(
       (ultimaDoLead && leadRecusou(ultimaDoLead.body, { respondendoACadencia })) ||
       leadRecusou(decisiva, { respondendoACadencia: false })
     ) {
+      // 🐛 12/09/2026 — ESTE RAMO ESTAVA REESCREVENDO E RE-EMITINDO A CADA TIQUE.
+      //
+      // Medido em 36h: 453 eventos `followup.recusado` para DUAS conversas, 448
+      // deles numa só (a Raphaela, de 11/09). O cron passa de minutos em
+      // minutos, a conversa continua casando com a regra de recusa, e o ramo
+      // gravava de novo o mesmo `followup_step` e emitia de novo o mesmo evento.
+      //
+      // Não chegou a incomodar lead nenhum — nenhuma mensagem é enviada aqui —
+      // mas é escrita e evento infinitos, crescendo com cada lead que recusa.
+      //
+      // A regra que faltava: só registrar quando o ESTADO MUDA. Quem já está no
+      // fim da fila já está fora da cadência, e sair de novo não é notícia.
+      const jaEstavaForaDaCadencia = conv.followup_step >= steps.length;
+      if (jaEstavaForaDaCadencia) continue;
+
       await admin
         .from("conversations")
         .update({ followup_step: steps.length })
