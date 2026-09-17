@@ -46,6 +46,18 @@ interface MemberRow {
   role: string;
   presence: string | null;
   presence_updated_at: string | null;
+  rotation_paused_until: string | null;
+}
+
+/**
+ * Folga (0032): membro pausado do rodízio enquanto `rotation_paused_until` for
+ * futuro. Expira sozinho — passou a data, volta a ser elegível sem ninguém mexer.
+ */
+export function isRotationPaused(
+  m: { rotation_paused_until: string | null },
+  now: Date = new Date(),
+): boolean {
+  return !!m.rotation_paused_until && new Date(m.rotation_paused_until) > now;
 }
 
 export async function loadAttendanceSettings(
@@ -68,7 +80,7 @@ async function loadEligibleMembers(
 ): Promise<MemberRow[]> {
   const { data } = await admin
     .from("user_organizations")
-    .select("user_id, role, presence, presence_updated_at")
+    .select("user_id, role, presence, presence_updated_at, rotation_paused_until")
     .eq("organization_id", organizationId)
     .is("revoked_at", null)
     .in("role", ["agent", "manager", "admin"])
@@ -103,7 +115,11 @@ export async function pickNextAssignee(
   // Gerente CONTINUA no rodízio: na Avant o Cleber é manager e atende.
   // O admin segue recebendo a escalada do SLA por pickFallbackManager, que é o
   // papel dele — supervisionar quando ninguém assume, não estar na fila.
-  const candidates = members.filter((m) => !excluded.has(m.user_id) && m.role !== "admin");
+  // Folga (0032): membro com rotation_paused_until no futuro fica de fora até a
+  // data passar. Sem cron: isRotationPaused compara com o agora a cada rodada.
+  const candidates = members.filter(
+    (m) => !excluded.has(m.user_id) && m.role !== "admin" && !isRotationPaused(m),
+  );
   if (candidates.length === 0) return null;
 
   let pointer = opts.pointer;

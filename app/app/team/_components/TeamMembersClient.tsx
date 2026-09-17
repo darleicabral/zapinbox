@@ -7,6 +7,7 @@ import { useChangeRole } from "@/hooks/team/useChangeRole";
 import { useRevokeMember } from "@/hooks/team/useRevokeMember";
 import { useSetNotifyPhone } from "@/hooks/team/useSetNotifyPhone";
 import { useSetMemberChannels } from "@/hooks/team/useSetMemberChannels";
+import { useSetRotationPause } from "@/hooks/team/useSetRotationPause";
 import { useChannelSessions, type ChannelSession } from "@/hooks/channels/useChannelSessions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,8 +63,11 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
   const revoke = useRevokeMember();
   const setNotifyPhone = useSetNotifyPhone();
   const setChannels = useSetMemberChannels();
+  const setRotationPause = useSetRotationPause();
 
   const [roleDialog, setRoleDialog] = useState<TeamMember | null>(null);
+  const [rotationDialog, setRotationDialog] = useState<TeamMember | null>(null);
+  const [pendingPausedDate, setPendingPausedDate] = useState("");
   const [revokeDialog, setRevokeDialog] = useState<TeamMember | null>(null);
   const [pendingRole, setPendingRole] = useState<Role>("agent");
   const [phoneDialog, setPhoneDialog] = useState<TeamMember | null>(null);
@@ -76,6 +80,11 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
     const c = channelList.find((x) => x.id === id);
     return c ? channelLabel(c) : id.slice(0, 8);
   };
+  // Folga (0032): pausado enquanto a data for futura. Só agent/manager entram na roleta.
+  const roletaPausada = (m: TeamMember): boolean =>
+    !!m.rotation_paused_until && new Date(m.rotation_paused_until) > new Date();
+  const entraNaRoleta = (m: TeamMember): boolean =>
+    (m.role as Role) === "agent" || (m.role as Role) === "manager";
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">Carregando…</p>;
@@ -114,6 +123,14 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary">{ROLE_LABEL[m.role as Role] ?? m.role}</Badge>
+                  {roletaPausada(m) ? (
+                    <div className="mt-1">
+                      <span className="inline-flex items-center rounded-md border border-warning bg-warning-bg px-1.5 py-0.5 text-[11px] font-medium text-warning-fg">
+                        Fora da roleta até{" "}
+                        {new Date(m.rotation_paused_until!).toLocaleDateString("pt-BR")}
+                      </span>
+                    </div>
+                  ) : null}
                 </TableCell>
                 <TableCell className="text-sm">
                   {m.notify_whatsapp_e164 ? (
@@ -173,6 +190,34 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
                         >
                           Definir números que vê
                         </DropdownMenuItem>
+                        {entraNaRoleta(m) ? (
+                          roletaPausada(m) ? (
+                            <DropdownMenuItem
+                              onClick={async () => {
+                                try {
+                                  await setRotationPause.mutateAsync({
+                                    userId: m.user_id,
+                                    pausedUntil: null,
+                                  });
+                                  toast.success("Reativado na roleta.");
+                                } catch {
+                                  /* showApiError já disparou */
+                                }
+                              }}
+                            >
+                              Reativar na roleta
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setPendingPausedDate("");
+                                setRotationDialog(m);
+                              }}
+                            >
+                              Pausar da roleta (folga)
+                            </DropdownMenuItem>
+                          )
+                        ) : null}
                         {m.user_id !== currentUserId ? (
                           <>
                             <DropdownMenuItem
@@ -240,6 +285,55 @@ export function TeamMembersClient({ currentUserId, canManage }: Props) {
               }}
             >
               Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!rotationDialog} onOpenChange={(o) => !o && setRotationDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pausar da roleta (folga)</DialogTitle>
+            <DialogDescription>
+              {rotationDialog?.full_name ?? rotationDialog?.email} não recebe lead novo até a data
+              escolhida. Os leads que já estão com ele continuam com ele. Na data, volta ao rodízio
+              sozinho.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="pause-date">Volta em</Label>
+            <Input
+              id="pause-date"
+              type="date"
+              value={pendingPausedDate}
+              onChange={(e) => setPendingPausedDate(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Ele volta ao rodízio no começo desse dia. Não mexe no acesso dele ao CRM.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRotationDialog(null)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={setRotationPause.isPending || !pendingPausedDate}
+              onClick={async () => {
+                if (!rotationDialog || !pendingPausedDate) return;
+                const iso = new Date(`${pendingPausedDate}T00:00:00`).toISOString();
+                try {
+                  await setRotationPause.mutateAsync({
+                    userId: rotationDialog.user_id,
+                    pausedUntil: iso,
+                  });
+                  toast.success("Pausado da roleta.");
+                  setRotationDialog(null);
+                } catch {
+                  /* showApiError já disparou */
+                }
+              }}
+            >
+              Pausar
             </Button>
           </DialogFooter>
         </DialogContent>

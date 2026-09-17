@@ -17,7 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { listAuthUsersByIds } from "@/lib/auth/admin-users";
 import { logger } from "@/lib/logger";
 import { notifyAssigneeNewLead } from "./notify";
-import { loadAttendanceSettings, pickNextAssignee } from "./rotation";
+import { isRotationPaused, loadAttendanceSettings, pickNextAssignee } from "./rotation";
 
 export interface AssignAndNotifyResult {
   assignedUserId: string | null;
@@ -61,14 +61,17 @@ async function pickFirstEligible(
   const eligibleRoles = ELIGIBLE_ROLES_BY_MIN[minRole] ?? ["agent", "manager", "admin"];
   const { data, error } = await client
     .from("user_organizations")
-    .select("user_id, role")
+    .select("user_id, role, rotation_paused_until")
     .eq("organization_id", organizationId)
     .is("revoked_at", null)
     .in("role", eligibleRoles)
     .order("user_id", { ascending: true });
 
   if (error || !data || data.length === 0) return null;
-  return (data[0] as { user_id: string }).user_id;
+  // Folga (0032): pula quem está pausado do rodízio, igual ao rodízio circular.
+  const rows = data as { user_id: string; rotation_paused_until: string | null }[];
+  const disponivel = rows.find((r) => !isRotationPaused(r));
+  return disponivel?.user_id ?? null;
 }
 
 /** Primeiro nome do corretor pra IA citar. Qualquer falha vira null. */

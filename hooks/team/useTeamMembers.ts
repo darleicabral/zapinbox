@@ -15,6 +15,8 @@ export interface TeamMember {
   notify_whatsapp_e164: string | null;
   /** Números atribuídos (0029). Vazio = sem restrição, vê todos. */
   channel_session_ids: string[];
+  /** Folga (0032): ISO no futuro = fora da roleta até lá. null = participa. */
+  rotation_paused_until: string | null;
 }
 
 export function useTeamMembers() {

@@ -33,6 +33,7 @@ export type AuditAction =
   | "member.role_changed"
   | "member.revoked"
   | "member.notify_phone_changed"
+  | "member.rotation_paused"
   | "token.created"
   | "token.revoked"
   | "profile.updated"
