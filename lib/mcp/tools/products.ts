@@ -51,6 +51,40 @@ interface ProductRow {
   attributes: Record<string, unknown> | null;
 }
 
+/**
+ * Preço-alvo (em centavos) que o cliente sinalizou, para ordenar por PROXIMIDADE
+ * em vez do mais barato. Sem isto, o empate de score desempatava por preço
+ * CRESCENTE e o `limit` cortava os mais caros: um lead pedindo "apto de 530k"
+ * num bairro cheio de opções baratas ouvia "não tenho" — o de 530k caía fora dos
+ * 8 primeiros. Incidente real 21/09/2026 (Santa Branca, imóvel #367): o bot
+ * buscou com max_price=530000, recebeu os 8 mais baratos (409k–473k) e respondeu
+ * ao lead que o mais próximo era 473k, sendo que o de 530k existia.
+ */
+function precoAlvoCents(input: {
+  min_price?: number;
+  max_price?: number;
+  query?: string;
+}): number | null {
+  const min = typeof input.min_price === "number" ? input.min_price : null;
+  const max = typeof input.max_price === "number" ? input.max_price : null;
+  if (min != null && max != null) return Math.round(((min + max) / 2) * 100);
+  if (max != null) return Math.round(max * 100);
+  if (min != null) return Math.round(min * 100);
+  // Sem filtro estruturado: tenta um número no texto ("530 mil", "530k", "530000").
+  const q = (input.query ?? "").toLowerCase();
+  const rawMil = q.match(/(\d[\d.]*)\s*(mil|k)\b/)?.[1];
+  if (rawMil) {
+    const n = Number(rawMil.replace(/\./g, ""));
+    if (Number.isFinite(n) && n > 0) return Math.round(n * 1000 * 100);
+  }
+  const rawNum = q.match(/\b(\d{5,7})\b/)?.[1];
+  if (rawNum) {
+    const n = Number(rawNum);
+    if (n >= 10000) return Math.round(n * 100);
+  }
+  return null;
+}
+
 export const crmSearchCatalog: McpToolDefinition<typeof searchShape> = {
   name: "crm_search_catalog",
   description:
@@ -77,6 +111,15 @@ export const crmSearchCatalog: McpToolDefinition<typeof searchShape> = {
     if (error) throw new Error(error.message);
 
     const all = (data ?? []) as ProductRow[];
+    // Empate de score ordena por PROXIMIDADE ao preço-alvo (não pelo mais barato),
+    // senão o `limit` esconde os itens caros que o cliente pediu. Sem alvo, mantém
+    // o mais barato primeiro (comportamento antigo).
+    const alvo = precoAlvoCents(input);
+    const prox = (p: ProductRow) =>
+      alvo == null
+        ? (p.price_cents ?? Infinity)
+        : Math.abs((p.price_cents ?? Number.MAX_SAFE_INTEGER) - alvo);
+
     let rows = all;
     if (input.query) {
       const norm = (s: string) =>
@@ -99,16 +142,11 @@ export const crmSearchCatalog: McpToolDefinition<typeof searchShape> = {
             return { p, score };
           })
           .filter((x) => x.score >= 0.34) // pelo menos ~1/3 dos termos presentes
-          .sort(
-            (a, b) =>
-              b.score - a.score || (a.p.price_cents ?? Infinity) - (b.p.price_cents ?? Infinity),
-          );
+          .sort((a, b) => b.score - a.score || prox(a.p) - prox(b.p));
         rows = scored.map((x) => x.p);
       }
     } else {
-      rows = [...all].sort(
-        (a, b) => (a.price_cents ?? Infinity) - (b.price_cents ?? Infinity),
-      );
+      rows = [...all].sort((a, b) => prox(a) - prox(b));
     }
     rows = rows.slice(0, input.limit);
     return {

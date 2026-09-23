@@ -39,6 +39,10 @@ let escolhidoPeloRodizio: string | null = null;
 vi.mock("@/lib/attendance/rotation", () => ({
   loadAttendanceSettings: vi.fn(async () => (rodizioLigado ? { enabled: true } : { enabled: false })),
   pickNextAssignee: vi.fn(async () => escolhidoPeloRodizio),
+  // pickFirstEligible (assign.ts) usa isRotationPaused; sem exportar aqui, o mock
+  // devolve undefined e a chamada estoura. Implementação real (0032, folga).
+  isRotationPaused: (m: { rotation_paused_until?: string | null }) =>
+    !!m.rotation_paused_until && new Date(m.rotation_paused_until) > new Date(),
 }));
 
 vi.mock("@/lib/auth/admin-users", () => ({
