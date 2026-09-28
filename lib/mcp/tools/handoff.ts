@@ -34,6 +34,27 @@ const inputShape = {
   metadata: z.record(z.string(), z.unknown()).optional(),
 };
 
+/**
+ * O handoff deve ESPERAR porque o cliente falou DEPOIS que o run leu o histórico?
+ *
+ * 🐛 25/09/2026 (Tete) — a cliente disse "Pod ser segunda feira", o run começou
+ * (leu "segunda") e ~1 min depois, DURANTE o run, corrigiu pra "Domingo". O run
+ * terminou gravando "segunda" e o handoff silenciou a conversa, jogando a
+ * correção fora ("skipped_silenced"). Comparando a última fala do lead com o
+ * INÍCIO do run: se ela é mais nova, o run não a viu — não encaminha (nem
+ * silencia), e deixa a correção rodar num run fresco, que lê o dia certo.
+ *
+ * Só o handoff decidido pela IA passa por aqui; o pedido explícito por
+ * palavra-chave/sentinela tem outro caminho e não é afetado.
+ */
+export function handoffDeveEsperar(
+  runCreatedAt: string | null,
+  lastInboundAt: string | null,
+): boolean {
+  if (!runCreatedAt || !lastInboundAt) return false;
+  return new Date(lastInboundAt).getTime() > new Date(runCreatedAt).getTime();
+}
+
 export const crmRequestHumanHandoff: McpToolDefinition<typeof inputShape> = {
   name: "crm_request_human_handoff",
   description:
@@ -46,12 +67,36 @@ export const crmRequestHumanHandoff: McpToolDefinition<typeof inputShape> = {
     // Conversation must belong to org (defense in depth — service role bypassa RLS).
     const { data: conv, error: convErr } = await ctx.supabase
       .from("conversations")
-      .select("id, organization_id, contact_id")
+      .select("id, organization_id, contact_id, last_inbound_at")
       .eq("id", input.conversation_id)
       .maybeSingle();
     if (convErr) throw new Error(convErr.message);
     if (!conv || conv.organization_id !== ctx.organizationId) {
       throw new Error("conversation_not_found");
+    }
+
+    // Guarda de corrida: se o cliente mandou mensagem DEPOIS que este run começou
+    // (leu o histórico), o contexto que decidiu encaminhar está velho — ex.: ele
+    // trocou "segunda" por "domingo" enquanto o run rodava (a Tete, 25/09). Não
+    // encaminha e NÃO silencia: a mensagem nova roda num run fresco, que lê a
+    // correção. Só pro handoff da IA (tem run_id no ator).
+    if (ctx.actor.type === "ai_agent") {
+      const { data: run } = await ctx.supabase
+        .from("ai_agent_runs")
+        .select("created_at")
+        .eq("id", ctx.actor.id)
+        .eq("organization_id", ctx.organizationId)
+        .maybeSingle();
+      const lastInboundAt = (conv as { last_inbound_at?: string | null }).last_inbound_at ?? null;
+      if (handoffDeveEsperar(run?.created_at ?? null, lastInboundAt)) {
+        return {
+          handoff_recorded: false,
+          deferred_newer_inbound: true,
+          conversation_id: input.conversation_id,
+          next_action:
+            "O cliente enviou uma mensagem DEPOIS do que você leu. NÃO encaminhe e NÃO confirme dia/horário agora. Encerre esta resposta de leve (ex.: 'só um instante 😊') — a mensagem nova vai ser lida em seguida e o encaminhamento acontece quando o dia/horário estiver confirmado.",
+        };
+      }
     }
 
     // Try to find a lead linked to this contact (best effort for activity insert).
