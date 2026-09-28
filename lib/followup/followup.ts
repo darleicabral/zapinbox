@@ -156,8 +156,10 @@ function chaveDeTexto(s: string): string {
 const RECUSA_SOZINHA =
   /(n[ãa]o,? (muito )?obrigad|n[ãa]o obg|n[ãa]o,? valeu|n[ãa]o (tenho|ha|há) interesse|sem interesse|n[ãa]o me interessa|n[ãa]o (quero|queria) (mais|nada)|n[ãa]o vou querer|n[ãa]o pretendo|desisti|ja (comprei|resolvi|consegui|achei|fechei)|j[áa] (comprei|resolvi|consegui|achei|fechei)|s[óo] (tava|estava|estou|to|tô) (olhando|vendo|dando uma olhada)|n[ãa]o me atende|n[ãa]o preciso mais|pode (cancelar|encerrar)|me (tira|remove))/i;
 
+// `nã` é o "não" truncado que o WhatsApp/autocorreção corta (a Karina, 24/09).
+// Fica antes de n[ãa]o na alternância; "na" seco NÃO entra (é ambíguo).
 const ENCERRAMENTO_APOS_OFERTA =
-  /^(n[ãa]o|nada|nops?|negativo|ok,?\s*obrigad\w*|obrigad\w*|valeu|vlw|tranquilo|de nada|blz|beleza|t[áa] (bom|certo)|agradeço|agradecido)[\s.!]*$/i;
+  /^(nã|n[ãa]o|nada|nops?|negativo|ok,?\s*obrigad\w*|obrigad\w*|valeu|vlw|tranquilo|de nada|blz|beleza|t[áa] (bom|certo)|agradeço|agradecido)[\s.!]*$/i;
 
 /** Reclamacao de abandono: o oposto de recusa, ainda que cheia de "nao". */
 const RECLAMACAO_DE_ABANDONO =
@@ -225,6 +227,37 @@ export function falaQueDecide(inbounds: Array<string | null>): string | null {
     return t;
   }
   return null;
+}
+
+/**
+ * O lead está respondendo a um TOQUE DA CADÊNCIA (e não à resposta que o bot deu
+ * depois)? É o que decide se um "não"/"nã" solto conta como recusa da oferta —
+ * toda etapa da cadência termina numa pergunta/oferta.
+ *
+ * 🐛 28/09/2026 — a Karina respondeu "nã" ao toque "ainda tem interesse?" e o
+ * bot mandou "Sem problemas" 9s depois. A trava antiga olhava a ÚLTIMA fala
+ * nossa (o "Sem problemas", POSTERIOR ao "nã") e concluía que o "nã" não
+ * respondia a oferta nenhuma — a cadência seguiu cutucando. O que importa é o
+ * que saiu ANTES da fala do lead, não o que o bot respondeu depois.
+ *
+ * `historico` vem da mais nova pra mais velha (como no varredor).
+ */
+export function respondendoAoToque(
+  historico: Array<{
+    direction: string;
+    body: string | null;
+    metadata: Record<string, unknown> | null;
+    sent_at: string;
+  }>,
+  ultimaDoLeadSentAt: string | null,
+  steps: FollowupStep[],
+): boolean {
+  if (!ultimaDoLeadSentAt) return false;
+  const corte = new Date(ultimaDoLeadSentAt).getTime();
+  const nossaAntes = historico.find(
+    (m) => m.direction === "outbound" && new Date(m.sent_at).getTime() < corte,
+  );
+  return Boolean(nossaAntes && ehMensagemDaCadencia(nossaAntes.body, nossaAntes.metadata, steps));
 }
 
 /**
@@ -596,7 +629,6 @@ async function sweepOrg(
     // cadencia. O bot NAO e silenciado: se o lead voltar com uma pergunta, ele
     // responde — o que para e a insistencia por tempo, nao o atendimento.
     const ultimaDoLead = historico.find((m) => m.direction === "inbound");
-    const ultimaNossa = historico.find((m) => m.direction === "outbound");
     // 🐛 11/09/2026 — olhar SÓ a última fala do lead deixava passar a recusa que
     // o próprio lead cobriu com gentileza. Na conversa da Raphaela a última era
     // "Pra você também !"; o "vamos deixar para o próximo ano" estava duas falas
@@ -605,11 +637,12 @@ async function sweepOrg(
     const decisiva = falaQueDecide(
       historico.filter((m) => m.direction === "inbound").map((m) => m.body),
     );
-    const respondendoACadencia = Boolean(
-      ultimaNossa &&
-        ultimaDoLead &&
-        ehMensagemDaCadencia(ultimaNossa.body, ultimaNossa.metadata, steps) &&
-        new Date(ultimaNossa.sent_at).getTime() < new Date(ultimaDoLead.sent_at).getTime(),
+    // Olha o toque que veio ANTES da fala do lead, não a resposta do bot depois
+    // (senão o "Sem problemas" mascara a recusa — caso da Karina, 28/09).
+    const respondendoACadencia = respondendoAoToque(
+      historico,
+      ultimaDoLead?.sent_at ?? null,
+      steps,
     );
     if (
       (ultimaDoLead && leadRecusou(ultimaDoLead.body, { respondendoACadencia })) ||

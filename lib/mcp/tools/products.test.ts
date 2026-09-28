@@ -85,7 +85,13 @@ function fakeCtx(rows: Row[]) {
 describe("crm_search_catalog — ordenação por preço-alvo", () => {
   it("traz o imóvel de 530k em 1º quando o lead pede 530k (regressão #367)", async () => {
     const out = (await crmSearchCatalog.handler(
-      { query: "apartamento Santa Branca 530000", max_price: 530000, kind: "imovel", limit: 8 },
+      {
+        query: "apartamento Santa Branca 530000",
+        min_price: undefined,
+        max_price: 530000,
+        kind: "imovel",
+        limit: 8,
+      },
       fakeCtx(FIXTURE),
     )) as { count: number; products: Array<{ ref: string | null; price: { amount: number } | null }> };
 
@@ -98,7 +104,13 @@ describe("crm_search_catalog — ordenação por preço-alvo", () => {
 
   it("sem preço, mantém o mais barato primeiro (comportamento antigo)", async () => {
     const out = (await crmSearchCatalog.handler(
-      { query: "apartamento Santa Branca", limit: 8 },
+      {
+        query: "apartamento Santa Branca",
+        min_price: undefined,
+        max_price: undefined,
+        kind: undefined,
+        limit: 8,
+      },
       fakeCtx(FIXTURE),
     )) as { products: Array<{ ref: string | null }> };
 

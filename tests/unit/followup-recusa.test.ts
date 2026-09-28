@@ -26,7 +26,7 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-import { ehMensagemDaCadencia, leadRecusou } from "@/lib/followup/followup";
+import { ehMensagemDaCadencia, leadRecusou, respondendoAoToque } from "@/lib/followup/followup";
 import type { FollowupStep } from "@/lib/followup/followup";
 
 /** As 4 etapas configuradas na Avant em 09/09/2026. */
@@ -126,7 +126,8 @@ describe("recusa que se explica sozinha", () => {
 
 describe("encerramento que só conta como recusa em resposta a uma oferta", () => {
   it("toda etapa da cadência termina numa oferta, então aqui é recusa dela", () => {
-    for (const frase of ["Não", "Ok obrigado", "Ok,obrigado.", "Obrigado", "valeu", "Tranquilo"]) {
+    // "nã"/"Nã" = "não" truncado pelo WhatsApp (a Karina, 24/09).
+    for (const frase of ["Não", "nã", "Nã", "Ok obrigado", "Ok,obrigado.", "Obrigado", "valeu", "Tranquilo"]) {
       expect(leadRecusou(frase, { respondendoACadencia: true }), frase).toBe(true);
     }
   });
@@ -134,9 +135,46 @@ describe("encerramento que só conta como recusa em resposta a uma oferta", () =
   it("no meio da conversa, um 'não' solto é resposta a uma pergunta, não recusa", () => {
     // o bot pergunta coisas de sim/não o tempo todo ("já tem financiamento?",
     // "conhece o bairro?"); encerrar a cadência aí seria chute
-    for (const frase of ["Não", "Obrigado", "valeu", "beleza"]) {
+    for (const frase of ["Não", "nã", "Obrigado", "valeu", "beleza"]) {
       expect(leadRecusou(frase, { respondendoACadencia: false }), frase).toBe(false);
     }
+  });
+});
+
+describe("respondendoAoToque: a resposta educada do bot não mascara o 'nã'", () => {
+  it("Karina (28/09) — 'nã' respondeu ao toque, mesmo o bot dizendo 'Sem problemas' depois", () => {
+    // histórico da mais nova pra mais velha, como no varredor
+    const historico = [
+      {
+        direction: "outbound",
+        body: "Sem problemas, Karina! Se mudar de ideia, é só me chamar.",
+        metadata: null,
+        sent_at: "2026-09-24T12:28:11Z",
+      },
+      { direction: "inbound", body: "nã", metadata: null, sent_at: "2026-09-24T12:28:02Z" },
+      // o toque da cadência (STEPS[0]) veio ANTES do "nã"
+      { direction: "outbound", body: "Oi, ainda tá por aí?", metadata: null, sent_at: "2026-09-24T12:00:44Z" },
+    ];
+    expect(respondendoAoToque(historico, "2026-09-24T12:28:02Z", STEPS)).toBe(true);
+    // combinado com o conserto da regex, o "nã" vira recusa e a cadência para
+    expect(leadRecusou("nã", { respondendoACadencia: true })).toBe(true);
+  });
+
+  it("'não' respondendo a uma PERGUNTA do bot (não cadência) não conta como oferta", () => {
+    const historico = [
+      { direction: "inbound", body: "não", metadata: null, sent_at: "2026-09-24T12:00:02Z" },
+      {
+        direction: "outbound",
+        body: "Já tem financiamento aprovado?",
+        metadata: null,
+        sent_at: "2026-09-24T11:59:00Z",
+      },
+    ];
+    expect(respondendoAoToque(historico, "2026-09-24T12:00:02Z", STEPS)).toBe(false);
+  });
+
+  it("sem fala do lead, não há o que decidir", () => {
+    expect(respondendoAoToque([], null, STEPS)).toBe(false);
   });
 });
 
