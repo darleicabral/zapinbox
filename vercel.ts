@@ -17,6 +17,14 @@
 import type { VercelConfig } from "@vercel/config/v1";
 
 const config: VercelConfig = {
+  // [ZapInbox] Funções em São Paulo, ao lado do banco (Supabase sa-east-1).
+  // Em iad1 (Washington, o padrão) cada consulta atravessava o continente
+  // (~120 ms de ida e volta). Os crons de minuto em minuto fazem uma consulta
+  // por conversa, então attendance-sla e inactivity-followup duravam 46-60 s
+  // e mantinham uma instância de 2 GB ligada 24h — foi o grosso da fatura de
+  // nov/2026 (1.390 GB-h de Fluid Provisioned Memory).
+  // Fixado aqui (e não só no painel) pra valer em todo deploy.
+  regions: ["gru1"],
   crons: [
     { path: "/api/v1/cron/lgpd-sla-watcher", schedule: "0 12 * * *" },
     // EPIC-13 S-13.07: drains ai_agent.dispatch_requested events. Vercel cron
